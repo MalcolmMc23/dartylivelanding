@@ -17,11 +17,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: 'Email is required' }, { status: 400 });
     }
 
-    // Validate email format (optional but recommended)
-    // Note: The double backslash is intentional for the regex string literal
+    // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
         return NextResponse.json({ message: 'Invalid email format' }, { status: 400 });
+    }
+
+    // Validate that it's a .edu email
+    if (!email.endsWith('.edu')) {
+        return NextResponse.json({ message: 'Only .edu email addresses are allowed' }, { status: 400 });
     }
 
     // Insert email into the database

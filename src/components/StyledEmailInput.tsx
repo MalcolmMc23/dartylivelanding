@@ -1,4 +1,6 @@
-import React from "react";
+"use client";
+
+import React, { useState } from "react";
 
 interface StyledEmailInputProps {
   placeholder?: string;
@@ -7,35 +9,96 @@ interface StyledEmailInputProps {
 const StyledEmailInput: React.FC<StyledEmailInputProps> = ({
   placeholder = "Ex. johndoe@exmpl.edu",
 }) => {
+  const [email, setEmail] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Reset error state
+    setError("");
+
+    // Basic validation
+    if (!email) {
+      setError("Please enter your email");
+      return;
+    }
+
+    // Check if it's a .edu email
+    if (!email.endsWith(".edu")) {
+      setError("Please use a valid .edu email address");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+
+      // Make API call to submit email
+      const response = await fetch("/api/subscribe", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to submit email");
+      }
+
+      // Clear input on success
+      setEmail("");
+      alert("Thank you for subscribing!");
+    } catch (err) {
+      setError("Something went wrong. Please try again later.");
+      console.error(err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
-    <div className="relative flex items-center w-full max-w-md">
-      <input
-        type="email"
-        placeholder={placeholder}
-        className="w-full px-6 py-3 rounded-full bg-[#2A2A2A] border border-[#4A4A4A] text-white placeholder-gray-500 focus:outline-none focus:border-[#A0FF00] focus:ring-1 focus:ring-[#A0FF00] transition-colors duration-200"
-      />
-      <button
-        type="button" // Change to "submit" if this becomes part of a form
-        aria-label="Submit email"
-        className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 rounded-full text-gray-400 hover:text-white transition-colors"
-      >
-        {/* Simple SVG arrow */}
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          strokeWidth={1.5}
-          stroke="currentColor"
-          className="w-6 h-6"
+    <form onSubmit={handleSubmit} className="w-full">
+      <div className="relative flex items-center w-full max-w-md">
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder={placeholder}
+          className={`w-full px-6 py-3 rounded-full bg-[#2A2A2A] border ${
+            error ? "border-red-500" : "border-[#4A4A4A]"
+          } text-white placeholder-gray-500 focus:outline-none focus:border-[#A0FF00] focus:ring-1 focus:ring-[#A0FF00] transition-colors duration-200`}
+          disabled={isSubmitting}
+        />
+        <button
+          type="submit"
+          aria-label="Submit email"
+          className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 rounded-full text-gray-400 hover:text-white transition-colors disabled:opacity-50"
+          disabled={isSubmitting}
         >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"
-          />
-        </svg>
-      </button>
-    </div>
+          {isSubmitting ? (
+            <div className="w-6 h-6 border-2 border-t-2 border-white border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+              className="w-6 h-6"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"
+              />
+            </svg>
+          )}
+        </button>
+      </div>
+      {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
+    </form>
   );
 };
 
