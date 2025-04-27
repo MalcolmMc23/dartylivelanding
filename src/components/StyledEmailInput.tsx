@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 
 interface StyledEmailInputProps {
   placeholder?: string;
@@ -12,6 +13,7 @@ const StyledEmailInput: React.FC<StyledEmailInputProps> = ({
   const [email, setEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,13 +49,11 @@ const StyledEmailInput: React.FC<StyledEmailInputProps> = ({
         throw new Error("Failed to submit email");
       }
 
-      // Clear input on success
-      setEmail("");
-      alert("Thank you for subscribing!");
+      // Redirect to countdown page with email parameter
+      router.push(`/countdown?email=${encodeURIComponent(email)}`);
     } catch (err) {
       setError("Something went wrong. Please try again later.");
       console.error(err);
-    } finally {
       setIsSubmitting(false);
     }
   };

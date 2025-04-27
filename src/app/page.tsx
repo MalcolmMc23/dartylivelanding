@@ -23,11 +23,6 @@ export default function Home() {
           <StyledEmailInput />
         </div>
       </main>
-
-      {/* Footer */}
-      <footer className="absolute bottom-4 md:bottom-8 text-sm text-gray-500">
-        © 2025 Dormparty. All rights reserved.
-      </footer>
     </div>
   );
 }
