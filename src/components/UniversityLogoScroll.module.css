@@ -1,0 +1,82 @@
+@keyframes scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(calc(-100% / 2));
+  }
+}
+
+.scrollContainer {
+  display: flex;
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+  margin: 2.5rem 0;
+  max-width: 900px;
+  padding: 0 3rem;
+}
+
+.scrollContainer::before,
+.scrollContainer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 150px;
+  height: 100%;
+  z-index: 2;
+}
+
+.scrollContainer::before {
+  left: 0;
+  background: linear-gradient(to right, rgba(18, 18, 18, 1), rgba(18, 18, 18, 0));
+}
+
+.scrollContainer::after {
+  right: 0;
+  background: linear-gradient(to left, rgba(18, 18, 18, 1), rgba(18, 18, 18, 0));
+}
+
+.scrollTrack {
+  display: flex;
+  gap: 5rem;
+  animation: scroll 50s linear infinite;
+  width: fit-content;
+  align-items: center;
+  padding: 2rem 0;
+}
+
+.scrollTrack:hover {
+  animation-play-state: paused;
+}
+
+.logoItem {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 7rem;
+  height: 7rem;
+  flex-shrink: 0;
+  transition: transform 0.3s ease;
+  filter: grayscale(20%) opacity(0.8);
+}
+
+.logoItem:hover {
+  transform: scale(1.1);
+  filter: grayscale(0%) opacity(1);
+}
+
+/* Hide scrollbar */
+.scrollTrack::-webkit-scrollbar {
+  display: none;
+}
+
+/* For Firefox */
+.scrollTrack {
+  scrollbar-width: none;
+}
+
+/* For IE and Edge */
+.scrollTrack {
+  -ms-overflow-style: none;
+} 
