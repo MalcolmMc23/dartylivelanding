@@ -46,10 +46,6 @@
   padding: 2rem 0;
 }
 
-.scrollTrack:hover {
-  animation-play-state: paused;
-}
-
 .logoItem {
   display: flex;
   align-items: center;
