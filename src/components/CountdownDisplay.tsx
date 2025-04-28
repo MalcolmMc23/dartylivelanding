@@ -7,7 +7,7 @@ import { getNextWednesdayNoon } from "@/utils/dateUtils";
 
 export default function CountdownDisplay() {
   const searchParams = useSearchParams();
-  const email = searchParams.get("email") || "dartylive@uoregon.edu";
+  const email = searchParams.get("email") || "dormparty.live@uoregon.edu";
   const [targetDate, setTargetDate] = useState<Date | null>(null);
 
   useEffect(() => {
@@ -22,7 +22,7 @@ export default function CountdownDisplay() {
     <>
       {/* Message */}
       <p className="text-lg text-gray-300">
-        Thanks Dartylive! We&apos;re launching in:
+        Thanks DormParty.live! We&apos;re launching in:
       </p>
 
       {/* Countdown Timer */}

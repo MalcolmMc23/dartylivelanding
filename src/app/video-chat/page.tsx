@@ -174,7 +174,7 @@ function VideoRoomManager() {
       ) : (
         <div className="w-full max-w-md p-6 bg-[#1E1E1E] rounded-lg shadow-md">
           <h1 className="text-2xl font-bold mb-6 text-center">
-            Darty<span className="text-[#A0FF00]">.live</span> Chat
+            DormParty<span className="text-[#A0FF00]">.live</span> Chat
           </h1>
 
           {error && (

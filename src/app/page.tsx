@@ -8,7 +8,7 @@ export default function Home() {
       <main className="flex flex-col items-center gap-6 md:gap-8 text-center w-full max-w-4xl">
         {/* Logo */}
         <h1 className="text-4xl md:text-5xl font-bold mt-8">
-          Darty<span className="text-[#A0FF00]">.live</span>
+          DormParty<span className="text-[#A0FF00]">.live</span>
         </h1>
 
         {/* Subtitle */}
