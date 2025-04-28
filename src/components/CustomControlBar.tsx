@@ -43,7 +43,7 @@ export function CustomControlBar({
   }, [username, roomName]);
 
   // Handle leaving the call to return to the search screen
-  const handleLeaveCall = useCallback(() => {
+  const handleLeaveCall = useCallback(async () => {
     console.log("Leave call initiated, redirecting state:", isRedirecting);
 
     // If already redirecting or navigation occurred, do nothing
@@ -54,6 +54,7 @@ export function CustomControlBar({
       return;
     }
 
+    // Set the flags immediately to prevent multiple clicks
     setIsRedirecting(true);
     navigationOccurred.current = true;
 
@@ -63,7 +64,7 @@ export function CustomControlBar({
     if (room) {
       // Notify the server that we're leaving
       try {
-        fetch("/api/user-disconnect", {
+        const response = await fetch("/api/user-disconnect", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -73,44 +74,27 @@ export function CustomControlBar({
             roomName,
             reason: "user_left",
           }),
-        })
-          .then((response) => response.json())
-          .then((data) => {
-            console.log("Leave call response:", data);
+        });
 
-            // Disconnect from the current room
-            room.disconnect();
+        const data = await response.json();
+        console.log("Leave call response:", data);
 
-            // Add a short delay before redirecting
-            setTimeout(() => {
-              // Redirect to video chat without auto-match parameters
-              router.push(
-                `/video-chat?username=${encodeURIComponent(username)}`
-              );
-            }, 500);
-          })
-          .catch((error) => {
-            console.error("Error leaving call:", error);
-            // Still redirect in case of error
-            room.disconnect();
-            setTimeout(() => {
-              router.push(
-                `/video-chat?username=${encodeURIComponent(username)}`
-              );
-            }, 500);
-          });
+        // Disconnect from the current room
+        room.disconnect();
+
+        // Redirect to video chat without auto-match parameters
+        router.push(`/video-chat?username=${encodeURIComponent(username)}`);
       } catch (e) {
         console.error("Error initiating leave call:", e);
+        // Still disconnect and redirect in case of error
         room.disconnect();
-        setTimeout(() => {
-          router.push(`/video-chat?username=${encodeURIComponent(username)}`);
-        }, 500);
+        router.push(`/video-chat?username=${encodeURIComponent(username)}`);
       }
     }
   }, [room, username, roomName, router, isRedirecting]);
 
   // Handle the "Find New Match" button click
-  const handleFindNewMatch = useCallback(() => {
+  const handleFindNewMatch = useCallback(async () => {
     console.log("Find new match initiated, redirecting state:", isRedirecting);
 
     // If already redirecting or navigation occurred, do nothing
@@ -121,6 +105,7 @@ export function CustomControlBar({
       return;
     }
 
+    // Set the flags immediately to prevent multiple clicks
     setIsRedirecting(true);
     navigationOccurred.current = true;
 
@@ -130,7 +115,7 @@ export function CustomControlBar({
     if (room) {
       // Notify the server that we're looking for a new match
       try {
-        fetch("/api/user-disconnect", {
+        const response = await fetch("/api/user-disconnect", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -140,38 +125,25 @@ export function CustomControlBar({
             roomName,
             reason: "find_new_match",
           }),
-        })
-          .then((response) => response.json())
-          .then((data) => {
-            console.log("Find new match response:", data);
+        });
 
-            // Disconnect from the current room
-            room.disconnect();
+        const data = await response.json();
+        console.log("Find new match response:", data);
 
-            // Add a short delay before redirecting
-            setTimeout(() => {
-              // Redirect to video chat without auto-match parameters
-              router.push(
-                `/video-chat?username=${encodeURIComponent(username)}`
-              );
-            }, 500);
-          })
-          .catch((error) => {
-            console.error("Error finding new match:", error);
-            // Still redirect in case of error
-            room.disconnect();
-            setTimeout(() => {
-              router.push(
-                `/video-chat?username=${encodeURIComponent(username)}`
-              );
-            }, 500);
-          });
+        // Disconnect from the current room
+        room.disconnect();
+
+        // Redirect with autoMatch parameter to automatically start matching
+        router.push(
+          `/video-chat?autoMatch=true&username=${encodeURIComponent(username)}`
+        );
       } catch (e) {
         console.error("Error initiating find new match:", e);
+        // Still disconnect and redirect in case of error
         room.disconnect();
-        setTimeout(() => {
-          router.push(`/video-chat?username=${encodeURIComponent(username)}`);
-        }, 500);
+        router.push(
+          `/video-chat?autoMatch=true&username=${encodeURIComponent(username)}`
+        );
       }
     }
   }, [room, username, roomName, router, isRedirecting]);
@@ -250,21 +222,18 @@ export function CustomControlBar({
       <div className="relative z-10">
         <LiveKitControlBar {...controlBarProps} />
       </div>
-
-      <button
-        onClick={handleFindNewMatch}
-        disabled={isRedirecting}
-        className={cn(
-          "absolute transform -translate-y-16 z-20 px-5 py-2.5",
-          "bg-gradient-to-r from-[#A0FF00] to-[#7DDF00] text-black rounded-full font-semibold",
-          "shadow-lg transition-all duration-200 ease-in-out",
-          isRedirecting
-            ? "opacity-50 cursor-not-allowed"
-            : "hover:brightness-110 hover:shadow-xl active:scale-95"
-        )}
-      >
-        {isRedirecting ? "Finding new match..." : "Find New Match"}
-      </button>
+      <div className="absolute left-1/2 transform -translate-x-1/2 bottom-full mb-4">
+        <button
+          onClick={handleFindNewMatch}
+          disabled={isRedirecting}
+          className={cn(
+            "px-6 py-2 rounded bg-[#A0FF00] text-black font-medium hover:bg-opacity-90 transition-all shadow-md",
+            isRedirecting && "opacity-50 cursor-not-allowed"
+          )}
+        >
+          {isRedirecting ? "Finding..." : "Find New Match"}
+        </button>
+      </div>
     </div>
   );
 }

@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { matchingState, WaitingUser } from '@/utils/matchingService';
+import { 
+  matchingState, 
+  WaitingUser, 
+  addUserToQueue
+} from '@/utils/matchingService';
 
 // When a user disconnects, notify the system so we can take appropriate action
 export async function POST(request: NextRequest) {
@@ -61,7 +65,7 @@ export async function POST(request: NextRequest) {
         useDemo: match.useDemo,
         lastMatch: lastMatchInfo
       };
-      matchingState.waitingUsers.push(user1);
+      addUserToQueue(user1);
       
       // Add the other user to the waiting queue (they'll be matched when they poll)
       const user2: WaitingUser = {
@@ -73,7 +77,7 @@ export async function POST(request: NextRequest) {
           timestamp: currentTimestamp
         }
       };
-      matchingState.waitingUsers.push(user2);
+      addUserToQueue(user2);
       
       console.log(`Added both ${username} and ${otherUsername} back to the waiting queue with lastMatch information`);
       

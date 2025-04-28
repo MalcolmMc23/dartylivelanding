@@ -3,7 +3,9 @@ import {
   matchingState, 
   cleanupOldWaitingUsers, 
   cleanupOldMatches,
-  WaitingUser 
+  WaitingUser,
+  addUserToQueue,
+  removeUserFromQueue 
 } from '@/utils/matchingService';
 
 export async function POST(request: NextRequest) {
@@ -93,7 +95,7 @@ export async function POST(request: NextRequest) {
       
       if (matchedUser && matchedUserIndex >= 0) {
         // Remove the matched user from the queue
-        matchingState.waitingUsers.splice(matchedUserIndex, 1);
+        removeUserFromQueue(matchedUser.username);
         
         // Generate a unique room name for these two users
         const roomName = `match-${Math.random().toString(36).substring(2, 10)}`;
@@ -128,9 +130,9 @@ export async function POST(request: NextRequest) {
       useDemo,
       lastMatch: body.lastMatch
     };
-    matchingState.waitingUsers.push(newUser);
     
-    console.log(`Added ${username} to waiting queue. Current queue size: ${matchingState.waitingUsers.length}`);
+    // Add user to the end of the queue
+    addUserToQueue(newUser);
     
     return NextResponse.json({
       status: 'waiting',
@@ -181,7 +183,7 @@ export async function GET(request: NextRequest) {
     if (action === 'cancel') {
       // Remove from waiting queue
       const initialLength = matchingState.waitingUsers.length;
-      matchingState.waitingUsers = matchingState.waitingUsers.filter(user => user.username !== username);
+      removeUserFromQueue(username);
       
       // Also remove any matches
       const initialMatchLength = matchingState.matchedUsers.length;
