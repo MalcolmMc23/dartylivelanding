@@ -5,15 +5,23 @@ import { useRouter } from "next/navigation";
 
 interface StyledEmailInputProps {
   placeholder?: string;
+  onEmailChange?: (email: string) => void;
 }
 
 const StyledEmailInput: React.FC<StyledEmailInputProps> = ({
   placeholder = "Ex. johndoe@exmpl.edu",
+  onEmailChange,
 }) => {
   const [email, setEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
+
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newEmail = e.target.value;
+    setEmail(newEmail);
+    onEmailChange?.(newEmail);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,7 +72,7 @@ const StyledEmailInput: React.FC<StyledEmailInputProps> = ({
         <input
           type="email"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={handleEmailChange}
           placeholder={placeholder}
           className={`w-full px-6 py-3 rounded-full bg-[#2A2A2A] border ${
             error ? "border-red-500" : "border-[#4A4A4A]"
