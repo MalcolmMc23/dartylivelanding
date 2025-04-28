@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   LiveKitRoom,
   VideoConference,
@@ -14,6 +14,17 @@ import { ConnectionState, RoomEvent, Participant } from "livekit-client";
 interface RoomComponentProps {
   roomName: string;
   username: string;
+  useDemo?: boolean;
+}
+
+// Define interface for debug info
+interface DebugInfo {
+  room: string;
+  username: string;
+  apiKeyDefined: boolean;
+  secretDefined: boolean;
+  tokenGenerated: boolean;
+  usingDemo?: boolean;
 }
 
 // Connection state logging component
@@ -56,40 +67,106 @@ function ConnectionStateLogger() {
 export default function RoomComponent({
   roomName,
   username,
+  useDemo = false,
 }: RoomComponentProps) {
   const [token, setToken] = useState("");
   const [error, setError] = useState("");
+  const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [usingDemoServer, setUsingDemoServer] = useState(useDemo);
+  const [liveKitUrl, setLiveKitUrl] = useState("");
 
-  useEffect(() => {
-    // Fetch the LiveKit token from your API
-    const getToken = async () => {
-      console.log(
-        `Attempting to get token for room: ${roomName}, user: ${username}`
-      );
+  // Get token from the API - using useCallback to memoize the function
+  const fetchToken = useCallback(
+    async (useDemoServer: boolean) => {
+      setIsLoading(true);
+      setError("");
+
       try {
+        // Ensure room name is sanitized
+        const safeRoomName = roomName.replace(/[^a-zA-Z0-9-]/g, "");
+        if (safeRoomName.length === 0) {
+          setError(
+            "Invalid room name. Please use only letters, numbers, and hyphens."
+          );
+          setIsLoading(false);
+          return false;
+        }
+
+        console.log(
+          `Attempting to get token for room: ${safeRoomName}, user: ${username}, useDemo: ${useDemoServer}`
+        );
+
+        // Set LiveKit URL immediately based on demo status
+        if (useDemoServer) {
+          setLiveKitUrl("wss://demo.livekit.cloud");
+        } else {
+          const publicUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL || "";
+          setLiveKitUrl(publicUrl);
+          console.log(`Using configured LiveKit URL: ${publicUrl}`);
+        }
+
         const response = await fetch(
-          `/api/get-livekit-token?room=${roomName}&username=${username}`
+          `/api/get-livekit-token?room=${safeRoomName}&username=${username}&useDemo=${useDemoServer}`
         );
         const data = await response.json();
 
         if (data.error) {
           console.error(`Token error: ${data.error}`);
           setError(`Failed to get token: ${data.error}`);
-          return;
+          return false;
         }
 
         console.log("Successfully received token");
-        setToken(data.token);
+
+        // Log the debug info
+        if (data.debug) {
+          console.log("Debug info:", data.debug);
+          setDebugInfo(data.debug);
+        }
+
+        // Make sure the token is a string
+        if (typeof data.token === "string") {
+          console.log(`Token received (length: ${data.token.length})`);
+          setToken(data.token);
+          return true;
+        } else {
+          console.error("Invalid token format received:", typeof data.token);
+          setError("Invalid token format received from server");
+          return false;
+        }
       } catch (error: unknown) {
         console.error("Failed to get token:", error);
         const errorMessage =
           error instanceof Error ? error.message : "Unknown error";
         setError(`Error fetching token: ${errorMessage}`);
+        return false;
+      } finally {
+        setIsLoading(false);
       }
-    };
+    },
+    [roomName, username]
+  );
 
-    getToken();
-  }, [roomName, username]);
+  // Initial token fetch
+  useEffect(() => {
+    fetchToken(usingDemoServer);
+  }, [fetchToken, usingDemoServer]);
+
+  // Initialize demo state from prop
+  useEffect(() => {
+    setUsingDemoServer(useDemo);
+  }, [useDemo]);
+
+  // Toggle between normal and demo server
+  const toggleDemoServer = async () => {
+    setUsingDemoServer(!usingDemoServer);
+  };
+
+  // Try connection again
+  const retryConnection = async () => {
+    await fetchToken(usingDemoServer);
+  };
 
   if (error) {
     return (
@@ -99,15 +176,46 @@ export default function RoomComponent({
             Connection Error
           </h2>
           <p className="mb-4">{error}</p>
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-gray-400 mb-4">
             Check the browser console for more details
+          </p>
+
+          {debugInfo && (
+            <div className="mt-4 text-left text-xs bg-[#0E0E0E] p-3 rounded overflow-auto max-h-48">
+              <p className="font-bold mb-1">Debug Info:</p>
+              <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-2 mt-4">
+            <button
+              onClick={retryConnection}
+              className="px-4 py-2 bg-[#A0FF00] text-black rounded hover:bg-opacity-90"
+            >
+              Try Again
+            </button>
+
+            <button
+              onClick={toggleDemoServer}
+              className="px-4 py-2 bg-[#2A2A2A] text-white rounded hover:bg-[#3A3A3A]"
+            >
+              {usingDemoServer
+                ? "Use Your LiveKit Server"
+                : "Try LiveKit Demo Server"}
+            </button>
+          </div>
+
+          <p className="mt-4 text-xs text-gray-500">
+            {usingDemoServer
+              ? "Using LiveKit demo server (limited functionality)"
+              : "Using your configured LiveKit server"}
           </p>
         </div>
       </div>
     );
   }
 
-  if (!token) {
+  if (isLoading || !token) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#A0FF00]"></div>
@@ -115,35 +223,41 @@ export default function RoomComponent({
     );
   }
 
-  console.log(
-    `NEXT_PUBLIC_LIVEKIT_URL: ${
-      process.env.NEXT_PUBLIC_LIVEKIT_URL || "not set"
-    }`
-  );
+  // Log environment variables (client-side only sees NEXT_PUBLIC_* vars)
+  console.log(`LiveKit URL being used: ${liveKitUrl}`);
 
   return (
     <div className="w-full h-screen bg-[#121212]">
-      <LiveKitRoom
-        token={token}
-        serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL || ""}
-        // Use connect only when token and URL are available
-        connect={true}
-        video={true}
-        audio={true}
-        onError={(err) => {
-          console.error("LiveKit connection error:", err);
-          setError(`LiveKit connection error: ${err.message}`);
-        }}
-      >
-        <ConnectionStateLogger />
-        <div className="h-full flex flex-col">
-          <div className="flex-1 overflow-hidden">
-            <VideoConference />
+      {token && liveKitUrl && (
+        <LiveKitRoom
+          token={token}
+          serverUrl={liveKitUrl}
+          connect={true}
+          // Start with audio/video disabled to avoid permissions issues
+          video={false}
+          audio={false}
+          onError={(err) => {
+            console.error("LiveKit connection error:", err);
+            setError(`LiveKit connection error: ${err.message}`);
+          }}
+        >
+          <ConnectionStateLogger />
+          <div className="h-full flex flex-col relative">
+            {usingDemoServer && (
+              <div className="absolute top-2 left-0 right-0 z-10 flex justify-center">
+                <div className="px-3 py-1 bg-yellow-600 text-white text-xs rounded-full">
+                  Demo Server Mode
+                </div>
+              </div>
+            )}
+            <div className="flex-1 overflow-hidden">
+              <VideoConference />
+            </div>
+            <ControlBar />
+            <RoomAudioRenderer />
           </div>
-          <ControlBar />
-          <RoomAudioRenderer />
-        </div>
-      </LiveKitRoom>
+        </LiveKitRoom>
+      )}
     </div>
   );
 }
