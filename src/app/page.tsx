@@ -1,5 +1,6 @@
 import StyledEmailInput from "@/components/StyledEmailInput";
 import UniversityLogoScroll from "@/components/UniversityLogoScroll";
+import Link from "next/link";
 
 export default function Home() {
   return (
@@ -21,6 +22,16 @@ export default function Home() {
         {/* Email Input */}
         <div className="w-full max-w-md mt-2">
           <StyledEmailInput />
+        </div>
+
+        {/* Video Chat Link */}
+        <div className="mt-6">
+          <Link
+            href="/video-chat"
+            className="px-6 py-3 bg-[#A0FF00] text-black font-semibold rounded-md hover:bg-opacity-90 transition-all"
+          >
+            Try Video Chat
+          </Link>
         </div>
       </main>
     </div>
