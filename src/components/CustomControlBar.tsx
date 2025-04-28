@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useState, useRef } from "react";
 import {
-  ControlBar as LiveKitControlBar,
   ControlBarProps,
   useRoomContext,
+  useLocalParticipant,
 } from "@livekit/components-react";
+import { Track } from "livekit-client";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 
@@ -17,13 +18,36 @@ interface CustomControlBarProps extends ControlBarProps {
 export function CustomControlBar({
   username,
   roomName,
-  ...props
 }: CustomControlBarProps) {
   const room = useRoomContext();
   const router = useRouter();
   const [isRedirecting, setIsRedirecting] = useState(false);
-  // Use a ref to track whether navigation happened
   const navigationOccurred = useRef(false);
+
+  const { localParticipant } = useLocalParticipant();
+
+  const cameraPublication = localParticipant?.getTrackPublication(
+    Track.Source.Camera
+  );
+  const microphonePublication = localParticipant?.getTrackPublication(
+    Track.Source.Microphone
+  );
+
+  const isCameraEnabled = !!cameraPublication && !cameraPublication.isMuted;
+  const isMicEnabled =
+    !!microphonePublication && !microphonePublication.isMuted;
+
+  const toggleCamera = useCallback(() => {
+    if (localParticipant) {
+      localParticipant.setCameraEnabled(!isCameraEnabled);
+    }
+  }, [localParticipant, isCameraEnabled]);
+
+  const toggleMicrophone = useCallback(() => {
+    if (localParticipant) {
+      localParticipant.setMicrophoneEnabled(!isMicEnabled);
+    }
+  }, [localParticipant, isMicEnabled]);
 
   // Handle disconnection cleanup
   useEffect(() => {
@@ -148,18 +172,6 @@ export function CustomControlBar({
     }
   }, [room, username, roomName, router, isRedirecting]);
 
-  // Create a merged props object that includes our custom behavior
-  const controlBarProps: ControlBarProps = {
-    ...props,
-    // Override the default leave behavior
-    controls: {
-      ...props.controls,
-      leave: true,
-    },
-    variation: "minimal",
-    className: "bg-[#1A1A1A] border-none rounded-lg shadow-lg px-4",
-  };
-
   // Use Effect to override the default disconnect button behavior
   useEffect(() => {
     // Keep track of added event listeners to avoid duplicates
@@ -218,20 +230,141 @@ export function CustomControlBar({
   }, [handleLeaveCall]);
 
   return (
-    <div className="relative flex justify-center">
-      <div className="relative z-10">
-        <LiveKitControlBar {...controlBarProps} />
-      </div>
-      <div className="absolute left-1/2 transform -translate-x-1/2 bottom-full mb-4">
+    <div className="relative flex flex-col items-center">
+      <div className="mb-4">
         <button
           onClick={handleFindNewMatch}
           disabled={isRedirecting}
           className={cn(
-            "px-6 py-2 rounded bg-[#A0FF00] text-black font-medium hover:bg-opacity-90 transition-all shadow-md",
+            "px-6 py-2 rounded-full bg-[#A0FF00] text-black font-medium hover:bg-opacity-90 transition-all shadow-md",
             isRedirecting && "opacity-50 cursor-not-allowed"
           )}
         >
           {isRedirecting ? "Finding..." : "Find New Match"}
+        </button>
+      </div>
+
+      <div className="flex gap-4 p-4 bg-[#1A1A1A] rounded-full shadow-lg">
+        {/* Mic Toggle Button */}
+        <button
+          onClick={toggleMicrophone}
+          disabled={isRedirecting}
+          className={cn(
+            "w-12 h-12 rounded-full flex items-center justify-center transition-all",
+            isMicEnabled
+              ? "bg-gray-700 hover:bg-gray-600"
+              : "bg-red-600 hover:bg-red-500"
+          )}
+          aria-label={isMicEnabled ? "Mute microphone" : "Unmute microphone"}
+        >
+          {isMicEnabled ? (
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-white"
+            >
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+              <line x1="12" x2="12" y1="19" y2="22"></line>
+            </svg>
+          ) : (
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-white"
+            >
+              <line x1="1" y1="1" x2="23" y2="23"></line>
+              <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6"></path>
+              <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path>
+              <line x1="12" x2="12" y1="19" y2="22"></line>
+            </svg>
+          )}
+        </button>
+
+        {/* Camera Toggle Button */}
+        <button
+          onClick={toggleCamera}
+          disabled={isRedirecting}
+          className={cn(
+            "w-12 h-12 rounded-full flex items-center justify-center transition-all",
+            isCameraEnabled
+              ? "bg-gray-700 hover:bg-gray-600"
+              : "bg-red-600 hover:bg-red-500"
+          )}
+          aria-label={isCameraEnabled ? "Turn off camera" : "Turn on camera"}
+        >
+          {isCameraEnabled ? (
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-white"
+            >
+              <path d="M15 10l4.553-2.276A1 1 0 0 1 21 8.618v6.764a1 1 0 0 1-1.447.894L15 14v-4z"></path>
+              <rect x="3" y="6" width="12" height="12" rx="2" ry="2"></rect>
+            </svg>
+          ) : (
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-white"
+            >
+              <line x1="1" y1="1" x2="23" y2="23"></line>
+              <path d="M15 10l4.553-2.276A1 1 0 0 1 21 8.618v6.764a1 1 0 0 1-1.447.894L15 14v-4z"></path>
+              <rect x="3" y="6" width="12" height="12" rx="2" ry="2"></rect>
+            </svg>
+          )}
+        </button>
+
+        {/* Leave Call Button */}
+        <button
+          onClick={handleLeaveCall}
+          disabled={isRedirecting}
+          className="w-12 h-12 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center transition-all"
+          aria-label="Leave call"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-white"
+          >
+            <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"></path>
+            <line x1="23" y1="1" x2="1" y2="23"></line>
+          </svg>
         </button>
       </div>
     </div>
