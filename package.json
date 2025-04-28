@@ -11,12 +11,14 @@
   "dependencies": {
     "@livekit/components-react": "^2.9.3",
     "@types/pg": "^8.11.14",
+    "clsx": "^2.1.1",
     "livekit-client": "^2.11.3",
     "livekit-server-sdk": "^2.12.0",
     "next": "15.3.1",
     "pg": "^8.15.6",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^3.2.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

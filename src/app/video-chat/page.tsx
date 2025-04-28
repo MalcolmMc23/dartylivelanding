@@ -1,16 +1,89 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import RoomComponent from "@/components/RoomComponent";
 import WaitingRoomComponent from "@/components/WaitingRoomComponent";
+import { useSearchParams } from "next/navigation";
 
-export default function VideoChat() {
+// Create a separate client component to handle the search params
+function VideoRoomManager() {
   const [roomName, setRoomName] = useState("");
   const [username, setUsername] = useState("");
   const [isJoined, setIsJoined] = useState(false);
   const [usingDemoServer, setUsingDemoServer] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
   const [error, setError] = useState("");
+  const searchParams = useSearchParams();
+
+  // Define findRandomChat with useCallback to use it in dependency array
+  const findRandomChat = useCallback(
+    async (usernameToUse = username) => {
+      if (!usernameToUse) return;
+
+      setError("");
+      setIsWaiting(true);
+
+      try {
+        // Call the API to either join the waiting queue or get matched immediately
+        const response = await fetch("/api/match-user", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            username: usernameToUse,
+            useDemo: usingDemoServer,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log("Match response:", data);
+
+        if (data.status === "matched") {
+          // We got matched immediately!
+          setRoomName(data.roomName);
+          setUsingDemoServer(data.useDemo); // Use the demo setting that was decided
+          setIsWaiting(false);
+          setIsJoined(true);
+        } else if (data.status === "waiting") {
+          // We're in the waiting queue
+          console.log("Added to waiting queue, waiting for match...");
+          // Stay in waiting state, the polling will check for updates
+        } else if (data.error) {
+          throw new Error(data.error);
+        }
+      } catch (error) {
+        console.error("Error finding random chat:", error);
+        setError(
+          `Failed to find chat: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`
+        );
+        setIsWaiting(false);
+      }
+    },
+    [username, usingDemoServer]
+  );
+
+  // Check if this is an auto-match redirect
+  useEffect(() => {
+    const autoMatch = searchParams.get("autoMatch");
+    const usernameParam = searchParams.get("username");
+
+    if (autoMatch === "true" && usernameParam) {
+      console.log(`Auto-match detected for user: ${usernameParam}`);
+      setUsername(usernameParam);
+
+      // Automatically start matching
+      setTimeout(() => {
+        findRandomChat(usernameParam);
+      }, 500);
+    }
+  }, [searchParams, findRandomChat]);
 
   // Function to poll status while waiting
   useEffect(() => {
@@ -64,56 +137,6 @@ export default function VideoChat() {
           setRoomName(sanitizedRoom);
         }
         setIsJoined(true);
-      }
-    }
-  };
-
-  const findRandomChat = async () => {
-    if (username) {
-      setError("");
-      setIsWaiting(true);
-
-      try {
-        // Call the API to either join the waiting queue or get matched immediately
-        const response = await fetch("/api/match-user", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            username,
-            useDemo: usingDemoServer,
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error(`API error: ${response.status}`);
-        }
-
-        const data = await response.json();
-        console.log("Match response:", data);
-
-        if (data.status === "matched") {
-          // We got matched immediately!
-          setRoomName(data.roomName);
-          setUsingDemoServer(data.useDemo); // Use the demo setting that was decided
-          setIsWaiting(false);
-          setIsJoined(true);
-        } else if (data.status === "waiting") {
-          // We're in the waiting queue
-          console.log("Added to waiting queue, waiting for match...");
-          // Stay in waiting state, the polling will check for updates
-        } else if (data.error) {
-          throw new Error(data.error);
-        }
-      } catch (error) {
-        console.error("Error finding random chat:", error);
-        setError(
-          `Failed to find chat: ${
-            error instanceof Error ? error.message : "Unknown error"
-          }`
-        );
-        setIsWaiting(false);
       }
     }
   };
@@ -173,7 +196,7 @@ export default function VideoChat() {
 
           <div className="flex flex-col gap-4 mb-6">
             <button
-              onClick={findRandomChat}
+              onClick={() => findRandomChat()}
               disabled={!username}
               className="w-full bg-[#A0FF00] text-black p-3 rounded font-semibold disabled:bg-[#4A4A4A] disabled:text-[#8A8A8A] hover:bg-opacity-90"
             >
@@ -255,5 +278,20 @@ export default function VideoChat() {
         </div>
       )}
     </div>
+  );
+}
+
+// Main page component that wraps the video chat in a Suspense boundary
+export default function VideoChat() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-screen bg-[#121212]">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#A0FF00]"></div>
+        </div>
+      }
+    >
+      <VideoRoomManager />
+    </Suspense>
   );
 }
