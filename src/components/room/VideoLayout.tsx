@@ -2,13 +2,13 @@
 
 import {
   useParticipants,
-  ParticipantTile,
   useTracks,
   TrackReferenceOrPlaceholder,
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
+import { MirroredVideoTile } from "./MirroredVideoTile";
 
 export function VideoLayout() {
   const participants = useParticipants();
@@ -31,7 +31,7 @@ export function VideoLayout() {
         <div className="flex flex-col items-center justify-center h-full w-full p-4">
           <div className="w-full max-w-2xl aspect-video rounded-xl overflow-hidden border-2 border-[#212121] shadow-lg">
             {cameraTracks.length > 0 && (
-              <ParticipantTile
+              <MirroredVideoTile
                 trackRef={cameraTracks[0] as TrackReferenceOrPlaceholder}
                 className="h-full"
                 style={{ aspectRatio: "16 / 9" }}
@@ -63,7 +63,7 @@ export function VideoLayout() {
                 )}
                 style={{ aspectRatio: "16 / 9" }}
               >
-                <ParticipantTile
+                <MirroredVideoTile
                   trackRef={track as TrackReferenceOrPlaceholder}
                   className="h-full"
                 />

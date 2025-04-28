@@ -11,11 +11,11 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   useParticipants,
-  ParticipantTile,
   useTracks,
   TrackReferenceOrPlaceholder,
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
+import { MirroredVideoTile } from "./room/MirroredVideoTile";
 
 // Max participants allowed in a room
 const MAX_PARTICIPANTS = 2;
@@ -148,7 +148,7 @@ function VideoContainer() {
         <div className="w-full max-w-2xl aspect-video rounded-xl overflow-hidden border-2 border-[#212121] shadow-lg relative">
           {cameraTracks.length > 0 && (
             <>
-              <ParticipantTile
+              <MirroredVideoTile
                 trackRef={cameraTracks[0]}
                 className="h-full"
                 style={{ aspectRatio: "16 / 9" }}
@@ -186,7 +186,7 @@ function VideoContainer() {
             className="w-full md:w-1/2 max-w-xl h-auto rounded-xl overflow-hidden border-2 border-[#212121] shadow-lg transition-all relative"
             style={{ aspectRatio: "16 / 9" }}
           >
-            <ParticipantTile trackRef={track} className="h-full" />
+            <MirroredVideoTile trackRef={track} className="h-full" />
             <div className="absolute bottom-2 left-2 bg-black bg-opacity-60 px-2 py-1 rounded-md text-white text-sm">
               {isLocalParticipant ? "You" : participantIdentity}
             </div>
