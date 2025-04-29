@@ -87,6 +87,26 @@ export async function POST(request: NextRequest) {
         otherUser: otherUsername,
         timestamp: currentTimestamp
       });
+    } else if (reason === 'user_left') {
+      // The user left the call normally
+      // Add the remaining user to the waiting queue with inCall flag
+      // so they can be matched with a new user while staying in the same call
+      const remainingUser: WaitingUser = {
+        username: otherUsername,
+        joinedAt: Date.now(),
+        useDemo: match.useDemo,
+        inCall: true,
+        roomName: roomName,
+        lastMatch: {
+          matchedWith: username,
+          timestamp: Date.now()
+        }
+      };
+      
+      // Add the remaining user to the queue
+      addUserToQueue(remainingUser);
+      
+      console.log(`Added ${otherUsername} to waiting queue with inCall flag. They will remain in room ${roomName} until matched.`);
     }
     
     // If it's just a normal disconnect, we'll let the other user handle their own status

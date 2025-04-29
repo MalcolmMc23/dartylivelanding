@@ -117,12 +117,19 @@ export function CustomControlBar({
         room.disconnect();
 
         // Redirect to the video-chat page with reset flag
-        router.push("/video-chat?reset=true");
+        // Use a callback approach that will get handled by the VideoRoomManager
+        const url = new URL("/video-chat", window.location.origin);
+        url.searchParams.set("reset", "true");
+        url.searchParams.set("username", username);
+        router.push(url.toString());
       } catch (e) {
         console.error("Error initiating leave call:", e);
         // Still disconnect and redirect in case of error
         room.disconnect();
-        router.push("/video-chat?reset=true");
+        const url = new URL("/video-chat", window.location.origin);
+        url.searchParams.set("reset", "true");
+        url.searchParams.set("username", username);
+        router.push(url.toString());
       }
     }
   }, [room, username, roomName, router, isRedirecting]);

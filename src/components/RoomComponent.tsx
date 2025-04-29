@@ -73,9 +73,13 @@ export default function RoomComponent({
 
       // Redirect back to video chat page when user leaves the call
       // Add reset=true parameter to ensure state is cleared
-      router.push("/video-chat?reset=true");
+      // Also preserve username to maintain input state
+      const url = new URL("/video-chat", window.location.origin);
+      url.searchParams.set("reset", "true");
+      url.searchParams.set("username", username);
+      router.push(url.toString());
     };
-  }, [router]);
+  }, [router, username]);
 
   if (error) {
     return (
@@ -129,6 +133,31 @@ export default function RoomComponent({
 
             <div className="flex-grow flex items-center justify-center">
               <VideoContainer />
+
+              {/* Overlay when waiting alone in a call */}
+              {liveParticipantCount === 1 && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 pointer-events-none">
+                  <div className="bg-blue-900 bg-opacity-80 p-6 rounded-lg max-w-md text-center">
+                    <h2 className="text-xl font-bold text-white mb-4">
+                      Looking for a new match...
+                    </h2>
+                    <p className="mb-4 text-white">
+                      Someone will join you soon. Stay in this call.
+                    </p>
+                    <div className="flex justify-center">
+                      <div className="animate-bounce mx-1 h-3 w-3 bg-white rounded-full"></div>
+                      <div
+                        className="animate-bounce mx-1 h-3 w-3 bg-white rounded-full"
+                        style={{ animationDelay: "0.2s" }}
+                      ></div>
+                      <div
+                        className="animate-bounce mx-1 h-3 w-3 bg-white rounded-full"
+                        style={{ animationDelay: "0.4s" }}
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <RoomAudioRenderer />

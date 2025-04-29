@@ -134,36 +134,26 @@ export function ConnectionStateLogger({
 
     const onParticipantDisconnected = (participant: Participant) => {
       console.log(`Participant disconnected: ${participant.identity}`);
-      // Store the identity before we update the list
-      const disconnectedParticipant = participant.identity;
+      const disconnectedParticipantIdentity = participant.identity;
 
-      // Update capacity which will trigger auto-matching logic
-      checkRoomCapacity();
+      // Get current participant count *after* disconnection
+      const currentRemoteCount = room.remoteParticipants.size;
+      const currentTotalCount = currentRemoteCount + 1; // +1 for local participant
 
-      // Notify server about disconnection
-      try {
-        fetch("/api/user-disconnect", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            username: disconnectedParticipant,
-            roomName: roomName,
-            reason: "user_left",
-          }),
-        })
-          .then(() => {
-            console.log(
-              `Notified server about ${disconnectedParticipant} disconnecting`
-            );
-          })
-          .catch((error) => {
-            console.error("Error notifying about disconnection:", error);
-          });
-      } catch (e) {
-        console.error("Error sending disconnect notification:", e);
+      console.log(`Participant count after disconnect: ${currentTotalCount}`);
+
+      // If only the local participant remains, trigger the disconnect handler
+      if (currentTotalCount === 1 && !hasTriggeredDisconnectAction.current) {
+        console.log(
+          "Only local participant remaining - triggering disconnect action"
+        );
+        hasTriggeredDisconnectAction.current = true;
+        // Call the handler passed from the parent (useRoomConnection)
+        onOtherParticipantDisconnected(disconnectedParticipantIdentity);
       }
+
+      // Update capacity state (for UI indicators etc.)
+      checkRoomCapacity();
     };
 
     room.on(RoomEvent.ParticipantConnected, onParticipantConnected);
@@ -186,7 +176,13 @@ export function ConnectionStateLogger({
       room.off(RoomEvent.ParticipantDisconnected, onParticipantDisconnected);
       room.off(RoomEvent.ConnectionStateChanged, handleConnectionStateChanged);
     };
-  }, [connectionState, room, checkRoomCapacity, roomName]);
+  }, [
+    connectionState,
+    room,
+    checkRoomCapacity,
+    roomName,
+    onOtherParticipantDisconnected,
+  ]);
 
   // Render room full message if applicable
   if (isRoomFull && connectionState === ConnectionState.Disconnected) {

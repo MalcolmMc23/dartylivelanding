@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useCallback, Suspense, useRef } from "react";
 import RoomComponent from "@/components/RoomComponent";
 import WaitingRoomComponent from "@/components/WaitingRoomComponent";
 import { useSearchParams } from "next/navigation";
@@ -14,6 +14,12 @@ function VideoRoomManager() {
   const [isWaiting, setIsWaiting] = useState(false);
   const [error, setError] = useState("");
   const searchParams = useSearchParams();
+  const resetProcessedRef = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Track if we've just returned from a reset
+  const [isPostReset, setIsPostReset] = useState(false);
+  // Store the default username for the uncontrolled input to use
+  const [defaultUsername, setDefaultUsername] = useState("");
 
   // Define findRandomChat with useCallback to use it in dependency array
   const findRandomChat = useCallback(
@@ -76,16 +82,51 @@ function VideoRoomManager() {
     const usernameParam = searchParams.get("username");
     const reset = searchParams.get("reset");
 
-    // Handle reset flag - clear all state
-    if (reset === "true") {
+    // Handle reset flag - clear all state, but only once per reset=true instance
+    if (reset === "true" && !resetProcessedRef.current) {
       console.log("Reset parameter detected - clearing all state");
+      resetProcessedRef.current = true;
+
+      // Store current username before clearing state
+      const currentUsername = username || usernameParam || "";
+
+      // Clear all room state
       setRoomName("");
-      setUsername("");
       setIsJoined(false);
       setUsingDemoServer(false);
       setIsWaiting(false);
       setError("");
+
+      // Don't update the controlled username state directly
+      // Instead, set the default value for the uncontrolled input
+      setDefaultUsername(currentUsername);
+      // Mark that we're in post-reset state to switch to uncontrolled input
+      setIsPostReset(true);
+
+      // Remove the reset parameter from the URL to prevent continuous resets
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("reset");
+        // Preserve the username parameter
+        if (currentUsername) {
+          url.searchParams.set("username", currentUsername);
+        }
+        window.history.replaceState({}, "", url.toString());
+
+        // Focus the input field after a short delay to ensure component is rendered
+        setTimeout(() => {
+          if (inputRef.current) {
+            inputRef.current.focus();
+          }
+        }, 100);
+      }
+
       return; // Exit early to prevent auto-matching
+    }
+
+    // Reset the resetProcessedRef when the reset parameter is no longer present
+    if (reset !== "true") {
+      resetProcessedRef.current = false;
     }
 
     // Only auto-match if explicitly requested with autoMatch=true parameter
@@ -208,19 +249,60 @@ function VideoRoomManager() {
 
           <div className="mb-6">
             <label className="block text-sm font-medium mb-1">Your Name</label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full p-2 border rounded bg-[#2A2A2A] border-[#3A3A3A] text-white"
-              placeholder="Enter your name"
-            />
+            {isPostReset ? (
+              // When coming from reset, use an uncontrolled input that we can freely type in
+              <input
+                type="text"
+                defaultValue={defaultUsername}
+                onChange={(e) => {
+                  // When user starts typing in the uncontrolled input, update the username state
+                  // for when we need it later (e.g., for findRandomChat)
+                  setUsername(e.target.value);
+                }}
+                className="w-full p-2 border rounded bg-[#2A2A2A] border-[#3A3A3A] text-white"
+                placeholder="Enter your name"
+                autoComplete="off"
+                ref={inputRef}
+                onFocus={() => {
+                  // Make sure cursor is at the end of the text
+                  if (inputRef.current) {
+                    const val = inputRef.current.value;
+                    inputRef.current.value = "";
+                    inputRef.current.value = val;
+                  }
+                }}
+                // Switch back to controlled component if user continues using the app
+                onBlur={(e) => {
+                  // Switch back to controlled mode after updating state
+                  setUsername(e.target.value);
+                  setIsPostReset(false);
+                }}
+              />
+            ) : (
+              // Normal controlled input for non-reset cases
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full p-2 border rounded bg-[#2A2A2A] border-[#3A3A3A] text-white"
+                placeholder="Enter your name"
+                autoComplete="off"
+                ref={inputRef}
+              />
+            )}
           </div>
 
           <div className="flex flex-col gap-4 mb-6">
             <button
-              onClick={() => findRandomChat()}
-              disabled={!username}
+              onClick={() => {
+                // If we're in post-reset mode, make sure to capture the latest input value
+                if (isPostReset && inputRef.current) {
+                  setUsername(inputRef.current.value);
+                  setIsPostReset(false);
+                }
+                findRandomChat();
+              }}
+              disabled={!username && !(isPostReset && inputRef.current?.value)}
               className="w-full bg-[#A0FF00] text-black p-3 rounded font-semibold disabled:bg-[#4A4A4A] disabled:text-[#8A8A8A] hover:bg-opacity-90"
             >
               Find Random Chat
@@ -264,8 +346,18 @@ function VideoRoomManager() {
                   </div>
 
                   <button
-                    onClick={joinRoom}
-                    disabled={!roomName || !username}
+                    onClick={() => {
+                      // If we're in post-reset mode, make sure to capture the latest input value
+                      if (isPostReset && inputRef.current) {
+                        setUsername(inputRef.current.value);
+                        setIsPostReset(false);
+                      }
+                      joinRoom();
+                    }}
+                    disabled={
+                      !roomName ||
+                      (!username && !(isPostReset && inputRef.current?.value))
+                    }
                     className="w-full bg-[#2A2A2A] text-white p-2 rounded font-semibold hover:bg-[#3A3A3A] disabled:bg-[#1A1A1A] disabled:text-[#4A4A4A]"
                   >
                     Join Specific Room

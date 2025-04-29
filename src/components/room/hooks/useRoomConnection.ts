@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
 import { DebugInfo } from "../types";
 
 interface UseRoomConnectionProps {
@@ -37,14 +36,16 @@ export function useRoomConnection({
   const [liveKitUrl, setLiveKitUrl] = useState("");
   const [participantCount, setParticipantCount] = useState(0);
   const [isRedirecting, setIsRedirecting] = useState(false);
-  const router = useRouter();
   // Use ref to track if navigation has been initiated
   const hasInitiatedNavigation = useRef(false);
+  // Use ref to track if disconnect action has been triggered
+  const hasTriggeredDisconnectAction = useRef(false);
 
   // Reset navigation state when room or username changes
   useEffect(() => {
     setIsRedirecting(false);
     hasInitiatedNavigation.current = false;
+    hasTriggeredDisconnectAction.current = false;
   }, [roomName, username]);
 
   // Get token from the API
@@ -138,19 +139,20 @@ export function useRoomConnection({
   const handleOtherParticipantDisconnected = useCallback(
     (otherUsername: string) => {
       console.log(
-        `Other participant ${otherUsername} disconnected, redirecting to entry page with reset flag...`
+        `Other participant ${otherUsername} disconnected, adding user to waiting queue with inCall flag`
       );
 
-      // Don't do anything if we're already redirecting or have initiated navigation
-      if (isRedirecting || hasInitiatedNavigation.current) {
-        console.log("Already redirecting or navigation initiated, skipping");
+      // Don't do anything if we've already triggered disconnect action
+      if (hasTriggeredDisconnectAction.current) {
+        console.log("Already handled disconnect action, skipping");
         return;
       }
 
-      setIsRedirecting(true);
-      hasInitiatedNavigation.current = true;
+      // We don't need to redirect anymore - we're keeping the user in the call
+      // Just mark that we've handled the disconnection so we don't trigger this again
+      hasTriggeredDisconnectAction.current = true;
 
-      // Notify server about disconnection
+      // Notify server about disconnection - this will add the current user to waiting queue with inCall flag
       try {
         fetch("/api/user-disconnect", {
           method: "POST",
@@ -158,7 +160,7 @@ export function useRoomConnection({
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            username: username,
+            username: otherUsername, // We're passing the disconnected user's name
             roomName: roomName,
             reason: "user_left",
           }),
@@ -166,21 +168,18 @@ export function useRoomConnection({
           .then((response) => response.json())
           .then((data) => {
             console.log("Disconnection response:", data);
-
-            // Redirect to the name entry page with reset flag
-            router.push("/video-chat?reset=true");
+            
+            // We're now waiting for a new match in the same call
+            // No need to redirect - we'll stay in the call until a new user joins
           })
           .catch((error) => {
             console.error("Error notifying server about disconnection:", error);
-            // Still redirect in case of error
-            router.push("/video-chat?reset=true");
           });
       } catch (e) {
         console.error("Error notifying server about disconnection:", e);
-        router.push("/video-chat?reset=true");
       }
     },
-    [username, roomName, router, isRedirecting]
+    [roomName]
   );
 
   // Toggle between normal and demo server

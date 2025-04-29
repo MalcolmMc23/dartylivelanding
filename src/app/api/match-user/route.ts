@@ -55,8 +55,39 @@ export async function POST(request: NextRequest) {
       });
     }
     
-    // Check if there are any users in the waiting queue we can match with
-    // But avoid matching with the same user they just left
+    // First priority: Check if there are users alone in a call we can match with
+    const userAloneInCall = matchingState.waitingUsers.find(user => user.inCall === true);
+    
+    if (userAloneInCall) {
+      // Remove the user from the waiting queue
+      removeUserFromQueue(userAloneInCall.username);
+      
+      // Get the existing room name
+      const roomName = userAloneInCall.roomName!; // Non-null assertion is safe since we checked inCall === true
+      
+      console.log(`Matched user ${username} with ${userAloneInCall.username} who was alone in room ${roomName}`);
+      
+      // Use the demo server setting from the first user if it was enabled
+      const finalUseDemo = useDemo || userAloneInCall.useDemo;
+      
+      // Store the match
+      matchingState.matchedUsers.push({
+        user1: username,
+        user2: userAloneInCall.username,
+        roomName,
+        useDemo: finalUseDemo,
+        matchedAt: Date.now()
+      });
+      
+      return NextResponse.json({
+        status: 'matched',
+        roomName,
+        matchedWith: userAloneInCall.username,
+        useDemo: finalUseDemo
+      });
+    }
+    
+    // Second priority: Check if there are any regular users in the waiting queue
     if (matchingState.waitingUsers.length > 0) {
       // Default time window to avoid re-matching (5 minutes in ms)
       const REMATCH_COOLDOWN = 5 * 60 * 1000;
@@ -64,7 +95,9 @@ export async function POST(request: NextRequest) {
 
       // Find an appropriate match - prioritize wait time but avoid recent matches
       // Sort users by join time (oldest first)
-      const sortedWaitingUsers = [...matchingState.waitingUsers].sort((a, b) => a.joinedAt - b.joinedAt);
+      const sortedWaitingUsers = [...matchingState.waitingUsers]
+        .filter(user => !user.inCall) // Filter out users who are in a call since we already checked them
+        .sort((a, b) => a.joinedAt - b.joinedAt);
       
       let matchedUser = null;
       let matchedUserIndex = -1;

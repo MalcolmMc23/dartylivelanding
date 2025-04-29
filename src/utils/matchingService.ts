@@ -4,6 +4,9 @@ export interface WaitingUser {
   username: string;
   joinedAt: number;
   useDemo: boolean;
+  // For users who are alone in a call waiting for someone to join
+  inCall?: boolean;  
+  roomName?: string;
   lastMatch?: {
     matchedWith: string;
     timestamp: number;
