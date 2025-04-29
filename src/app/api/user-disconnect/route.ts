@@ -19,10 +19,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    console.log(`----- USER DISCONNECT EVENT -----`);
     console.log(`User ${username} disconnected from room ${roomName}. Reason: ${reason}`);
-    console.log(`Current matches before processing: ${matchingState.matchedUsers.length}`);
-    console.log(`Current waiting users before processing: ${matchingState.waitingUsers.length}`);
 
     // Find the match that includes this user and room
     const matchIndex = matchingState.matchedUsers.findIndex(
@@ -32,7 +29,6 @@ export async function POST(request: NextRequest) {
     );
     
     if (matchIndex === -1) {
-      console.log(`No match found for user ${username} in room ${roomName}`);
       // No match found - user might have already been removed or using a custom room
       return NextResponse.json({
         status: 'not_found',
@@ -42,7 +38,6 @@ export async function POST(request: NextRequest) {
     
     // Get the match details
     const match = matchingState.matchedUsers[matchIndex];
-    console.log(`Found match: ${match.user1} & ${match.user2} in room ${match.roomName}`);
     
     // Get the other user's name
     const otherUsername = match.user1 === username ? match.user2 : match.user1;
@@ -51,18 +46,54 @@ export async function POST(request: NextRequest) {
     matchingState.matchedUsers.splice(matchIndex, 1);
     
     console.log(`Removed match between ${username} and ${otherUsername} in room ${roomName}`);
-    console.log(`Remaining matches: ${matchingState.matchedUsers.length}`);
     
-    // Instead of adding both users to the waiting queue, just clean up the match
-    // This allows them to go back to the initial name input page
-    console.log(`Users ${username} and ${otherUsername} will be redirected to the name input page`);
-    console.log(`----- END OF DISCONNECT EVENT -----`);
+    // Check if the reason is that the user wanted to find a new match
+    if (reason === 'find_new_match') {
+      // Add both users back to the waiting queue
+      
+      // Store information about the last match to prevent immediate re-matching
+      const currentTimestamp = timestamp || Date.now();
+      const lastMatchInfo = {
+        matchedWith: otherUsername,
+        timestamp: currentTimestamp
+      };
+      
+      // Add the disconnected user to the waiting queue
+      const user1: WaitingUser = {
+        username,
+        joinedAt: currentTimestamp,
+        useDemo: match.useDemo,
+        lastMatch: lastMatchInfo
+      };
+      addUserToQueue(user1);
+      
+      // Add the other user to the waiting queue (they'll be matched when they poll)
+      const user2: WaitingUser = {
+        username: otherUsername,
+        joinedAt: currentTimestamp,
+        useDemo: match.useDemo,
+        lastMatch: {
+          matchedWith: username,
+          timestamp: currentTimestamp
+        }
+      };
+      addUserToQueue(user2);
+      
+      console.log(`Added both ${username} and ${otherUsername} back to the waiting queue with lastMatch information`);
+      
+      return NextResponse.json({
+        status: 'success',
+        message: 'Both users added back to matching queue',
+        otherUser: otherUsername,
+        timestamp: currentTimestamp
+      });
+    }
     
+    // If it's just a normal disconnect, we'll let the other user handle their own status
     return NextResponse.json({
       status: 'success',
-      message: 'Match removed, users will be redirected to name input',
-      otherUser: otherUsername,
-      timestamp: timestamp || Date.now()
+      message: 'User disconnected and match cleared',
+      otherUser: otherUsername
     });
   } catch (error) {
     console.error('Error in user-disconnect:', error);

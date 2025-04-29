@@ -193,11 +193,7 @@ export function MatchFinder({ username }: MatchFinderProps) {
     }
 
     // Return to video-chat page without automatch parameter
-    router.push(
-      `https://www.dormparty.live/video-chat?username=${encodeURIComponent(
-        username
-      )}`
-    );
+    router.push(`/video-chat?username=${encodeURIComponent(username)}`);
   }, [router, username, logWithTime]);
 
   return (
