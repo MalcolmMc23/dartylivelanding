@@ -13,6 +13,7 @@ export default function WaitingRoomComponent({
 }: WaitingRoomComponentProps) {
   const [waitTime, setWaitTime] = useState(0);
   const [dots, setDots] = useState("");
+  const [attempts, setAttempts] = useState(0);
 
   // Update waiting time every second
   useEffect(() => {
@@ -32,6 +33,41 @@ export default function WaitingRoomComponent({
     }, 500);
     return () => clearInterval(dotTimer);
   }, []);
+
+  // Periodically call the retry-matches endpoint to actively match users
+  useEffect(() => {
+    // Trigger match retry every 3 seconds after waiting for 2 seconds initially
+    // This helps ensure our retry-matches API is called regularly while users wait
+    const retryMatchInterval = setInterval(async () => {
+      try {
+        console.log(
+          `Proactively trying to find matches for waiting users (attempt ${
+            attempts + 1
+          })...`
+        );
+        const response = await fetch("/api/retry-matches");
+        const data = await response.json();
+
+        if (data.matchesMade && data.matchesMade.length > 0) {
+          console.log(`Retry-matches found ${data.matchesMade.length} matches`);
+        }
+
+        setAttempts((prev) => prev + 1);
+      } catch (error) {
+        console.error("Error calling retry-matches:", error);
+      }
+    }, 3000);
+
+    // Make first call after 2 seconds to give the initial matching a chance
+    const initialTimeout = setTimeout(() => {
+      setAttempts(1);
+    }, 2000);
+
+    return () => {
+      clearInterval(retryMatchInterval);
+      clearTimeout(initialTimeout);
+    };
+  }, [attempts]);
 
   // Format the wait time as minutes:seconds
   const formatTime = (seconds: number) => {
@@ -60,6 +96,12 @@ export default function WaitingRoomComponent({
         <p className="text-sm text-gray-500">
           Wait time: {formatTime(waitTime)}
         </p>
+        {waitTime > 10 && (
+          <p className="text-xs text-gray-400 mt-2">
+            Taking longer than usual. We&apos;re trying to find you a good
+            match...
+          </p>
+        )}
       </div>
 
       <button

@@ -58,7 +58,11 @@ export default function RoomComponent({
   useEffect(() => {
     return () => {
       // Redirect back to video chat page when user leaves the call
-      router.push(`/video-chat?username=${encodeURIComponent(username)}`);
+      router.push(
+        `https://www.dormparty.live/video-chat?username=${encodeURIComponent(
+          username
+        )}`
+      );
     };
   }, [router, username]);
 

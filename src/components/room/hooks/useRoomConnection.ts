@@ -138,19 +138,19 @@ export function useRoomConnection({
   const handleOtherParticipantDisconnected = useCallback(
     (otherUsername: string) => {
       console.log(
-        `Other participant ${otherUsername} disconnected, finding new match...`
+        `Other participant ${otherUsername} disconnected, returning to name input page...`
       );
 
       // Don't do anything if we're already redirecting or have initiated navigation
       if (isRedirecting || hasInitiatedNavigation.current) {
-        console.log("Already redirecting or navigation initiated, skipping auto-match");
+        console.log("Already redirecting or navigation initiated, skipping redirect");
         return;
       }
 
       setIsRedirecting(true);
       hasInitiatedNavigation.current = true;
 
-      // Notify server to find new matches for both users
+      // Notify server about disconnection
       try {
         fetch("/api/user-disconnect", {
           method: "POST",
@@ -160,27 +160,24 @@ export function useRoomConnection({
           body: JSON.stringify({
             username: username,
             roomName: roomName,
-            reason: "find_new_match",
+            reason: "user_left",
           }),
         })
           .then((response) => response.json())
           .then((data) => {
-            console.log("Auto-matching response:", data);
+            console.log("Disconnect response:", data);
 
-            // Redirect to the video chat page to find a new match
-            router.push(
-              "/video-chat?autoMatch=true&username=" +
-                encodeURIComponent(username)
-            );
+            // Redirect to the video chat page (name input page)
+            router.push("https://www.dormparty.live/video-chat");
           })
           .catch((error) => {
-            console.error("Error in auto-matching:", error);
+            console.error("Error in disconnection processing:", error);
             // Still redirect in case of error
-            router.push("/video-chat");
+            router.push("https://www.dormparty.live/video-chat");
           });
       } catch (e) {
-        console.error("Error initiating auto-matching:", e);
-        router.push("/video-chat");
+        console.error("Error initiating disconnection:", e);
+        router.push("https://www.dormparty.live/video-chat");
       }
     },
     [username, roomName, router, isRedirecting]
