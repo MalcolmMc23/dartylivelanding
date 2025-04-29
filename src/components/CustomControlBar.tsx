@@ -9,7 +9,6 @@ import {
 import { Track } from "livekit-client";
 import { useRouter } from "next/navigation";
 import { ControlButton } from "./ControlButton";
-import { FindNewMatchButton } from "./FindNewMatchButton";
 import { ControlBarContainer } from "./ControlBarContainer";
 import {
   MicrophoneOnIcon,
@@ -91,7 +90,9 @@ export function CustomControlBar({
     setIsRedirecting(true);
     navigationOccurred.current = true;
 
-    console.log("Leave call proceeding, returning to search screen");
+    console.log(
+      "Leave call proceeding, returning to search screen with reset flag"
+    );
 
     // Disconnect from the current room
     if (room) {
@@ -115,72 +116,13 @@ export function CustomControlBar({
         // Disconnect from the current room
         room.disconnect();
 
-        // Instead of redirecting directly to video-chat, send to matching page
-        router.push(
-          `/video-chat/match?username=${encodeURIComponent(username)}`
-        );
+        // Redirect to the video-chat page with reset flag
+        router.push("/video-chat?reset=true");
       } catch (e) {
         console.error("Error initiating leave call:", e);
         // Still disconnect and redirect in case of error
         room.disconnect();
-        router.push(
-          `/video-chat/match?username=${encodeURIComponent(username)}`
-        );
-      }
-    }
-  }, [room, username, roomName, router, isRedirecting]);
-
-  // Handle the "Find New Match" button click
-  const handleFindNewMatch = useCallback(async () => {
-    console.log("Find new match initiated, redirecting state:", isRedirecting);
-
-    // If already redirecting or navigation occurred, do nothing
-    if (isRedirecting || navigationOccurred.current) {
-      console.log(
-        "Already redirecting or navigation occurred, ignoring find new match"
-      );
-      return;
-    }
-
-    // Set the flags immediately to prevent multiple clicks
-    setIsRedirecting(true);
-    navigationOccurred.current = true;
-
-    console.log("Find new match proceeding");
-
-    // Disconnect from the current room
-    if (room) {
-      // Notify the server that we're looking for a new match
-      try {
-        const response = await fetch("/api/user-disconnect", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            username,
-            roomName,
-            reason: "find_new_match",
-          }),
-        });
-
-        const data = await response.json();
-        console.log("Find new match response:", data);
-
-        // Disconnect from the current room
-        room.disconnect();
-
-        // Instead of redirecting with autoMatch parameter, redirect to dedicated matching page
-        router.push(
-          `/video-chat/match?username=${encodeURIComponent(username)}`
-        );
-      } catch (e) {
-        console.error("Error initiating find new match:", e);
-        // Still disconnect and redirect in case of error
-        room.disconnect();
-        router.push(
-          `/video-chat/match?username=${encodeURIComponent(username)}`
-        );
+        router.push("/video-chat?reset=true");
       }
     }
   }, [room, username, roomName, router, isRedirecting]);
@@ -242,11 +184,6 @@ export function CustomControlBar({
     };
   }, [handleLeaveCall]);
 
-  // Render find new match button
-  const findNewMatchButton = (
-    <FindNewMatchButton onClick={handleFindNewMatch} disabled={isRedirecting} />
-  );
-
   // Render control buttons
   const controlButtons = (
     <>
@@ -283,10 +220,5 @@ export function CustomControlBar({
     </>
   );
 
-  return (
-    <ControlBarContainer
-      findNewMatchButton={findNewMatchButton}
-      controlButtons={controlButtons}
-    />
-  );
+  return <ControlBarContainer controlButtons={controlButtons} />;
 }

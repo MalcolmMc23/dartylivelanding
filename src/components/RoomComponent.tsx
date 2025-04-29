@@ -7,7 +7,7 @@ import { ErrorDisplay } from "./room/ErrorDisplay";
 import { RoomStatusIndicators } from "./room/RoomStatusIndicators";
 import { useRoomConnection } from "./room/hooks/useRoomConnection";
 import { CustomControlBar } from "./CustomControlBar";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   useParticipants,
@@ -54,13 +54,28 @@ export default function RoomComponent({
     initialParticipantCount
   );
 
+  // Flag to track if unmount handling has been executed
+  const unmountHandled = useRef(false);
+
   // Handle redirect when component unmounts
   useEffect(() => {
     return () => {
+      // Prevent multiple redirects
+      if (unmountHandled.current) {
+        console.log("Unmount already handled, skipping redirect");
+        return;
+      }
+
+      unmountHandled.current = true;
+      console.log(
+        "RoomComponent unmounting, redirecting to name entry page with reset flag"
+      );
+
       // Redirect back to video chat page when user leaves the call
-      router.push(`/video-chat?username=${encodeURIComponent(username)}`);
+      // Add reset=true parameter to ensure state is cleared
+      router.push("/video-chat?reset=true");
     };
-  }, [router, username]);
+  }, [router]);
 
   if (error) {
     return (

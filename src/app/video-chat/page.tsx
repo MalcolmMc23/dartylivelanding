@@ -71,17 +71,40 @@ function VideoRoomManager() {
 
   // Check if this is an auto-match redirect
   useEffect(() => {
+    console.log("Checking URL parameters for auto-matching and reset flags");
     const autoMatch = searchParams.get("autoMatch");
     const usernameParam = searchParams.get("username");
+    const reset = searchParams.get("reset");
 
+    // Handle reset flag - clear all state
+    if (reset === "true") {
+      console.log("Reset parameter detected - clearing all state");
+      setRoomName("");
+      setUsername("");
+      setIsJoined(false);
+      setUsingDemoServer(false);
+      setIsWaiting(false);
+      setError("");
+      return; // Exit early to prevent auto-matching
+    }
+
+    // Only auto-match if explicitly requested with autoMatch=true parameter
     if (autoMatch === "true" && usernameParam) {
-      console.log(`Auto-match detected for user: ${usernameParam}`);
+      console.log(`Auto-match explicitly requested for user: ${usernameParam}`);
       setUsername(usernameParam);
 
       // Automatically start matching
       setTimeout(() => {
         findRandomChat(usernameParam);
       }, 500);
+    } else if (usernameParam) {
+      // If there's only a username but no autoMatch, just set the username without auto-matching
+      console.log(
+        `Username found in URL: ${usernameParam}, but not auto-matching`
+      );
+      setUsername(usernameParam);
+    } else {
+      console.log("No auto-match parameters found");
     }
   }, [searchParams, findRandomChat]);
 
