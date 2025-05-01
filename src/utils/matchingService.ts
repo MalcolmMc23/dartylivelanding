@@ -79,4 +79,52 @@ export function removeUserFromQueue(username: string) {
   if (initialLength !== matchingState.waitingUsers.length) {
     console.log(`Removed ${username} from waiting queue`);
   }
+}
+
+// Get all users who are alone in calls waiting for someone to join
+export function getUsersAloneInCalls(): WaitingUser[] {
+  return matchingState.waitingUsers.filter(user => user.inCall === true);
+}
+
+// Get a prioritized match based on matching rules
+export function getPrioritizedMatch(username: string, lastMatch?: { matchedWith: string, timestamp: number }): WaitingUser | null {
+  // First check for users alone in calls
+  const usersAloneInCall = getUsersAloneInCalls();
+  
+  if (usersAloneInCall.length > 0) {
+    // Prioritize the user who has been waiting the longest
+    return usersAloneInCall.sort((a, b) => a.joinedAt - b.joinedAt)[0];
+  }
+  
+  // If no users alone in calls, proceed with normal matching
+  // Default time window to avoid re-matching (5 minutes in ms)
+  const REMATCH_COOLDOWN = 5 * 60 * 1000;
+  const now = Date.now();
+  
+  // Sort users by join time (oldest first)
+  const sortedWaitingUsers = [...matchingState.waitingUsers]
+    .filter(user => !user.inCall) // Filter out users who are in a call
+    .sort((a, b) => a.joinedAt - b.joinedAt);
+  
+  // Find the first eligible match (not the same user they just left)
+  for (let i = 0; i < sortedWaitingUsers.length; i++) {
+    const candidateUser = sortedWaitingUsers[i];
+    
+    // Skip if this is the same user they just left and it's within the cooldown period
+    const isRecentMatch = candidateUser.lastMatch 
+                          && candidateUser.lastMatch.matchedWith === username
+                          && (now - candidateUser.lastMatch.timestamp) < REMATCH_COOLDOWN;
+    
+    // Skip if the current user has a lastMatch that points to this candidate and is recent
+    const userHasRecentMatch = lastMatch 
+                              && lastMatch.matchedWith === candidateUser.username
+                              && (now - lastMatch.timestamp) < REMATCH_COOLDOWN;
+    
+    if (!isRecentMatch && !userHasRecentMatch) {
+      // Found a match!
+      return candidateUser;
+    }
+  }
+  
+  return null;
 } 

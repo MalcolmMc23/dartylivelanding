@@ -5,7 +5,8 @@ import {
   cleanupOldMatches,
   WaitingUser,
   addUserToQueue,
-  removeUserFromQueue 
+  removeUserFromQueue,
+  getPrioritizedMatch
 } from '@/utils/matchingService';
 
 export async function POST(request: NextRequest) {
@@ -55,25 +56,27 @@ export async function POST(request: NextRequest) {
       });
     }
     
-    // First priority: Check if there are users alone in a call we can match with
-    const userAloneInCall = matchingState.waitingUsers.find(user => user.inCall === true);
+    // Use our enhanced matching logic to find the best match
+    const matchedUser = getPrioritizedMatch(username, body.lastMatch);
     
-    if (userAloneInCall) {
-      // Remove the user from the waiting queue
-      removeUserFromQueue(userAloneInCall.username);
+    if (matchedUser) {
+      // Remove the matched user from the queue
+      removeUserFromQueue(matchedUser.username);
       
-      // Get the existing room name
-      const roomName = userAloneInCall.roomName!; // Non-null assertion is safe since we checked inCall === true
+      // If the matched user is already in a call, use their existing room
+      const roomName = matchedUser.inCall 
+        ? matchedUser.roomName! // Non-null assertion is safe since we checked inCall === true
+        : `match-${Math.random().toString(36).substring(2, 10)}`;
       
-      console.log(`Matched user ${username} with ${userAloneInCall.username} who was alone in room ${roomName}`);
+      console.log(`Matched user ${username} with ${matchedUser.username}${matchedUser.inCall ? ' who was alone in room ' + roomName : ''}`);
       
       // Use the demo server setting from the first user if it was enabled
-      const finalUseDemo = useDemo || userAloneInCall.useDemo;
+      const finalUseDemo = useDemo || matchedUser.useDemo;
       
       // Store the match
       matchingState.matchedUsers.push({
         user1: username,
-        user2: userAloneInCall.username,
+        user2: matchedUser.username,
         roomName,
         useDemo: finalUseDemo,
         matchedAt: Date.now()
@@ -82,78 +85,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         status: 'matched',
         roomName,
-        matchedWith: userAloneInCall.username,
+        matchedWith: matchedUser.username,
         useDemo: finalUseDemo
       });
-    }
-    
-    // Second priority: Check if there are any regular users in the waiting queue
-    if (matchingState.waitingUsers.length > 0) {
-      // Default time window to avoid re-matching (5 minutes in ms)
-      const REMATCH_COOLDOWN = 5 * 60 * 1000;
-      const now = Date.now();
-
-      // Find an appropriate match - prioritize wait time but avoid recent matches
-      // Sort users by join time (oldest first)
-      const sortedWaitingUsers = [...matchingState.waitingUsers]
-        .filter(user => !user.inCall) // Filter out users who are in a call since we already checked them
-        .sort((a, b) => a.joinedAt - b.joinedAt);
-      
-      let matchedUser = null;
-      let matchedUserIndex = -1;
-      
-      // Find the first eligible match (not the same user they just left)
-      for (let i = 0; i < sortedWaitingUsers.length; i++) {
-        const candidateUser = sortedWaitingUsers[i];
-        
-        // Skip if this is the same user they just left and it's within the cooldown period
-        const isRecentMatch = candidateUser.lastMatch 
-                              && candidateUser.lastMatch.matchedWith === username
-                              && (now - candidateUser.lastMatch.timestamp) < REMATCH_COOLDOWN;
-        
-        // Skip if the current user has a lastMatch that points to this candidate and is recent
-        const userHasRecentMatch = body.lastMatch 
-                                  && body.lastMatch.matchedWith === candidateUser.username
-                                  && (now - body.lastMatch.timestamp) < REMATCH_COOLDOWN;
-        
-        if (!isRecentMatch && !userHasRecentMatch) {
-          // Found a match!
-          matchedUser = candidateUser;
-          matchedUserIndex = matchingState.waitingUsers.findIndex(
-            user => user.username === candidateUser.username
-          );
-          break;
-        }
-      }
-      
-      if (matchedUser && matchedUserIndex >= 0) {
-        // Remove the matched user from the queue
-        removeUserFromQueue(matchedUser.username);
-        
-        // Generate a unique room name for these two users
-        const roomName = `match-${Math.random().toString(36).substring(2, 10)}`;
-        
-        console.log(`Matched users: ${username} and ${matchedUser.username} in room ${roomName}`);
-        
-        // Use the demo server setting from the first user if it was enabled
-        const finalUseDemo = useDemo || matchedUser.useDemo;
-        
-        // Store the match
-        matchingState.matchedUsers.push({
-          user1: username,
-          user2: matchedUser.username,
-          roomName,
-          useDemo: finalUseDemo,
-          matchedAt: Date.now()
-        });
-        
-        return NextResponse.json({
-          status: 'matched',
-          roomName,
-          matchedWith: matchedUser.username,
-          useDemo: finalUseDemo
-        });
-      }
     }
     
     // No eligible match found, add this user to the queue

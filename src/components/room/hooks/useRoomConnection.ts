@@ -148,8 +148,7 @@ export function useRoomConnection({
         return;
       }
 
-      // We don't need to redirect anymore - we're keeping the user in the call
-      // Just mark that we've handled the disconnection so we don't trigger this again
+      // Mark that we've handled the disconnection so we don't trigger this again
       hasTriggeredDisconnectAction.current = true;
 
       // Notify server about disconnection - this will add the current user to waiting queue with inCall flag
@@ -160,7 +159,8 @@ export function useRoomConnection({
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            username: otherUsername, // We're passing the disconnected user's name
+            username: otherUsername, // The user who disconnected
+            otherUsername: username, // The current user who is still in the call
             roomName: roomName,
             reason: "user_left",
           }),
@@ -179,7 +179,7 @@ export function useRoomConnection({
         console.error("Error notifying server about disconnection:", e);
       }
     },
-    [roomName]
+    [roomName, username]
   );
 
   // Toggle between normal and demo server

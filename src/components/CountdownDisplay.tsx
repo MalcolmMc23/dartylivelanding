@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import CountdownTimer from "./CountdownTimer";
-import { getNextWednesdayNoon } from "@/utils/dateUtils";
+import { getNextSundayNoon } from "@/utils/dateUtils";
 
 export default function CountdownDisplay() {
   const searchParams = useSearchParams();
@@ -11,7 +11,7 @@ export default function CountdownDisplay() {
   const [targetDate, setTargetDate] = useState<Date | null>(null);
 
   useEffect(() => {
-    setTargetDate(getNextWednesdayNoon());
+    setTargetDate(getNextSundayNoon());
   }, []);
 
   if (!targetDate) {

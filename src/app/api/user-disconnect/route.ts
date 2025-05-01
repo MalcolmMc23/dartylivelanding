@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
   try {
     // Parse request body
     const body = await request.json();
-    const { username, roomName, reason = 'user_left', timestamp } = body;
+    const { username, roomName, otherUsername, reason = 'user_left', timestamp } = body;
     
     if (!username || !roomName) {
       return NextResponse.json(
@@ -40,12 +40,12 @@ export async function POST(request: NextRequest) {
     const match = matchingState.matchedUsers[matchIndex];
     
     // Get the other user's name
-    const otherUsername = match.user1 === username ? match.user2 : match.user1;
+    const otherUsernameFromMatch = match.user1 === username ? match.user2 : match.user1;
     
     // Remove the current match
     matchingState.matchedUsers.splice(matchIndex, 1);
     
-    console.log(`Removed match between ${username} and ${otherUsername} in room ${roomName}`);
+    console.log(`Removed match between ${username} and ${otherUsernameFromMatch} in room ${roomName}`);
     
     // Check if the reason is that the user wanted to find a new match
     if (reason === 'find_new_match') {
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
       // Store information about the last match to prevent immediate re-matching
       const currentTimestamp = timestamp || Date.now();
       const lastMatchInfo = {
-        matchedWith: otherUsername,
+        matchedWith: otherUsernameFromMatch,
         timestamp: currentTimestamp
       };
       
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
       
       // Add the other user to the waiting queue (they'll be matched when they poll)
       const user2: WaitingUser = {
-        username: otherUsername,
+        username: otherUsernameFromMatch,
         joinedAt: currentTimestamp,
         useDemo: match.useDemo,
         lastMatch: {
@@ -79,26 +79,30 @@ export async function POST(request: NextRequest) {
       };
       addUserToQueue(user2);
       
-      console.log(`Added both ${username} and ${otherUsername} back to the waiting queue with lastMatch information`);
+      console.log(`Added both ${username} and ${otherUsernameFromMatch} back to the waiting queue with lastMatch information`);
       
       return NextResponse.json({
         status: 'success',
         message: 'Both users added back to matching queue',
-        otherUser: otherUsername,
+        otherUser: otherUsernameFromMatch,
         timestamp: currentTimestamp
       });
     } else if (reason === 'user_left') {
       // The user left the call normally
+      // Determine which user is still in the call (either specified in otherUsername or inferred)
+      // If otherUsername is provided, that's the user who made the API call (remaining in the call)
+      const remainingUsername = otherUsername || otherUsernameFromMatch;
+      
       // Add the remaining user to the waiting queue with inCall flag
       // so they can be matched with a new user while staying in the same call
       const remainingUser: WaitingUser = {
-        username: otherUsername,
+        username: remainingUsername,
         joinedAt: Date.now(),
         useDemo: match.useDemo,
         inCall: true,
         roomName: roomName,
         lastMatch: {
-          matchedWith: username,
+          matchedWith: otherUsername ? username : otherUsernameFromMatch,
           timestamp: Date.now()
         }
       };
@@ -106,14 +110,14 @@ export async function POST(request: NextRequest) {
       // Add the remaining user to the queue
       addUserToQueue(remainingUser);
       
-      console.log(`Added ${otherUsername} to waiting queue with inCall flag. They will remain in room ${roomName} until matched.`);
+      console.log(`Added ${remainingUsername} to waiting queue with inCall flag. They will remain in room ${roomName} until matched.`);
     }
     
     // If it's just a normal disconnect, we'll let the other user handle their own status
     return NextResponse.json({
       status: 'success',
       message: 'User disconnected and match cleared',
-      otherUser: otherUsername
+      otherUser: otherUsernameFromMatch
     });
   } catch (error) {
     console.error('Error in user-disconnect:', error);

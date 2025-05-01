@@ -147,7 +147,7 @@ function VideoRoomManager() {
     } else {
       console.log("No auto-match parameters found");
     }
-  }, [searchParams, findRandomChat]);
+  }, [searchParams, findRandomChat, username]);
 
   // Function to poll status while waiting
   useEffect(() => {
@@ -209,11 +209,19 @@ function VideoRoomManager() {
     if (username && isWaiting) {
       try {
         // Call the API to cancel waiting
-        await fetch(
-          `/api/match-user?username=${encodeURIComponent(
-            username
-          )}&action=cancel`
-        );
+        const response = await fetch("/api/cancel-match", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ username }),
+        });
+
+        if (!response.ok) {
+          console.error("Failed to cancel matching:", response.statusText);
+        } else {
+          console.log("Successfully canceled matching");
+        }
       } catch (error) {
         console.error("Error canceling wait:", error);
       }

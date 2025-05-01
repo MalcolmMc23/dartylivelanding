@@ -142,7 +142,8 @@ export default function RoomComponent({
                       Looking for a new match...
                     </h2>
                     <p className="mb-4 text-white">
-                      Someone will join you soon. Stay in this call.
+                      You are in the matching queue. Someone will join you soon.
+                      Stay in this call.
                     </p>
                     <div className="flex justify-center">
                       <div className="animate-bounce mx-1 h-3 w-3 bg-white rounded-full"></div>

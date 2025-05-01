@@ -1,79 +1,78 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from 'next/server';
+import { 
+  matchingState, 
+  removeUserFromQueue,
+  cleanupOldWaitingUsers,
+  cleanupOldMatches
+} from '@/utils/matchingService';
 
-// Use the same in-memory structures as in check-match
-// In a production environment, these should be shared through Redis or a database
-// For simplicity, we'll redeclare them (they'll be shared at runtime through Node.js module caching)
-const waitingUsers: { username: string; timestamp: number }[] = [];
-const activeMatches: { [key: string]: string[] } = {}; // roomName -> usernames
-
-// Debug log with timestamps (same as in check-match)
-function debugLog(...messages: unknown[]): void {
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] [CANCEL-DEBUG]`, ...messages);
+interface CancellationResult {
+  status: string;
+  otherUser?: string;
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const { username } = await request.json();
-
+    // Parse request body
+    const body = await request.json();
+    const { username } = body;
+    
     if (!username) {
-      return NextResponse.json({ error: "Username is required" }, { status: 400 });
-    }
-
-    debugLog(`Cancel match request for user: ${username}`);
-    debugLog(`Current state before cancel: ${waitingUsers.length} waiting, ${Object.keys(activeMatches).length} active matches`);
-
-    // Remove user from waiting queue if present
-    const existingUserIndex = waitingUsers.findIndex(user => user.username === username);
-    
-    if (existingUserIndex !== -1) {
-      // Remove user from queue
-      const waitTime = Math.floor((Date.now() - waitingUsers[existingUserIndex].timestamp) / 1000);
-      waitingUsers.splice(existingUserIndex, 1);
-      debugLog(`Removed ${username} from waiting queue position ${existingUserIndex + 1}, waited for ${waitTime} seconds`);
-      debugLog(`Queue size after removal: ${waitingUsers.length}`);
-    } else {
-      debugLog(`User ${username} not found in waiting queue`);
-    }
-
-    // Check if user is in an active match
-    let matchCount = 0;
-    const removedFrom: string[] = [];
-    
-    for (const [roomName, users] of Object.entries(activeMatches)) {
-      if (users.includes(username)) {
-        matchCount++;
-        removedFrom.push(roomName);
-        
-        // Get the other user(s) in the room
-        const otherUsers = users.filter(u => u !== username);
-        debugLog(`Removing match in room ${roomName}. Other affected users: ${otherUsers.join(', ')}`);
-        
-        // Remove the match
-        delete activeMatches[roomName];
-        
-        // The other user needs to be notified via a websocket in a real implementation
-        // For now, they'll just timeout and check again
-      }
+      return NextResponse.json(
+        { error: 'Missing username' },
+        { status: 400 }
+      );
     }
     
-    if (matchCount > 0) {
-      debugLog(`User ${username} removed from ${matchCount} active matches: ${removedFrom.join(', ')}`);
-      debugLog(`Active matches after removal: ${Object.keys(activeMatches).length}`);
-    } else {
-      debugLog(`User ${username} not found in any active matches`);
+    console.log(`Request to cancel matching for user: ${username}`);
+    
+    // Clean up stale users and matches first
+    cleanupOldWaitingUsers();
+    cleanupOldMatches();
+    
+    // First, check if this user is in the waiting queue
+    const isInWaitingQueue = matchingState.waitingUsers.some(
+      user => user.username === username
+    );
+    
+    // Also check if the user is in a match
+    const matchIndex = matchingState.matchedUsers.findIndex(
+      match => match.user1 === username || match.user2 === username
+    );
+    
+    let result: CancellationResult = { status: 'no_action' };
+    
+    // Remove user from waiting queue if they're in it
+    if (isInWaitingQueue) {
+      removeUserFromQueue(username);
+      result = { ...result, status: 'removed_from_queue' };
+      console.log(`Removed ${username} from waiting queue`);
     }
-
-    return NextResponse.json({ 
-      success: true,
-      debug: {
-        waitingQueueRemoved: existingUserIndex !== -1,
-        activeMatchesRemoved: matchCount,
-        affectedRooms: removedFrom
-      }
-    });
+    
+    // If user is in a match, handle that as well
+    if (matchIndex >= 0) {
+      const match = matchingState.matchedUsers[matchIndex];
+      const otherUsername = match.user1 === username ? match.user2 : match.user1;
+      
+      // Remove the match
+      matchingState.matchedUsers.splice(matchIndex, 1);
+      console.log(`Removed match between ${username} and ${otherUsername}`);
+      
+      // Add the other user back to the queue with inCall=true if appropriate
+      // This would happen if they were in an active call
+      result = { 
+        ...result, 
+        status: 'match_canceled',
+        otherUser: otherUsername
+      };
+    }
+    
+    return NextResponse.json(result);
   } catch (error) {
-    console.error("Error in cancel-match API:", error);
-    return NextResponse.json({ error: "Internal server error", details: String(error) }, { status: 500 });
+    console.error('Error in cancel-match:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
   }
 } 
