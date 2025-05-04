@@ -139,7 +139,7 @@ export function useRoomConnection({
   const handleOtherParticipantDisconnected = useCallback(
     (otherUsername: string) => {
       console.log(
-        `Other participant ${otherUsername} disconnected, adding user to waiting queue with inCall flag`
+        `Other participant ${otherUsername} disconnected, redirecting to initial screen`
       );
 
       // Don't do anything if we've already triggered disconnect action
@@ -151,7 +151,7 @@ export function useRoomConnection({
       // Mark that we've handled the disconnection so we don't trigger this again
       hasTriggeredDisconnectAction.current = true;
 
-      // Notify server about disconnection - this will add the current user to waiting queue with inCall flag
+      // Notify server about disconnection - this will handle the disconnection logic
       try {
         fetch("/api/user-disconnect", {
           method: "POST",
@@ -159,18 +159,32 @@ export function useRoomConnection({
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            username: otherUsername, // The user who disconnected
-            otherUsername: username, // The current user who is still in the call
+            username: username, // Current user
+            otherUsername: otherUsername, // User who disconnected
             roomName: roomName,
-            reason: "user_left",
+            reason: "user_disconnected",
           }),
         })
           .then((response) => response.json())
           .then((data) => {
             console.log("Disconnection response:", data);
             
-            // We're now waiting for a new match in the same call
-            // No need to redirect - we'll stay in the call until a new user joins
+            // Navigate back to video chat page with reset flag
+            if (!hasInitiatedNavigation.current) {
+              hasInitiatedNavigation.current = true;
+              setIsRedirecting(true);
+              
+              // Add a small delay to ensure state updates and allow server to process
+              setTimeout(() => {
+                const url = new URL("/video-chat", window.location.origin);
+                url.searchParams.set("reset", "true");
+                url.searchParams.set("username", username);
+                
+                // Use the router from the component that renders this hook
+                // This will happen automatically due to the unmount effect in RoomComponent
+                console.log("Redirecting to:", url.toString());
+              }, 100);
+            }
           })
           .catch((error) => {
             console.error("Error notifying server about disconnection:", error);
@@ -196,38 +210,6 @@ export function useRoomConnection({
   useEffect(() => {
     fetchToken(usingDemoServer);
   }, [fetchToken, usingDemoServer]);
-
-  // Component cleanup on unmount - notify server about disconnection
-  useEffect(() => {
-    return () => {
-      // Only send if we have valid room and username
-      if (roomName && username) {
-        console.log("Component unmounting, notifying about disconnection");
-        try {
-          // Use sendBeacon for more reliable sending on page unload
-          const data = JSON.stringify({
-            username,
-            roomName,
-            reason: "user_left",
-          });
-
-          if (navigator.sendBeacon) {
-            navigator.sendBeacon("/api/user-disconnect", data);
-          } else {
-            // Fallback for browsers that don't support sendBeacon
-            fetch("/api/user-disconnect", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: data,
-              keepalive: true,
-            });
-          }
-        } catch (e) {
-          console.error("Error sending disconnect notification on unmount:", e);
-        }
-      }
-    };
-  }, [roomName, username]);
 
   return {
     token,

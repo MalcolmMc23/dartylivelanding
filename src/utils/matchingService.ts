@@ -1,3 +1,5 @@
+// import { Mutex } from 'async-mutex';
+
 // In-memory waiting users queue
 // In production, you would use a database or Redis
 export interface WaitingUser {
@@ -32,6 +34,34 @@ export const matchingState = {
 export const MAX_WAIT_TIME = 5 * 60 * 1000; 
 // Maximum time to keep matched users in memory (10 minutes in ms)
 export const MAX_MATCH_TIME = 10 * 60 * 1000;
+
+// Mutex for concurrent access control - Removing as it's unused
+// const mutex = new Mutex();
+
+// Constants for timeouts (in milliseconds) - Removing as MAX values are used
+// const WAITING_TIMEOUT = 60 * 1000; // 60 seconds
+// const MATCH_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
+// --- Logging --- //
+
+// Flag to ensure interval is set only once
+let loggingIntervalSet = false;
+
+if (process.env.NODE_ENV === 'development' && !loggingIntervalSet) {
+  loggingIntervalSet = true;
+  setInterval(() => {
+    console.log(`[${new Date().toISOString()}] Waiting Queue (${matchingState.waitingUsers.length}):`, 
+      matchingState.waitingUsers.map(u => ({ u: u.username, iC: u.inCall, lM: u.lastMatch }))
+    );
+    // Optionally log matched users too:
+    // console.log(`[${new Date().toISOString()}] Matched Pairs (${matchingState.matchedUsers.length}):`, 
+    //   matchingState.matchedUsers.map(m => ({ p1: m.user1, p2: m.user2, r: m.roomName }))
+    // );
+  }, 5000); // Log every 5 seconds
+  console.log("Initialized periodic queue logging (every 5s).");
+}
+
+// --- Cleanup Functions --- //
 
 // Clean up waiting users who have been waiting too long
 export function cleanupOldWaitingUsers() {

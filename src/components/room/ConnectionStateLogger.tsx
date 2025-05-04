@@ -148,8 +148,14 @@ export function ConnectionStateLogger({
           "Only local participant remaining - triggering disconnect action"
         );
         hasTriggeredDisconnectAction.current = true;
-        // Call the handler passed from the parent (useRoomConnection)
+
+        // Call the handler passed from the parent with the disconnected participant's identity
         onOtherParticipantDisconnected(disconnectedParticipantIdentity);
+
+        // Force a re-render of parent components to ensure UI updates
+        if (currentTotalCount !== previousParticipantCount) {
+          onParticipantCountChange(currentTotalCount);
+        }
       }
 
       // Update capacity state (for UI indicators etc.)
@@ -182,6 +188,8 @@ export function ConnectionStateLogger({
     checkRoomCapacity,
     roomName,
     onOtherParticipantDisconnected,
+    onParticipantCountChange,
+    previousParticipantCount,
   ]);
 
   // Render room full message if applicable

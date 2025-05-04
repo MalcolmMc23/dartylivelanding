@@ -16,6 +16,7 @@ import {
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import { MirroredVideoTile } from "./room/MirroredVideoTile";
+import { ChatComponent } from "./ChatComponent";
 
 // Max participants allowed in a room
 const MAX_PARTICIPANTS = 2;
@@ -24,14 +25,17 @@ interface RoomComponentProps {
   roomName: string;
   username: string;
   useDemo?: boolean;
+  onDisconnect?: () => void;
 }
 
 export default function RoomComponent({
   roomName,
   username,
   useDemo = false,
+  onDisconnect,
 }: RoomComponentProps) {
   const router = useRouter();
+  const [mobileView, setMobileView] = useState<"video" | "chat">("video");
   const {
     token,
     error,
@@ -80,6 +84,33 @@ export default function RoomComponent({
       router.push(url.toString());
     };
   }, [router, username]);
+
+  // When a participant disconnects, handle cleanup and navigation
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      // If this component is being unloaded due to navigation or page close,
+      // make sure we notify about the disconnection
+      if (onDisconnect) {
+        fetch("/api/user-disconnect", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username,
+            roomName,
+            reason: "browser_closed",
+          }),
+          keepalive: true,
+        }).catch((err) => console.error("Error sending disconnect:", err));
+      }
+    };
+
+    // Add event listener for page unload
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [username, roomName, onDisconnect]);
 
   if (error) {
     return (
@@ -131,38 +162,81 @@ export default function RoomComponent({
               maxParticipants={MAX_PARTICIPANTS}
             />
 
-            <div className="flex-grow flex items-center justify-center overflow-y-auto pb-24">
-              <VideoContainer />
+            {/* Mobile view toggle - only visible on small screens */}
+            <div className="md:hidden flex justify-center p-2 bg-[#1A1A1A] border-b border-[#2A2A2A]">
+              <div className="inline-flex rounded-md shadow-sm" role="group">
+                <button
+                  onClick={() => setMobileView("video")}
+                  className={`px-4 py-2 text-sm font-medium rounded-l-lg ${
+                    mobileView === "video"
+                      ? "bg-[#A0FF00] text-black"
+                      : "bg-[#2A2A2A] text-white hover:bg-[#3A3A3A]"
+                  }`}
+                >
+                  Video
+                </button>
+                <button
+                  onClick={() => setMobileView("chat")}
+                  className={`px-4 py-2 text-sm font-medium rounded-r-lg ${
+                    mobileView === "chat"
+                      ? "bg-[#A0FF00] text-black"
+                      : "bg-[#2A2A2A] text-white hover:bg-[#3A3A3A]"
+                  }`}
+                >
+                  Chat
+                </button>
+              </div>
+            </div>
 
-              {/* Overlay when waiting alone in a call */}
-              {liveParticipantCount === 1 && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 pointer-events-none">
-                  <div className="bg-blue-900 bg-opacity-80 p-6 rounded-lg max-w-md text-center">
-                    <h2 className="text-xl font-bold text-white mb-4">
-                      Looking for a new match...
-                    </h2>
-                    <p className="mb-4 text-white">
-                      You are in the matching queue. Someone will join you soon.
-                      Stay in this call.
-                    </p>
-                    <div className="flex justify-center">
-                      <div className="animate-bounce mx-1 h-3 w-3 bg-white rounded-full"></div>
-                      <div
-                        className="animate-bounce mx-1 h-3 w-3 bg-white rounded-full"
-                        style={{ animationDelay: "0.2s" }}
-                      ></div>
-                      <div
-                        className="animate-bounce mx-1 h-3 w-3 bg-white rounded-full"
-                        style={{ animationDelay: "0.4s" }}
-                      ></div>
+            {/* Main content area with videos on left, chat on right */}
+            <div className="flex-grow flex h-full pb-16">
+              {/* Videos on the left */}
+              <div
+                className={`w-full md:w-3/5 h-full overflow-y-auto flex items-center justify-center ${
+                  mobileView === "chat" ? "hidden" : "block"
+                } md:block`}
+              >
+                <VideoContainer />
+
+                {/* Overlay when waiting alone in a call */}
+                {liveParticipantCount === 1 && (
+                  <div className="absolute inset-0 md:w-3/5 flex items-center justify-center bg-black bg-opacity-50 pointer-events-none">
+                    <div className="bg-blue-900 bg-opacity-80 p-6 rounded-lg max-w-md text-center">
+                      <h2 className="text-xl font-bold text-white mb-4">
+                        Looking for a new match...
+                      </h2>
+                      <p className="mb-4 text-white">
+                        You are in the matching queue. Someone will join you
+                        soon. Stay in this call.
+                      </p>
+                      <div className="flex justify-center">
+                        <div className="animate-bounce mx-1 h-3 w-3 bg-white rounded-full"></div>
+                        <div
+                          className="animate-bounce mx-1 h-3 w-3 bg-white rounded-full"
+                          style={{ animationDelay: "0.2s" }}
+                        ></div>
+                        <div
+                          className="animate-bounce mx-1 h-3 w-3 bg-white rounded-full"
+                          style={{ animationDelay: "0.4s" }}
+                        ></div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+
+              {/* Chat on the right */}
+              <div
+                className={`w-full md:w-2/5 h-full ${
+                  mobileView === "video" ? "hidden" : "block"
+                } md:block`}
+              >
+                <ChatComponent username={username} roomName={roomName} />
+              </div>
             </div>
 
             <RoomAudioRenderer />
-            <div className="fixed bottom-6 left-0 right-0 z-50">
+            <div className="fixed bottom-4 md:bottom-6 left-0 md:left-[30%] transform md:translate-x-[-50%] right-0 md:right-auto z-50">
               <CustomControlBar username={username} roomName={roomName} />
             </div>
           </div>
@@ -190,7 +264,7 @@ function VideoContainer() {
     // Only local participant - centered large tile with prompt
     return (
       <div className="flex flex-col items-center justify-center h-full w-full p-4">
-        <div className="w-full max-w-2xl aspect-video rounded-xl overflow-hidden border-2 border-[#212121] shadow-lg relative">
+        <div className="w-full max-w-lg aspect-video rounded-xl overflow-hidden border-2 border-[#212121] shadow-lg relative">
           {cameraTracks.length > 0 && (
             <>
               <MirroredVideoTile
@@ -208,21 +282,13 @@ function VideoContainer() {
             </>
           )}
         </div>
-        <div className="mt-6 text-gray-300 text-center">
-          <p className="text-xl font-semibold mb-2">
-            Waiting for someone to join...
-          </p>
-          <p className="text-sm opacity-75">
-            Hang tight! You&apos;ll be connected with someone soon.
-          </p>
-        </div>
       </div>
     );
   }
 
   // Two participants - stacked vertically (one on top of the other)
   return (
-    <div className="w-full max-w-3xl p-2 md:p-4 flex flex-col items-center justify-center gap-3 md:gap-6">
+    <div className="w-full p-2 md:p-4 flex flex-col items-center justify-center gap-3 md:gap-6">
       {cameraTracks.map((track: TrackReferenceOrPlaceholder, index: number) => {
         // Get the participant's identity
         const participantIdentity =
@@ -232,7 +298,7 @@ function VideoContainer() {
         return (
           <div
             key={track.publication?.trackSid || `participant-${index}`}
-            className="w-full h-auto rounded-xl overflow-hidden border-2 border-[#212121] shadow-lg transition-all relative"
+            className="w-full max-w-lg h-auto rounded-xl overflow-hidden border-2 border-[#212121] shadow-lg transition-all relative"
             style={{ aspectRatio: "16 / 9" }}
           >
             <MirroredVideoTile trackRef={track} className="h-full" />

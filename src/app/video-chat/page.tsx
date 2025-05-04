@@ -21,10 +21,11 @@ function VideoRoomManager() {
   // Store the default username for the uncontrolled input to use
   const [defaultUsername, setDefaultUsername] = useState("");
 
-  // Define findRandomChat with useCallback to use it in dependency array
+  // Define findRandomChat with useCallback
   const findRandomChat = useCallback(
-    async (usernameToUse = username) => {
-      if (!usernameToUse) return;
+    async (usernameToUse?: string) => {
+      const finalUsername = usernameToUse || username;
+      if (!finalUsername) return;
 
       setError("");
       setIsWaiting(true);
@@ -37,7 +38,7 @@ function VideoRoomManager() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            username: usernameToUse,
+            username: finalUsername,
             useDemo: usingDemoServer,
           }),
         });
@@ -72,7 +73,7 @@ function VideoRoomManager() {
         setIsWaiting(false);
       }
     },
-    [username, usingDemoServer]
+    [usingDemoServer, username]
   );
 
   // Check if this is an auto-match redirect
@@ -132,22 +133,25 @@ function VideoRoomManager() {
     // Only auto-match if explicitly requested with autoMatch=true parameter
     if (autoMatch === "true" && usernameParam) {
       console.log(`Auto-match explicitly requested for user: ${usernameParam}`);
+      // Set username state immediately for controlled components if needed elsewhere
       setUsername(usernameParam);
-
-      // Automatically start matching
+      // Pass the username explicitly here as well, as state might not be updated yet
       setTimeout(() => {
         findRandomChat(usernameParam);
       }, 500);
-    } else if (usernameParam) {
-      // If there's only a username but no autoMatch, just set the username without auto-matching
+    } else if (usernameParam && !isPostReset) {
+      // If there's only a username but no autoMatch, and we are NOT in post-reset mode,
+      // just set the username state. Avoid this if isPostReset is true, as the user
+      // should be able to freely edit the uncontrolled input field.
       console.log(
-        `Username found in URL: ${usernameParam}, but not auto-matching`
+        `Username found in URL: ${usernameParam}, setting username state (not auto-matching)`
       );
       setUsername(usernameParam);
     } else {
-      console.log("No auto-match parameters found");
+      console.log("No auto-match or relevant username parameters found");
     }
-  }, [searchParams, findRandomChat, username]);
+    // Add isPostReset to dependencies as its value affects the logic flow
+  }, [searchParams, findRandomChat, username, isPostReset]);
 
   // Function to poll status while waiting
   useEffect(() => {
@@ -233,6 +237,23 @@ function VideoRoomManager() {
     setUsingDemoServer(!usingDemoServer);
   };
 
+  // Handle disconnection from a chat
+  const handleDisconnect = useCallback(() => {
+    console.log("User disconnected, returning to initial screen");
+    setIsJoined(false);
+    setRoomName("");
+    setIsWaiting(false);
+    setError("");
+
+    // Add the reset flag to the URL to ensure full state reset
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("reset", "true");
+      url.searchParams.set("username", username);
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [username]);
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-[#121212] text-white p-4 md:p-8 font-[family-name:var(--font-geist-sans)]">
       {isJoined ? (
@@ -240,6 +261,7 @@ function VideoRoomManager() {
           roomName={roomName}
           username={username}
           useDemo={usingDemoServer}
+          onDisconnect={handleDisconnect}
         />
       ) : isWaiting ? (
         <WaitingRoomComponent username={username} onCancel={cancelWaiting} />
@@ -304,11 +326,13 @@ function VideoRoomManager() {
             <button
               onClick={() => {
                 // If we're in post-reset mode, make sure to capture the latest input value
+                let nameToUse = username;
                 if (isPostReset && inputRef.current) {
-                  setUsername(inputRef.current.value);
+                  nameToUse = inputRef.current.value;
+                  setUsername(nameToUse);
                   setIsPostReset(false);
                 }
-                findRandomChat();
+                findRandomChat(nameToUse);
               }}
               disabled={!username && !(isPostReset && inputRef.current?.value)}
               className="w-full bg-[#A0FF00] text-black p-3 rounded font-semibold disabled:bg-[#4A4A4A] disabled:text-[#8A8A8A] hover:bg-opacity-90"
@@ -356,10 +380,15 @@ function VideoRoomManager() {
                   <button
                     onClick={() => {
                       // If we're in post-reset mode, make sure to capture the latest input value
+                      let nameToUse = username;
                       if (isPostReset && inputRef.current) {
-                        setUsername(inputRef.current.value);
+                        nameToUse = inputRef.current.value;
+                        setUsername(nameToUse);
                         setIsPostReset(false);
                       }
+                      // Although joinRoom doesn't explicitly take username, it relies on the state
+                      // Ensure state is updated before calling joinRoom
+                      if (nameToUse !== username) setUsername(nameToUse);
                       joinRoom();
                     }}
                     disabled={

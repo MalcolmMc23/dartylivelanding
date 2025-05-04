@@ -96,6 +96,16 @@ export function CustomControlBar({
 
     // Disconnect from the current room
     if (room) {
+      // Get the other participant's identity before leaving
+      let otherParticipantIdentity: string | undefined;
+      if (room.remoteParticipants.size === 1) {
+        // There should be only one remote participant in a 1:1 call
+        otherParticipantIdentity = Array.from(
+          room.remoteParticipants.values()
+        )[0].identity;
+        console.log(`Found other participant: ${otherParticipantIdentity}`);
+      }
+
       // Notify the server that we're leaving
       try {
         const response = await fetch("/api/user-disconnect", {
@@ -106,6 +116,7 @@ export function CustomControlBar({
           body: JSON.stringify({
             username,
             roomName,
+            otherUsername: otherParticipantIdentity, // Include the other participant's identity
             reason: "user_left",
           }),
         });
@@ -117,7 +128,6 @@ export function CustomControlBar({
         room.disconnect();
 
         // Redirect to the video-chat page with reset flag
-        // Use a callback approach that will get handled by the VideoRoomManager
         const url = new URL("/video-chat", window.location.origin);
         url.searchParams.set("reset", "true");
         url.searchParams.set("username", username);
