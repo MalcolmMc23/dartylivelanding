@@ -131,7 +131,7 @@ export default function RoomComponent({
               maxParticipants={MAX_PARTICIPANTS}
             />
 
-            <div className="flex-grow flex items-center justify-center">
+            <div className="flex-grow flex items-center justify-center overflow-y-auto pb-24">
               <VideoContainer />
 
               {/* Overlay when waiting alone in a call */}
@@ -162,7 +162,7 @@ export default function RoomComponent({
             </div>
 
             <RoomAudioRenderer />
-            <div className="mb-4">
+            <div className="fixed bottom-6 left-0 right-0 z-50">
               <CustomControlBar username={username} roomName={roomName} />
             </div>
           </div>
@@ -198,7 +198,11 @@ function VideoContainer() {
                 className="h-full"
                 style={{ aspectRatio: "16 / 9" }}
               />
-              <div className="absolute bottom-2 left-2 bg-black bg-opacity-60 px-2 py-1 rounded-md text-white text-sm">
+              {/* Custom participant name tag */}
+              <div
+                className="absolute bottom-6 left-6 bg-black bg-opacity-80 px-4 py-2 rounded-md text-white text-base font-medium z-20 shadow-md"
+                id="custom-name-tag-local"
+              >
                 You
               </div>
             </>
@@ -216,9 +220,9 @@ function VideoContainer() {
     );
   }
 
-  // Two participants - display side by side or stacked depending on screen width
+  // Two participants - stacked vertically (one on top of the other)
   return (
-    <div className="w-full h-full p-2 md:p-4 flex flex-col md:flex-row items-center justify-center gap-2 md:gap-4">
+    <div className="w-full max-w-3xl p-2 md:p-4 flex flex-col items-center justify-center gap-3 md:gap-6">
       {cameraTracks.map((track: TrackReferenceOrPlaceholder, index: number) => {
         // Get the participant's identity
         const participantIdentity =
@@ -228,11 +232,17 @@ function VideoContainer() {
         return (
           <div
             key={track.publication?.trackSid || `participant-${index}`}
-            className="w-full md:w-1/2 max-w-xl h-auto rounded-xl overflow-hidden border-2 border-[#212121] shadow-lg transition-all relative"
+            className="w-full h-auto rounded-xl overflow-hidden border-2 border-[#212121] shadow-lg transition-all relative"
             style={{ aspectRatio: "16 / 9" }}
           >
             <MirroredVideoTile trackRef={track} className="h-full" />
-            <div className="absolute bottom-2 left-2 bg-black bg-opacity-60 px-2 py-1 rounded-md text-white text-sm">
+            {/* Custom participant name tag */}
+            <div
+              className="absolute bottom-6 left-6 bg-black bg-opacity-80 px-4 py-2 rounded-md text-white text-base font-medium z-20 shadow-md"
+              id={`custom-name-tag-${
+                isLocalParticipant ? "local" : track.participant?.identity
+              }`}
+            >
               {isLocalParticipant ? "You" : participantIdentity}
             </div>
           </div>
