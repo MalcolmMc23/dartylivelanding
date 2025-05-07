@@ -16,10 +16,11 @@ async function testConnection() {
     client.release();
     console.log('Successfully connected to PostgreSQL database');
     return true;
-  } catch (error) {
+  } catch (error: unknown) {
     if (!hasShownDbWarning) {
       console.warn('⚠️ Warning: Could not connect to PostgreSQL database. Make sure DATABASE_URL is properly set.');
       console.warn('The application will fall back to in-memory state, which is less reliable.');
+      console.warn(`Error details: ${error instanceof Error ? error.message : String(error)}`);
       hasShownDbWarning = true;
     }
     return false;
@@ -36,7 +37,7 @@ export async function query(text: string, params: unknown[] = []) {
     const duration = Date.now() - start;
     console.log('Executed query', { text, duration, rows: res.rowCount });
     return res;
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Database query error:', error);
     throw error;
   }
@@ -44,4 +45,4 @@ export async function query(text: string, params: unknown[] = []) {
 
 // Create a named export object
 const dbUtils = { query, pool, testConnection };
-export default dbUtils; 
+export default dbUtils;
