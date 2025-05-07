@@ -18,8 +18,8 @@ export const metadata: Metadata = {
   icons: {
     icon: "/images/DormParty_cup.png",
     apple: "/images/DormParty_cup.png",
-    shortcut: "/images/DormParty_cup.png"
-  }
+    shortcut: "/images/DormParty_cup.png",
+  },
 };
 
 export default function RootLayout({
