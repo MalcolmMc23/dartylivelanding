@@ -37,7 +37,7 @@ export async function addUserToQueue(
   // Fall back to in-memory implementation
   const lastMatchTimestamp = lastMatch ? { matchedWith: lastMatch.matchedWith, timestamp: Date.now() } : undefined;
   
-  return memoryMatchingService.addUserToQueue({
+  return await memoryMatchingService.addUserToQueue({
     username,
     useDemo,
     inCall: inCall || false,
@@ -59,8 +59,7 @@ export async function removeUserFromQueue(username: string) {
   }
   
   // Fall back to in-memory implementation
-  memoryMatchingService.removeUserFromQueue(username);
-  return true;
+  return await memoryMatchingService.removeUserFromQueue(username);
 }
 
 // Find match for user
@@ -76,11 +75,11 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
   
   // Fall back to in-memory implementation
   const lastMatch = lastMatchedWith ? { matchedWith: lastMatchedWith, timestamp: Date.now() } : undefined;
-  const matchedUser = memoryMatchingService.getPrioritizedMatch(username, lastMatch);
+  const matchedUser = await memoryMatchingService.getPrioritizedMatch(username, lastMatch);
   
   if (matchedUser) {
     // Remove the matched user from the queue
-    memoryMatchingService.removeUserFromQueue(matchedUser.username);
+    await memoryMatchingService.removeUserFromQueue(matchedUser.username);
     
     // If the matched user is already in a call, use their existing room
     const roomName = matchedUser.inCall 
@@ -153,7 +152,7 @@ export async function handleUserDisconnection(username: string, roomName: string
       leftBehindUser = user1 === username ? user2 : user1;
     }
     
-    memoryMatchingService.addUserToQueue({
+    await memoryMatchingService.addUserToQueue({
       username: leftBehindUser,
       joinedAt: Date.now(),
       useDemo: match.useDemo,
@@ -189,7 +188,7 @@ export async function cleanupOldWaitingUsers() {
   }
   
   // Fall back to in-memory implementation
-  memoryMatchingService.cleanupOldWaitingUsers();
+  await memoryMatchingService.cleanupOldWaitingUsers();
   return [];
 }
 
@@ -204,7 +203,7 @@ export async function cleanupOldMatches() {
   }
   
   // Fall back to in-memory implementation
-  memoryMatchingService.cleanupOldMatches();
+  await memoryMatchingService.cleanupOldMatches();
   return [];
 }
 
@@ -219,31 +218,33 @@ export async function getWaitingQueueStatus(username: string) {
     usingDatabase = false;
   }
   
-  // Fall back to in-memory implementation
-  // Check if user has been matched
-  const existingMatch = memoryMatchingService.matchingState.matchedUsers.find(
-    match => match.user1 === username || match.user2 === username
-  );
-  
-  if (existingMatch) {
+  // Use mutex to safely access shared state
+  return await memoryMatchingService.mutex.runExclusive(async () => {
+    // Check if user has been matched
+    const existingMatch = memoryMatchingService.matchingState.matchedUsers.find(
+      match => match.user1 === username || match.user2 === username
+    );
+    
+    if (existingMatch) {
+      return {
+        status: 'matched',
+        roomName: existingMatch.roomName,
+        matchedWith: existingMatch.user1 === username ? existingMatch.user2 : existingMatch.user1,
+        useDemo: existingMatch.useDemo
+      };
+    }
+    
+    // Check if user is in waiting queue
+    const isWaiting = memoryMatchingService.matchingState.waitingUsers.some(user => user.username === username);
+    
     return {
-      status: 'matched',
-      roomName: existingMatch.roomName,
-      matchedWith: existingMatch.user1 === username ? existingMatch.user2 : existingMatch.user1,
-      useDemo: existingMatch.useDemo
+      status: isWaiting ? 'waiting' : 'not_waiting',
+      position: isWaiting 
+        ? memoryMatchingService.matchingState.waitingUsers.findIndex(user => user.username === username) + 1 
+        : null,
+      queueSize: memoryMatchingService.matchingState.waitingUsers.length
     };
-  }
-  
-  // Check if user is in waiting queue
-  const isWaiting = memoryMatchingService.matchingState.waitingUsers.some(user => user.username === username);
-  
-  return {
-    status: isWaiting ? 'waiting' : 'not_waiting',
-    position: isWaiting 
-      ? memoryMatchingService.matchingState.waitingUsers.findIndex(user => user.username === username) + 1 
-      : null,
-    queueSize: memoryMatchingService.matchingState.waitingUsers.length
-  };
+  });
 }
 
 // Initialize by checking database connection
