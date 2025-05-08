@@ -5,12 +5,16 @@ let hasShownDbWarning = false;
 
 // Use environment variables for connection
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false // Try adding this for Railway connections
+  }
 });
 
 // Test the connection and show a warning if it fails
 async function testConnection() {
   try {
+    console.log('Attempting to connect to database...');
     const client = await pool.connect();
     await client.query('SELECT NOW()');
     client.release();
@@ -21,6 +25,8 @@ async function testConnection() {
       console.warn('⚠️ Warning: Could not connect to PostgreSQL database. Make sure DATABASE_URL is properly set.');
       console.warn('The application will fall back to in-memory state, which is less reliable.');
       console.warn(`Error details: ${error instanceof Error ? error.message : String(error)}`);
+      // Log more specific error information
+      console.error('Full error:', error);
       hasShownDbWarning = true;
     }
     return false;
