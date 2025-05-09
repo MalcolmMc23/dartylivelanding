@@ -8,15 +8,42 @@ import { useRouter } from "next/navigation";
 export default function Home() {
   const [email, setEmail] = useState("");
   const [showWarning, setShowWarning] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const router = useRouter();
 
-  const handleTryVideoChat = (e: React.MouseEvent) => {
+  const handleTryVideoChat = async (e: React.MouseEvent) => {
     e.preventDefault();
     if (!email || !email.endsWith(".edu")) {
       setShowWarning(true);
       return;
     }
-    router.push(`/countdown?email=${encodeURIComponent(email)}`);
+
+    try {
+      setIsSubmitting(true);
+
+      // Submit email to database
+      const response = await fetch("/api/subscribe", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      if (!response.ok) {
+        console.error("Failed to submit email");
+        setShowWarning(true);
+        return;
+      }
+
+      // Redirect to countdown page
+      router.push(`/countdown?email=${encodeURIComponent(email)}`);
+    } catch (err) {
+      console.error(err);
+      setShowWarning(true);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -44,9 +71,19 @@ export default function Home() {
         <div className="mt-6">
           <button
             onClick={handleTryVideoChat}
-            className="px-6 py-3 bg-[#A0FF00] text-black font-semibold rounded-md hover:bg-opacity-90 transition-all"
+            className={`px-6 py-3 bg-[#A0FF00] text-black font-semibold rounded-md hover:bg-opacity-90 transition-all ${
+              isSubmitting ? "opacity-70" : ""
+            }`}
+            disabled={isSubmitting}
           >
-            Try Video Chat
+            {isSubmitting ? (
+              <span className="flex items-center">
+                <div className="w-4 h-4 mr-2 border-2 border-t-2 border-black border-t-transparent rounded-full animate-spin" />
+                Submitting...
+              </span>
+            ) : (
+              "Try Video Chat"
+            )}
           </button>
           {showWarning && (
             <p className="mt-2 text-sm text-red-400">
