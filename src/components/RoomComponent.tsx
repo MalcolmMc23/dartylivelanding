@@ -320,7 +320,7 @@ function VideoContainer() {
   useEffect(() => {
     renderCount.current += 1;
     console.log(`VideoContainer rendered: ${renderCount.current} times`);
-  });
+  }, []);
 
   // Get camera and screen share tracks with useMemo to prevent unnecessary processing
   const trackSources = useMemo(
@@ -331,12 +331,18 @@ function VideoContainer() {
     []
   );
 
-  const cameraTracks = useTracks(trackSources, {
-    updateOnlyOn: [],
-    onlySubscribed: false,
-  });
+  // Memoize the options object to prevent it from causing re-renders
+  const trackOptions = useMemo(
+    () => ({
+      updateOnlyOn: [],
+      onlySubscribed: false,
+    }),
+    []
+  );
 
-  // Prevent unnecessary re-renders by memoizing track rendering
+  const cameraTracks = useTracks(trackSources, trackOptions);
+
+  // Render tracks
   const renderTracks = useCallback(() => {
     console.log("Rendering tracks:", cameraTracks.length);
     return cameraTracks.map(
@@ -366,7 +372,7 @@ function VideoContainer() {
         );
       }
     );
-  }, [cameraTracks]);
+  }, [cameraTracks]); // Only depend on cameraTracks
 
   if (totalParticipants === 1) {
     // Only local participant - centered large tile with prompt

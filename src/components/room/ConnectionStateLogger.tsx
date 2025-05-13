@@ -117,7 +117,6 @@ export function ConnectionStateLogger({
     onParticipantCountChange,
     username,
     previousParticipantCount,
-    otherParticipants,
     onOtherParticipantDisconnected,
   ]);
 
@@ -221,7 +220,6 @@ export function ConnectionStateLogger({
   }, [
     connectionState,
     room,
-    checkRoomCapacity,
     roomName,
     onOtherParticipantDisconnected,
     onParticipantCountChange,
