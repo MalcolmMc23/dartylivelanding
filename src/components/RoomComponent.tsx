@@ -141,6 +141,46 @@ export default function RoomComponent({
     };
   }, [username, roomName, onDisconnect]);
 
+  // Memoize callbacks to prevent them from changing on every render
+  const handleLiveKitError = useCallback((err: Error) => {
+    console.error("LiveKit connection error:", err);
+    // Only handle fatal errors after initial connection period
+    if (!isInitialConnectionPeriod.current) {
+      console.error("Fatal LiveKit error, will need to reconnect");
+    } else {
+      console.log("Ignoring LiveKit error during initial connection period");
+    }
+  }, []);
+
+  const handleLiveKitConnected = useCallback(() => {
+    console.log("LiveKit connected successfully");
+    // We're connected - we can consider this a stable connection point
+    setTimeout(() => {
+      isInitialConnectionPeriod.current = false;
+      console.log("LiveKit connection now considered stable");
+    }, 2000);
+  }, []);
+
+  const handleLiveKitDisconnected = useCallback(() => {
+    console.log("LiveKit disconnected");
+    // Ignore disconnections during initial connection period
+    if (isInitialConnectionPeriod.current) {
+      console.log("Ignoring disconnection during initial connection period");
+    }
+  }, []);
+
+  // Memoize LiveKitRoom options to prevent re-renders
+  const liveKitOptions = useMemo(
+    () => ({
+      token,
+      serverUrl: liveKitUrl,
+      connect: true,
+      video: false,
+      audio: false,
+    }),
+    [token, liveKitUrl]
+  );
+
   if (error) {
     return (
       <ErrorDisplay
@@ -164,41 +204,10 @@ export default function RoomComponent({
     <div className="w-full h-screen bg-[#0C0C0C] overflow-hidden">
       {token && liveKitUrl && (
         <LiveKitRoom
-          token={token}
-          serverUrl={liveKitUrl}
-          connect={true}
-          // Start with audio/video disabled to avoid permissions issues
-          video={false}
-          audio={false}
-          onError={(err) => {
-            console.error("LiveKit connection error:", err);
-            // Only handle fatal errors after initial connection period
-            if (!isInitialConnectionPeriod.current) {
-              console.error("Fatal LiveKit error, will need to reconnect");
-            } else {
-              console.log(
-                "Ignoring LiveKit error during initial connection period"
-              );
-            }
-          }}
-          // Add additional connection callbacks for better debugging
-          onConnected={() => {
-            console.log("LiveKit connected successfully");
-            // We're connected - we can consider this a stable connection point
-            setTimeout(() => {
-              isInitialConnectionPeriod.current = false;
-              console.log("LiveKit connection now considered stable");
-            }, 2000);
-          }}
-          onDisconnected={() => {
-            console.log("LiveKit disconnected");
-            // Ignore disconnections during initial connection period
-            if (isInitialConnectionPeriod.current) {
-              console.log(
-                "Ignoring disconnection during initial connection period"
-              );
-            }
-          }}
+          {...liveKitOptions}
+          onError={handleLiveKitError}
+          onConnected={handleLiveKitConnected}
+          onDisconnected={handleLiveKitDisconnected}
           data-lk-theme="default"
           className="h-full lk-video-conference"
         >
