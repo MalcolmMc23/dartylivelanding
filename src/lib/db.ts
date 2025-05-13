@@ -3,11 +3,14 @@ import { Pool } from 'pg';
 // Flag to track if we've shown the database warning
 let hasShownDbWarning = false;
 
+// Determine if this is a local development environment
+const isLocalDevelopment = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
+
 // Use environment variables for connection
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false // Try adding this for Railway connections
+  ssl: isLocalDevelopment ? false : {
+    rejectUnauthorized: false // Only for production/staging environments
   }
 });
 
