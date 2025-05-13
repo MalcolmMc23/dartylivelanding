@@ -31,10 +31,16 @@ export function ConnectionStateLogger({
   const [otherParticipants, setOtherParticipants] = useState<string[]>([]);
   // Track if we've already triggered a participant disconnect action
   const hasTriggeredDisconnectAction = useRef(false);
+  // Use Ref to track the connection establishment time
+  const connectionEstablishedAt = useRef<number | null>(null);
+
+  // Define a minimum stable connection time (5 seconds)
+  const MIN_STABLE_CONNECTION_TIME = 5000;
 
   // Reset the disconnect action flag when the component mounts or roomName changes
   useEffect(() => {
     hasTriggeredDisconnectAction.current = false;
+    connectionEstablishedAt.current = null;
     return () => {
       // Clean up when component unmounts
       hasTriggeredDisconnectAction.current = false;
@@ -78,10 +84,13 @@ export function ConnectionStateLogger({
       // Set the flag to prevent multiple triggers
       hasTriggeredDisconnectAction.current = true;
 
-      // Call the function to handle the other participant disconnecting
-      if (otherParticipants.length > 0) {
-        onOtherParticipantDisconnected(otherParticipants[0]);
-      }
+      // Add grace period before handling disconnection
+      setTimeout(() => {
+        // Call the function to handle the other participant disconnecting
+        if (otherParticipants.length > 0) {
+          onOtherParticipantDisconnected(otherParticipants[0]);
+        }
+      }, 2000); // 2-second grace period
     }
 
     setPreviousParticipantCount(participantCount);
@@ -120,6 +129,12 @@ export function ConnectionStateLogger({
       console.log(`Room name: ${room.name}`);
       console.log(`Local participant: ${room.localParticipant.identity}`);
 
+      // Record when the connection was established
+      if (connectionEstablishedAt.current === null) {
+        connectionEstablishedAt.current = Date.now();
+        console.log("Connection established timestamp set");
+      }
+
       // Initial capacity check
       checkRoomCapacity();
     }
@@ -147,14 +162,35 @@ export function ConnectionStateLogger({
         console.log(
           "Only local participant remaining - triggering disconnect action"
         );
-        hasTriggeredDisconnectAction.current = true;
 
-        // Call the handler passed from the parent with the disconnected participant's identity
-        onOtherParticipantDisconnected(disconnectedParticipantIdentity);
+        // Check if we've had a stable connection for the minimum time
+        const now = Date.now();
+        const connectionTime = connectionEstablishedAt.current
+          ? now - connectionEstablishedAt.current
+          : 0;
 
-        // Force a re-render of parent components to ensure UI updates
-        if (currentTotalCount !== previousParticipantCount) {
-          onParticipantCountChange(currentTotalCount);
+        console.log(`Connection has been stable for ${connectionTime}ms`);
+
+        // Only handle disconnection if we've had a stable connection
+        // or if it's been long enough to consider it a real disconnect
+        if (connectionTime >= MIN_STABLE_CONNECTION_TIME) {
+          hasTriggeredDisconnectAction.current = true;
+
+          // Add a grace period before initiating the disconnection action
+          // This prevents premature disconnections during initial connection establishment
+          setTimeout(() => {
+            // Call the handler passed from the parent with the disconnected participant's identity
+            onOtherParticipantDisconnected(disconnectedParticipantIdentity);
+
+            // Force a re-render of parent components to ensure UI updates
+            if (currentTotalCount !== previousParticipantCount) {
+              onParticipantCountChange(currentTotalCount);
+            }
+          }, 2000); // 2-second grace period
+        } else {
+          console.log(
+            `Ignoring disconnection during initial connection period (${connectionTime}ms)`
+          );
         }
       }
 

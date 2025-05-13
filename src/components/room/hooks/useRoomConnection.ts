@@ -151,47 +151,51 @@ export function useRoomConnection({
       // Mark that we've handled the disconnection so we don't trigger this again
       hasTriggeredDisconnectAction.current = true;
 
-      // Notify server about disconnection - this will handle the disconnection logic
-      try {
-        fetch("/api/user-disconnect", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            username: username, // Current user
-            otherUsername: otherUsername, // User who disconnected
-            roomName: roomName,
-            reason: "user_disconnected",
-          }),
-        })
-          .then((response) => response.json())
-          .then((data) => {
-            console.log("Disconnection response:", data);
-            
-            // Navigate back to video chat page with reset flag
-            if (!hasInitiatedNavigation.current) {
-              hasInitiatedNavigation.current = true;
-              setIsRedirecting(true);
-              
-              // Add a small delay to ensure state updates and allow server to process
-              setTimeout(() => {
-                const url = new URL("/video-chat", window.location.origin);
-                url.searchParams.set("reset", "true");
-                url.searchParams.set("username", username);
-                
-                // Use the router from the component that renders this hook
-                // This will happen automatically due to the unmount effect in RoomComponent
-                console.log("Redirecting to:", url.toString());
-              }, 100);
-            }
+      // Add a grace period to avoid premature disconnection handling
+      // This helps with initial connection issues that might be misinterpreted as disconnections
+      setTimeout(() => {
+        // Notify server about disconnection - this will handle the disconnection logic
+        try {
+          fetch("/api/user-disconnect", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              username: username, // Current user
+              otherUsername: otherUsername, // User who disconnected
+              roomName: roomName,
+              reason: "user_disconnected",
+            }),
           })
-          .catch((error) => {
-            console.error("Error notifying server about disconnection:", error);
-          });
-      } catch (e) {
-        console.error("Error notifying server about disconnection:", e);
-      }
+            .then((response) => response.json())
+            .then((data) => {
+              console.log("Disconnection response:", data);
+              
+              // Navigate back to video chat page with reset flag
+              if (!hasInitiatedNavigation.current) {
+                hasInitiatedNavigation.current = true;
+                setIsRedirecting(true);
+                
+                // Add a small delay to ensure state updates and allow server to process
+                setTimeout(() => {
+                  const url = new URL("/video-chat", window.location.origin);
+                  url.searchParams.set("reset", "true");
+                  url.searchParams.set("username", username);
+                  
+                  // Use the router from the component that renders this hook
+                  // This will happen automatically due to the unmount effect in RoomComponent
+                  console.log("Redirecting to:", url.toString());
+                }, 100);
+              }
+            })
+            .catch((error) => {
+              console.error("Error notifying server about disconnection:", error);
+            });
+        } catch (e) {
+          console.error("Error notifying server about disconnection:", e);
+        }
+      }, 3000); // 3-second grace period
     },
     [roomName, username]
   );

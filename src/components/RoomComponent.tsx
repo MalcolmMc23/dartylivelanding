@@ -61,12 +61,41 @@ export default function RoomComponent({
   // Flag to track if unmount handling has been executed
   const unmountHandled = useRef(false);
 
+  // Use ref to track initial connection period
+  const isInitialConnectionPeriod = useRef(true);
+  const initialConnectionTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  // Set a connection stabilization period
+  useEffect(() => {
+    // Mark the first 5 seconds as an initial connection period
+    // During this time, we'll ignore disconnection events
+    isInitialConnectionPeriod.current = true;
+
+    // Clear the connection period after 5 seconds
+    initialConnectionTimeout.current = setTimeout(() => {
+      console.log("Initial connection stabilization period ended");
+      isInitialConnectionPeriod.current = false;
+    }, 5000);
+
+    return () => {
+      if (initialConnectionTimeout.current) {
+        clearTimeout(initialConnectionTimeout.current);
+      }
+    };
+  }, [roomName]);
+
   // Handle redirect when component unmounts
   useEffect(() => {
     return () => {
       // Prevent multiple redirects
       if (unmountHandled.current) {
         console.log("Unmount already handled, skipping redirect");
+        return;
+      }
+
+      // Skip redirect during initial connection period to prevent flashing
+      if (isInitialConnectionPeriod.current) {
+        console.log("In initial connection period, skipping redirect");
         return;
       }
 
@@ -143,6 +172,32 @@ export default function RoomComponent({
           audio={false}
           onError={(err) => {
             console.error("LiveKit connection error:", err);
+            // Only handle fatal errors after initial connection period
+            if (!isInitialConnectionPeriod.current) {
+              console.error("Fatal LiveKit error, will need to reconnect");
+            } else {
+              console.log(
+                "Ignoring LiveKit error during initial connection period"
+              );
+            }
+          }}
+          // Add additional connection callbacks for better debugging
+          onConnected={() => {
+            console.log("LiveKit connected successfully");
+            // We're connected - we can consider this a stable connection point
+            setTimeout(() => {
+              isInitialConnectionPeriod.current = false;
+              console.log("LiveKit connection now considered stable");
+            }, 2000);
+          }}
+          onDisconnected={() => {
+            console.log("LiveKit disconnected");
+            // Ignore disconnections during initial connection period
+            if (isInitialConnectionPeriod.current) {
+              console.log(
+                "Ignoring disconnection during initial connection period"
+              );
+            }
           }}
           data-lk-theme="default"
           className="h-full lk-video-conference"
