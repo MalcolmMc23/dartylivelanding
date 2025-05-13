@@ -7,7 +7,7 @@ import { ErrorDisplay } from "./room/ErrorDisplay";
 import { RoomStatusIndicators } from "./room/RoomStatusIndicators";
 import { useRoomConnection } from "./room/hooks/useRoomConnection";
 import { CustomControlBar } from "./CustomControlBar";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   useParticipants,
@@ -306,14 +306,58 @@ function VideoContainer() {
   const participants = useParticipants();
   const totalParticipants = participants.length + 1; // Including local participant
 
-  // Get camera and screen share tracks
-  const cameraTracks = useTracks(
-    [
+  // Track render count to help debug infinite renders
+  const renderCount = useRef(0);
+  useEffect(() => {
+    renderCount.current += 1;
+    console.log(`VideoContainer rendered: ${renderCount.current} times`);
+  });
+
+  // Get camera and screen share tracks with useMemo to prevent unnecessary processing
+  const trackSources = useMemo(
+    () => [
       { source: Track.Source.Camera, withPlaceholder: true },
       { source: Track.Source.ScreenShare, withPlaceholder: false },
     ],
-    { updateOnlyOn: [] }
+    []
   );
+
+  const cameraTracks = useTracks(trackSources, {
+    updateOnlyOn: [],
+    onlySubscribed: false,
+  });
+
+  // Prevent unnecessary re-renders by memoizing track rendering
+  const renderTracks = useCallback(() => {
+    console.log("Rendering tracks:", cameraTracks.length);
+    return cameraTracks.map(
+      (track: TrackReferenceOrPlaceholder, index: number) => {
+        // Get the participant's identity
+        const participantIdentity =
+          track.participant?.identity || (index === 0 ? "You" : "Participant");
+        const isLocalParticipant = track.participant?.isLocal || false;
+
+        return (
+          <div
+            key={track.publication?.trackSid || `participant-${index}`}
+            className="w-full max-w-lg h-auto rounded-xl overflow-hidden border-2 border-[#212121] shadow-lg transition-all relative"
+            style={{ aspectRatio: "16 / 9" }}
+          >
+            <MirroredVideoTile trackRef={track} className="h-full" />
+            {/* Custom participant name tag */}
+            <div
+              className="absolute bottom-6 left-6 bg-black bg-opacity-80 px-4 py-2 rounded-md text-white text-base font-medium z-20 shadow-md"
+              id={`custom-name-tag-${
+                isLocalParticipant ? "local" : track.participant?.identity
+              }`}
+            >
+              {isLocalParticipant ? "You" : participantIdentity}
+            </div>
+          </div>
+        );
+      }
+    );
+  }, [cameraTracks]);
 
   if (totalParticipants === 1) {
     // Only local participant - centered large tile with prompt
@@ -344,31 +388,7 @@ function VideoContainer() {
   // Two participants - stacked vertically (one on top of the other)
   return (
     <div className="w-full p-2 md:p-4 flex flex-col items-center justify-center gap-3 md:gap-6">
-      {cameraTracks.map((track: TrackReferenceOrPlaceholder, index: number) => {
-        // Get the participant's identity
-        const participantIdentity =
-          track.participant?.identity || (index === 0 ? "You" : "Participant");
-        const isLocalParticipant = track.participant?.isLocal || false;
-
-        return (
-          <div
-            key={track.publication?.trackSid || `participant-${index}`}
-            className="w-full max-w-lg h-auto rounded-xl overflow-hidden border-2 border-[#212121] shadow-lg transition-all relative"
-            style={{ aspectRatio: "16 / 9" }}
-          >
-            <MirroredVideoTile trackRef={track} className="h-full" />
-            {/* Custom participant name tag */}
-            <div
-              className="absolute bottom-6 left-6 bg-black bg-opacity-80 px-4 py-2 rounded-md text-white text-base font-medium z-20 shadow-md"
-              id={`custom-name-tag-${
-                isLocalParticipant ? "local" : track.participant?.identity
-              }`}
-            >
-              {isLocalParticipant ? "You" : participantIdentity}
-            </div>
-          </div>
-        );
-      })}
+      {renderTracks()}
     </div>
   );
 }
