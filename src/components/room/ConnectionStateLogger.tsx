@@ -118,6 +118,7 @@ export function ConnectionStateLogger({
     username,
     previousParticipantCount,
     onOtherParticipantDisconnected,
+    otherParticipants,
   ]);
 
   useEffect(() => {
@@ -224,6 +225,7 @@ export function ConnectionStateLogger({
     onOtherParticipantDisconnected,
     onParticipantCountChange,
     previousParticipantCount,
+    checkRoomCapacity,
   ]);
 
   // Render room full message if applicable

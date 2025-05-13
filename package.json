@@ -6,20 +6,18 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "db:setup": "node scripts/setup-local-db.js",
-    "db:cleanup": "node scripts/cleanup-stale-users.js"
+    "lint": "next lint"
   },
   "dependencies": {
     "@livekit/components-react": "^2.9.3",
-    "@types/pg": "^8.11.14",
+    "@types/ioredis": "^5.0.0",
     "async-mutex": "^0.5.0",
     "clsx": "^2.1.1",
     "dotenv": "^16.3.1",
+    "ioredis": "^5.6.1",
     "livekit-client": "^2.11.3",
     "livekit-server-sdk": "^2.12.0",
     "next": "15.3.1",
-    "pg": "^8.15.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^3.2.0",

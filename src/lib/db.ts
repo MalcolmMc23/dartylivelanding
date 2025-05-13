@@ -1,57 +1,35 @@
-import { Pool } from 'pg';
+// NOTE: This file is no longer used as the application has been switched to in-memory storage only.
+// It's kept for reference in case database functionality needs to be restored in the future.
 
-// Flag to track if we've shown the database warning
-let hasShownDbWarning = false;
-
-// Determine if this is a local development environment
-const isLocalDevelopment = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
-
-// Use environment variables for connection
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: isLocalDevelopment ? false : {
-    rejectUnauthorized: false // Only for production/staging environments
+// Mock implementations that return errors if accidentally called
+const mockPool = {
+  connect: async () => {
+    throw new Error('Database connection has been disabled. Application is using in-memory storage only.');
+  },
+  query: async () => {
+    throw new Error('Database queries have been disabled. Application is using in-memory storage only.');
+  },
+  end: async () => {
+    return;
   }
-});
+};
 
-// Test the connection and show a warning if it fails
-async function testConnection() {
-  try {
-    console.log('Attempting to connect to database...');
-    const client = await pool.connect();
-    await client.query('SELECT NOW()');
-    client.release();
-    console.log('Successfully connected to PostgreSQL database');
-    return true;
-  } catch (error: unknown) {
-    if (!hasShownDbWarning) {
-      console.warn('⚠️ Warning: Could not connect to PostgreSQL database. Make sure DATABASE_URL is properly set.');
-      console.warn('The application will fall back to in-memory state, which is less reliable.');
-      console.warn(`Error details: ${error instanceof Error ? error.message : String(error)}`);
-      // Log more specific error information
-      console.error('Full error:', error);
-      hasShownDbWarning = true;
-    }
-    return false;
-  }
+// Mock test connection that always returns false
+async function mockTestConnection() {
+  console.warn('Database connection test called but database has been disabled.');
+  return false;
 }
 
-// Try to establish connection on startup
-testConnection();
-
-export async function query(text: string, params: unknown[] = []) {
-  try {
-    const start = Date.now();
-    const res = await pool.query(text, params);
-    const duration = Date.now() - start;
-    console.log('Executed query', { text, duration, rows: res.rowCount });
-    return res;
-  } catch (error: unknown) {
-    console.error('Database query error:', error);
-    throw error;
-  }
+// Mock query function that throws an error
+async function mockQuery() {
+  throw new Error('Database queries have been disabled. Application is using in-memory storage only.');
 }
 
-// Create a named export object
-const dbUtils = { query, pool, testConnection };
+// Export mock implementations
+const dbUtils = { 
+  query: mockQuery, 
+  pool: mockPool, 
+  testConnection: mockTestConnection 
+};
+
 export default dbUtils;
