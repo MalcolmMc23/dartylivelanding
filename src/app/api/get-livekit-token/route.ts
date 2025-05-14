@@ -1,10 +1,44 @@
 import { AccessToken } from 'livekit-server-sdk';
 import { NextRequest, NextResponse } from 'next/server';
 import { RoomServiceClient } from 'livekit-server-sdk';
+import * as hybridMatchingService from '@/utils/hybridMatchingService';
 
 // Track room participant counts in memory (for development)
 // In production, this should use a database or Redis
 const roomParticipants: Record<string, string[]> = {};
+
+// Helper to remove a user from room participants tracking
+function removeUserFromRoomTracking(username: string, roomName?: string) {
+  if (roomName && roomParticipants[roomName]) {
+    roomParticipants[roomName] = roomParticipants[roomName].filter(u => u !== username);
+    console.log(`Removed ${username} from room tracking for ${roomName}, now has ${roomParticipants[roomName].length} participants`);
+    
+    // Clean up empty rooms
+    if (roomParticipants[roomName].length === 0) {
+      delete roomParticipants[roomName];
+      console.log(`Removed empty room ${roomName} from tracking`);
+    }
+    return true;
+  } else if (!roomName) {
+    // If no room specified, search all rooms
+    let removed = false;
+    Object.keys(roomParticipants).forEach(room => {
+      if (roomParticipants[room].includes(username)) {
+        roomParticipants[room] = roomParticipants[room].filter(u => u !== username);
+        console.log(`Removed ${username} from room tracking for ${room}, now has ${roomParticipants[room].length} participants`);
+        removed = true;
+        
+        // Clean up empty rooms
+        if (roomParticipants[room].length === 0) {
+          delete roomParticipants[room];
+          console.log(`Removed empty room ${room} from tracking`);
+        }
+      }
+    });
+    return removed;
+  }
+  return false;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -56,6 +90,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // First, remove the user from any existing room tracking
+    // This ensures we don't have ghost entries
+    removeUserFromRoomTracking(username);
+
     // Initialize room participants tracking if needed
     if (!roomParticipants[room]) {
       roomParticipants[room] = [];
@@ -84,6 +122,24 @@ export async function GET(request: NextRequest) {
         console.log(`Current participants in room ${room}: ${participantCount}`);
         console.log('Participant identities:', currentParticipants);
         
+        // First check if this room already exists in the matching system
+        const matchStatus = await hybridMatchingService.getRoomInfo(room);
+        
+        // Only allow the two users from the match record to join this room
+        if (matchStatus && matchStatus.isActive && matchStatus.users) {
+          const allowedUsers = matchStatus.users;
+          
+          // If user is not one of the allowed users for this room, reject
+          if (!allowedUsers.includes(username)) {
+            console.log(`Rejecting ${username}, not an allowed user for room ${room}`);
+            console.log(`Allowed users:`, allowedUsers);
+            return NextResponse.json(
+              { error: 'You are not authorized to join this room' },
+              { status: 403 }
+            );
+          }
+        }
+        
         // If user is already in the room, don't count them against the limit
         if (currentParticipants.includes(username)) {
           participantCount -= 1;
@@ -97,6 +153,19 @@ export async function GET(request: NextRequest) {
             { error: 'Room is full (maximum 2 participants allowed)' },
             { status: 403 }
           );
+        }
+        
+        // If everything looks good, make sure the room exists
+        try {
+          await roomService.createRoom({
+            name: room,
+            emptyTimeout: 10 * 60, // 10 minutes
+            maxParticipants: 2     // Hard limit of 2
+          });
+          console.log(`Room ${room} created or already exists`);
+        } catch (roomErr) {
+          console.log(`Error creating room: ${roomErr}`);
+          // Non-fatal, continue
         }
       } catch (err) {
         // If the room doesn't exist yet, this is fine
@@ -160,4 +229,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-} 
+}
+
+// Export the helper function for use in other files
+export { removeUserFromRoomTracking }; 

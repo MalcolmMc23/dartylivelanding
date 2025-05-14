@@ -17,6 +17,29 @@ interface ConnectionStateLoggerProps {
   onOtherParticipantDisconnected: (otherUsername: string) => void;
 }
 
+// Import the helper function for cleaning up room tracking
+// We use fetch here since we can't directly import from API routes in components
+const cleanupRoomTracking = async (username: string, roomName: string) => {
+  try {
+    await fetch("/api/user-disconnect", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        username,
+        roomName,
+        reason: "component_cleanup",
+      }),
+    });
+    console.log(
+      `Sent cleanup request for user ${username} in room ${roomName}`
+    );
+  } catch (error) {
+    console.error("Failed to send cleanup request:", error);
+  }
+};
+
 export function ConnectionStateLogger({
   onParticipantCountChange,
   maxParticipants,
@@ -27,8 +50,8 @@ export function ConnectionStateLogger({
   const connectionState = useConnectionState();
   const room = useRoomContext();
   const [isRoomFull, setIsRoomFull] = useState(false);
-  const [previousParticipantCount, setPreviousParticipantCount] = useState(0);
-  const [otherParticipants, setOtherParticipants] = useState<string[]>([]);
+  const previousParticipantCountRef = useRef(0);
+  const otherParticipantsRef = useRef<string[]>([]);
   // Track if we've already triggered a participant disconnect action
   const hasTriggeredDisconnectAction = useRef(false);
   // Use Ref to track the connection establishment time
@@ -58,8 +81,8 @@ export function ConnectionStateLogger({
       (p: RemoteParticipant) => p.identity
     );
 
-    // Keep track of other participants
-    setOtherParticipants(participantList);
+    // Store in ref instead of state to avoid re-renders
+    otherParticipantsRef.current = participantList;
 
     console.log("Current participants:", [
       room.localParticipant.identity,
@@ -69,7 +92,7 @@ export function ConnectionStateLogger({
     onParticipantCountChange(participantCount);
 
     // For auto-matching, we need to detect when a participant leaves
-    const hadOtherParticipant = previousParticipantCount === 2;
+    const hadOtherParticipant = previousParticipantCountRef.current === 2;
     const nowAlone = participantCount === 1;
 
     if (
@@ -87,13 +110,13 @@ export function ConnectionStateLogger({
       // Add grace period before handling disconnection
       setTimeout(() => {
         // Call the function to handle the other participant disconnecting
-        if (otherParticipants.length > 0) {
-          onOtherParticipantDisconnected(otherParticipants[0]);
+        if (otherParticipantsRef.current.length > 0) {
+          onOtherParticipantDisconnected(otherParticipantsRef.current[0]);
         }
       }, 2000); // 2-second grace period
     }
 
-    setPreviousParticipantCount(participantCount);
+    previousParticipantCountRef.current = participantCount;
 
     // Room is full if we have more than the max allowed participants
     // and we're not already in the list (to handle reconnections)
@@ -116,9 +139,7 @@ export function ConnectionStateLogger({
     maxParticipants,
     onParticipantCountChange,
     username,
-    previousParticipantCount,
     onOtherParticipantDisconnected,
-    otherParticipants,
   ]);
 
   useEffect(() => {
@@ -149,52 +170,16 @@ export function ConnectionStateLogger({
 
     const onParticipantDisconnected = (participant: Participant) => {
       console.log(`Participant disconnected: ${participant.identity}`);
-      const disconnectedParticipantIdentity = participant.identity;
 
-      // Get current participant count *after* disconnection
-      const currentRemoteCount = room.remoteParticipants.size;
-      const currentTotalCount = currentRemoteCount + 1; // +1 for local participant
+      // Clean up room tracking to prevent ghost users
+      if (participant.identity !== username) {
+        // This is the other participant who left
+        onOtherParticipantDisconnected(participant.identity);
 
-      console.log(`Participant count after disconnect: ${currentTotalCount}`);
-
-      // If only the local participant remains, trigger the disconnect handler
-      if (currentTotalCount === 1 && !hasTriggeredDisconnectAction.current) {
-        console.log(
-          "Only local participant remaining - triggering disconnect action"
-        );
-
-        // Check if we've had a stable connection for the minimum time
-        const now = Date.now();
-        const connectionTime = connectionEstablishedAt.current
-          ? now - connectionEstablishedAt.current
-          : 0;
-
-        console.log(`Connection has been stable for ${connectionTime}ms`);
-
-        // Only handle disconnection if we've had a stable connection
-        // or if it's been long enough to consider it a real disconnect
-        if (connectionTime >= MIN_STABLE_CONNECTION_TIME) {
-          hasTriggeredDisconnectAction.current = true;
-
-          // Add a grace period before initiating the disconnection action
-          // This prevents premature disconnections during initial connection establishment
-          setTimeout(() => {
-            // Call the handler passed from the parent with the disconnected participant's identity
-            onOtherParticipantDisconnected(disconnectedParticipantIdentity);
-
-            // Force a re-render of parent components to ensure UI updates
-            if (currentTotalCount !== previousParticipantCount) {
-              onParticipantCountChange(currentTotalCount);
-            }
-          }, 2000); // 2-second grace period
-        } else {
-          console.log(
-            `Ignoring disconnection during initial connection period (${connectionTime}ms)`
-          );
-        }
+        // Clean up room tracking
+        cleanupRoomTracking(participant.identity, room.name);
       }
 
-      // Update capacity state (for UI indicators etc.)
       checkRoomCapacity();
     };
 
@@ -213,6 +198,7 @@ export function ConnectionStateLogger({
 
     room.on(RoomEvent.ConnectionStateChanged, handleConnectionStateChanged);
 
+    // Clean up when the component unmounts
     return () => {
       room.off(RoomEvent.ParticipantConnected, onParticipantConnected);
       room.off(RoomEvent.ParticipantDisconnected, onParticipantDisconnected);
@@ -221,12 +207,20 @@ export function ConnectionStateLogger({
   }, [
     connectionState,
     room,
-    roomName,
+    checkRoomCapacity,
     onOtherParticipantDisconnected,
     onParticipantCountChange,
-    previousParticipantCount,
-    checkRoomCapacity,
   ]);
+
+  // Clean up when the component unmounts
+  useEffect(() => {
+    return () => {
+      // Clean up room tracking when component unmounts
+      if (username && room?.name) {
+        cleanupRoomTracking(username, room.name);
+      }
+    };
+  }, [username, room?.name]);
 
   // Render room full message if applicable
   if (isRoomFull && connectionState === ConnectionState.Disconnected) {

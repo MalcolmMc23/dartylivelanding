@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as hybridMatchingService from '@/utils/hybridMatchingService';
+import { removeUserFromRoomTracking } from '../get-livekit-token/route';
 
 // When a user disconnects, notify the system so we can take appropriate action
 export async function POST(request: NextRequest) {
@@ -11,6 +12,9 @@ export async function POST(request: NextRequest) {
     }
     
     console.log(`User disconnection event: ${username} from room ${roomName}. Reason: ${reason}`);
+    
+    // Clean up local room tracking to prevent ghost users
+    removeUserFromRoomTracking(username, roomName);
     
     // Handle the disconnection and add the left-behind user to the queue
     const result = await hybridMatchingService.handleUserDisconnection(username, roomName, otherUsername);

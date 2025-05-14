@@ -342,8 +342,8 @@ function VideoContainer() {
 
   const cameraTracks = useTracks(trackSources, trackOptions);
 
-  // Render tracks
-  const renderTracks = useCallback(() => {
+  // Memoize the rendered tracks to prevent unnecessary re-renders
+  const renderedTracks = useMemo(() => {
     console.log("Rendering tracks:", cameraTracks.length);
     return cameraTracks.map(
       (track: TrackReferenceOrPlaceholder, index: number) => {
@@ -403,7 +403,7 @@ function VideoContainer() {
   // Two participants - stacked vertically (one on top of the other)
   return (
     <div className="w-full p-2 md:p-4 flex flex-col items-center justify-center gap-3 md:gap-6">
-      {renderTracks()}
+      {renderedTracks}
     </div>
   );
 }

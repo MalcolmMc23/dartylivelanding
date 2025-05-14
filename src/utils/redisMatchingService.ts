@@ -4,6 +4,34 @@ import redis, { safeRedisOperation } from '../lib/redis';
 const WAITING_QUEUE = 'matching:waiting';
 const IN_CALL_QUEUE = 'matching:in_call';
 const ACTIVE_MATCHES = 'matching:active';
+const USED_ROOM_NAMES = 'matching:used_room_names'; // Track used room names to prevent reuse
+
+// Helper to generate a unique room name
+async function generateUniqueRoomName() {
+  // Try to generate a unique room name
+  let attempts = 0;
+  let roomName;
+  
+  do {
+    roomName = `match-${Math.random().toString(36).substring(2, 10)}`;
+    const exists = await redis.sismember(USED_ROOM_NAMES, roomName);
+    
+    if (!exists) {
+      // Add to the set of used room names
+      await redis.sadd(USED_ROOM_NAMES, roomName);
+      // Set expiration on this name (24 hours)
+      await redis.expire(USED_ROOM_NAMES, 24 * 60 * 60);
+      return roomName;
+    }
+    
+    attempts++;
+  } while (attempts < 10); // Prevent infinite loops
+  
+  // Fallback with timestamp if we somehow can't get a unique name
+  roomName = `match-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`;
+  await redis.sadd(USED_ROOM_NAMES, roomName);
+  return roomName;
+}
 
 export async function addUserToQueue(
   username: string,
@@ -90,11 +118,17 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
       // We found a match!
       await removeUserFromQueue(user.username);
       
+      // Make sure we have a valid room name
+      let roomName = user.roomName;
+      if (!roomName) {
+        roomName = await generateUniqueRoomName();
+      }
+      
       // Create match record
       const matchData = {
         user1: username,
         user2: user.username,
-        roomName: user.roomName || '',
+        roomName,
         useDemo: useDemo || user.useDemo,
         matchedAt: Date.now()
       };
@@ -132,7 +166,7 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
       await removeUserFromQueue(user.username);
       
       // Generate new room name
-      const roomName = `match-${Math.random().toString(36).substring(2, 10)}`;
+      const roomName = await generateUniqueRoomName();
       
       // Create match record
       const matchData = {
@@ -241,6 +275,34 @@ export async function cleanupOldMatches() {
   }
   
   return { removedCount };
+}
+
+// Get information about a room
+export async function getRoomInfo(roomName: string) {
+  if (!roomName) {
+    return { isActive: false };
+  }
+  
+  // Get match data from active matches
+  const matchData = await redis.hget(ACTIVE_MATCHES, roomName);
+  
+  if (!matchData) {
+    return { isActive: false };
+  }
+  
+  try {
+    const match = JSON.parse(matchData as string);
+    return {
+      isActive: true,
+      users: [match.user1, match.user2],
+      matchedAt: match.matchedAt,
+      useDemo: match.useDemo,
+      roomName
+    };
+  } catch (e) {
+    console.error('Error processing match data:', e);
+    return { isActive: false, error: String(e) };
+  }
 }
 
 // Get waiting queue status

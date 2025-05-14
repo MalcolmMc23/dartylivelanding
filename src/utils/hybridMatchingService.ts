@@ -32,11 +32,17 @@ export async function handleUserDisconnection(username: string, roomName: string
   return await redisMatchingService.handleUserDisconnection(username, roomName, otherUsername);
 }
 
-// Cleanup functions
+// Get information about a room and its users
+export async function getRoomInfo(roomName: string) {
+  return await redisMatchingService.getRoomInfo(roomName);
+}
+
+// Cleanup old waiting users
 export async function cleanupOldWaitingUsers() {
   return await redisMatchingService.cleanupOldWaitingUsers();
 }
 
+// Cleanup old matches
 export async function cleanupOldMatches() {
   return await redisMatchingService.cleanupOldMatches();
 }
