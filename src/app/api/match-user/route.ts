@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
       try {
         const roomInfo = await hybridMatchingService.getRoomInfo(matchResult.roomName);
         
-        if (!roomInfo.isActive || !roomInfo.users.includes(username)) {
+        if (!roomInfo.isActive || !roomInfo.users?.includes(username)) {
           console.log(`Room ${matchResult.roomName} not active or missing user ${username}, repairing match`);
           
           // Try to ensure the match is properly recorded
@@ -48,13 +48,13 @@ export async function POST(request: NextRequest) {
           await hybridMatchingService.removeUserFromQueue(matchResult.matchedWith);
           
           // Re-create the match with both users
-          const repairMatch = {
-            user1: username,
-            user2: matchResult.matchedWith,
-            roomName: matchResult.roomName,
-            useDemo: matchResult.useDemo,
-            matchedAt: Date.now()
-          };
+          // const repairMatch = {
+          //   user1: username,
+          //   user2: matchResult.matchedWith,
+          //   roomName: matchResult.roomName,
+          //   useDemo: matchResult.useDemo,
+          //   matchedAt: Date.now()
+          // };
           
           // This helper function isn't directly exposed, so we'll have to assume the internal state gets fixed otherwise
           // If the matchResult indicates a match, the system should have properly recorded it already

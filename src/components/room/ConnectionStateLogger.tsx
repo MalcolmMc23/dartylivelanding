@@ -222,9 +222,44 @@ export function ConnectionStateLogger({
 
   // Clean up when the component unmounts
   useEffect(() => {
+    const mountTime = Date.now(); // Track when this component was mounted
+
     return () => {
+      const unmountTime = Date.now();
+      const mountDuration = unmountTime - mountTime;
+
+      // Only clean up if we've been mounted for a reasonable time
+      // This prevents navigation-related flicker from causing disconnects
+      if (mountDuration < 3000) {
+        console.log(
+          `Skipping cleanup in ConnectionStateLogger - component only mounted for ${mountDuration}ms`
+        );
+        return;
+      }
+
       // Clean up room tracking when component unmounts
       if (username && room?.name) {
+        // Don't clean up if we're still in the stabilization period
+        if (!isStableConnection.current) {
+          console.log(`Skipping cleanup - connection was not yet stable`);
+          return;
+        }
+
+        // Check if we should skip disconnection (set by StableRoomConnector)
+        const shouldSkipDisconnect =
+          typeof window !== "undefined" &&
+          window.sessionStorage.getItem("skipDisconnect") === "true";
+
+        if (shouldSkipDisconnect) {
+          console.log(
+            `Skipping cleanup in ConnectionStateLogger due to skipDisconnect flag`
+          );
+          return;
+        }
+
+        console.log(
+          `Cleaning up in ConnectionStateLogger after ${mountDuration}ms`
+        );
         cleanupRoomTracking(username, room.name);
       }
     };

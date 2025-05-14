@@ -238,11 +238,27 @@ export function useRoomConnection({
 
   // Clean up when the component unmounts
   useEffect(() => {
+    // Set up a flag to identify if this is a quick unmount (likely a navigation issue)
+    const mountTime = Date.now();
+    
     return () => {
       // Only perform cleanup if we have a username and room name and haven't already cleaned up
-      if (username && roomName && !isCleaningUp.current && hasEstablishedStableConnection.current) {
+      // AND the component was mounted for at least 3 seconds (to prevent cleanup on quick navigation)
+      const unmountTime = Date.now();
+      const componentLifetime = unmountTime - mountTime;
+      
+      // Check if we should skip disconnection (set by StableRoomConnector)
+      const shouldSkipDisconnect = typeof window !== 'undefined' && 
+        window.sessionStorage.getItem('skipDisconnect') === 'true';
+      
+      if (shouldSkipDisconnect) {
+        console.log(`Skipping disconnect for ${username} due to skipDisconnect flag`);
+        return;
+      }
+      
+      if (username && roomName && !isCleaningUp.current && hasEstablishedStableConnection.current && componentLifetime > 3000) {
         isCleaningUp.current = true;
-        console.log(`Cleanup on unmount for user ${username} in room ${roomName}`);
+        console.log(`Cleanup on unmount for user ${username} in room ${roomName} after ${componentLifetime}ms`);
         
         // Clean up room tracking when component unmounts
         try {
@@ -264,6 +280,8 @@ export function useRoomConnection({
         } catch (e) {
           console.error("Error during cleanup:", e);
         }
+      } else if (componentLifetime <= 3000) {
+        console.log(`Skipping cleanup for quick unmount (${componentLifetime}ms) - likely a navigation issue`);
       }
     };
   }, [username, roomName]);

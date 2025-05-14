@@ -17,6 +17,7 @@ import {
 import { Track } from "livekit-client";
 import { MirroredVideoTile } from "./room/MirroredVideoTile";
 import { ChatComponent } from "./ChatComponent";
+import { StableRoomConnector } from "./StableRoomConnector";
 
 // Max participants allowed in a room
 const MAX_PARTICIPANTS = 2;
@@ -211,6 +212,7 @@ export default function RoomComponent({
           data-lk-theme="default"
           className="h-full lk-video-conference"
         >
+          <StableRoomConnector username={username} roomName={roomName} />
           <ConnectionStateLogger
             onParticipantCountChange={setLiveParticipantCount}
             maxParticipants={MAX_PARTICIPANTS}

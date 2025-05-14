@@ -161,19 +161,25 @@ export async function GET() {
       inCallQueueSize: inCallQueueData.length,
       activeMatchesCount: Object.keys(activeMatchesData || {}).length,
       waitingQueue: waitingQueueData.map(d => {
-        try { return JSON.parse(d); } catch (e) { return d; }
+        try { return JSON.parse(d); } 
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        catch (_) { return d; }
       }),
       inCallQueue: inCallQueueData.map(d => {
-        try { return JSON.parse(d); } catch (e) { return d; }
+        try { return JSON.parse(d); } 
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        catch (_) { return d; }
       }),
       activeMatches: Object.entries(activeMatchesData || {}).reduce((acc, [key, value]) => {
         try {
           acc[key] = JSON.parse(value as string);
-        } catch (e) {
+        } 
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        catch (_) {
           acc[key] = value;
         }
         return acc;
-      }, {} as Record<string, any>)
+      }, {} as Record<string, unknown>)
     });
   } catch (error) {
     console.error("Error in check-match GET API:", error);

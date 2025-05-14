@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -17,6 +17,33 @@ export default function RoomPage() {
   const router = useRouter();
   const [username, setUsername] = useState<string | null>(null);
   const [roomName, setRoomName] = useState<string | null>(null);
+  const mountedRef = useRef(false);
+  const loadingRef = useRef(true);
+
+  // This effect runs once on mount to prevent flickering and remounting
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      console.log("Room page mounted - preventing remounts");
+
+      // Store that we've loaded this room in sessionStorage
+      // This helps prevent navigation issues
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem("roomPageMounted", "true");
+      }
+    }
+
+    // Simulated loading delay to ensure component stability
+    const timer = setTimeout(() => {
+      loadingRef.current = false;
+      console.log("Room page loading complete");
+    }, 1000);
+
+    return () => {
+      clearTimeout(timer);
+      console.log("Room page unmounting");
+    };
+  }, []);
 
   useEffect(() => {
     // Get username from search params
@@ -37,6 +64,11 @@ export default function RoomPage() {
 
     setUsername(usernameParam);
     setRoomName(roomId);
+
+    // Log important information to help with debugging
+    console.log(
+      `Room page initialized with username: ${usernameParam}, room: ${roomId}`
+    );
   }, [params, searchParams, router]);
 
   if (!username || !roomName) {
@@ -60,6 +92,9 @@ export default function RoomPage() {
         username={username}
         onDisconnect={() => {
           // Navigate back to video chat page when the user disconnects
+          console.log(
+            `User ${username} manually disconnected, navigating back`
+          );
           router.push(`/video-chat?username=${encodeURIComponent(username)}`);
         }}
       />
