@@ -12,8 +12,12 @@ async function generateUniqueRoomName() {
   let attempts = 0;
   let roomName;
   
+  // Include timestamp in the room name to ensure uniqueness
+  const timestamp = Date.now().toString(36); 
+  
   do {
-    roomName = `match-${Math.random().toString(36).substring(2, 10)}`;
+    // Combine timestamp with random string for guaranteed uniqueness
+    roomName = `match-${timestamp}-${Math.random().toString(36).substring(2, 8)}`;
     const exists = await redis.sismember(USED_ROOM_NAMES, roomName);
     
     if (!exists) {
@@ -21,15 +25,17 @@ async function generateUniqueRoomName() {
       await redis.sadd(USED_ROOM_NAMES, roomName);
       // Set expiration on this name (24 hours)
       await redis.expire(USED_ROOM_NAMES, 24 * 60 * 60);
+      console.log(`Generated new unique room name: ${roomName}`);
       return roomName;
     }
     
     attempts++;
   } while (attempts < 10); // Prevent infinite loops
   
-  // Fallback with timestamp if we somehow can't get a unique name
+  // Fallback with more precise timestamp if we somehow can't get a unique name
   roomName = `match-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`;
   await redis.sadd(USED_ROOM_NAMES, roomName);
+  console.log(`Generated fallback room name: ${roomName}`);
   return roomName;
 }
 
@@ -218,10 +224,16 @@ export async function handleUserDisconnection(username: string, roomName: string
     }
     
     if (leftBehindUser) {
+      // Generate a brand new room name for the left-behind user
+      // This ensures that when someone joins them, they get a completely fresh room
+      const newRoomName = await generateUniqueRoomName();
+      
       // Add left-behind user back to queue with in_call=true
-      await addUserToQueue(leftBehindUser, match.useDemo, true, roomName, {
+      await addUserToQueue(leftBehindUser, match.useDemo, true, newRoomName, {
         matchedWith: username
       });
+      
+      console.log(`User ${username} disconnected from ${roomName}. Left-behind user ${leftBehindUser} added to in-call queue with new room ${newRoomName}`);
     }
     
     return {

@@ -82,7 +82,7 @@ export default function Home() {
                 Submitting...
               </span>
             ) : (
-              "Try Video Chat"
+              "Join Waitlist"
             )}
           </button>
           {showWarning && (

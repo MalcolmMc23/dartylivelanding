@@ -93,6 +93,33 @@ export async function GET(request: NextRequest) {
     // First, remove the user from any existing room tracking
     // This ensures we don't have ghost entries
     removeUserFromRoomTracking(username);
+    
+    // IMPORTANT: First check if this room already exists in the matching system
+    // This needs to happen before any room tracking to prevent third users joining
+    const matchStatus = await hybridMatchingService.getRoomInfo(room);
+    
+    if (matchStatus && matchStatus.isActive && matchStatus.users) {
+      const allowedUsers = matchStatus.users;
+      
+      // If user is not one of the allowed users for this room, reject
+      if (!allowedUsers.includes(username)) {
+        console.log(`Rejecting ${username}, not an allowed user for room ${room}`);
+        console.log(`Allowed users:`, allowedUsers);
+        return NextResponse.json(
+          { error: 'You are not authorized to join this room' },
+          { status: 403 }
+        );
+      }
+      
+      console.log(`User ${username} is authorized for room ${room} (in active match)`);
+    } else {
+      console.log(`Room ${room} not found in active matches or user ${username} not authorized`);
+      // If not found in active matches, this might be a stale request - reject it
+      return NextResponse.json(
+        { error: 'This room does not exist or is no longer active' },
+        { status: 404 }
+      );
+    }
 
     // Initialize room participants tracking if needed
     if (!roomParticipants[room]) {
@@ -121,24 +148,6 @@ export async function GET(request: NextRequest) {
         
         console.log(`Current participants in room ${room}: ${participantCount}`);
         console.log('Participant identities:', currentParticipants);
-        
-        // First check if this room already exists in the matching system
-        const matchStatus = await hybridMatchingService.getRoomInfo(room);
-        
-        // Only allow the two users from the match record to join this room
-        if (matchStatus && matchStatus.isActive && matchStatus.users) {
-          const allowedUsers = matchStatus.users;
-          
-          // If user is not one of the allowed users for this room, reject
-          if (!allowedUsers.includes(username)) {
-            console.log(`Rejecting ${username}, not an allowed user for room ${room}`);
-            console.log(`Allowed users:`, allowedUsers);
-            return NextResponse.json(
-              { error: 'You are not authorized to join this room' },
-              { status: 403 }
-            );
-          }
-        }
         
         // If user is already in the room, don't count them against the limit
         if (currentParticipants.includes(username)) {
@@ -180,6 +189,15 @@ export async function GET(request: NextRequest) {
           );
         }
       }
+    }
+
+    // Double-check with our matching service again just to be safe
+    if (currentParticipants.length >= 2 && !currentParticipants.includes(username)) {
+      console.log(`Final check: Rejecting ${username}, room ${room} has too many participants`);
+      return NextResponse.json(
+        { error: 'Room is full (maximum 2 participants allowed)' },
+        { status: 403 }
+      );
     }
 
     // Create the access token with identity and name
