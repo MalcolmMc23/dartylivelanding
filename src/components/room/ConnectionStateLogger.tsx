@@ -56,19 +56,19 @@ export function ConnectionStateLogger({
   const hasTriggeredDisconnectAction = useRef(false);
   // Use Ref to track the connection establishment time
   const connectionEstablishedAt = useRef<number | null>(null);
-
-  // Define a minimum stable connection time (5 seconds)
-  const MIN_STABLE_CONNECTION_TIME = 5000;
+  // Track when the connection is stable (connected with another participant)
+  const isStableConnection = useRef(false);
 
   // Reset the disconnect action flag when the component mounts or roomName changes
   useEffect(() => {
     hasTriggeredDisconnectAction.current = false;
     connectionEstablishedAt.current = null;
+    isStableConnection.current = false;
     return () => {
       // Clean up when component unmounts
       hasTriggeredDisconnectAction.current = false;
     };
-  }, [roomName]);
+  }, [roomName, username]);
 
   // Function to check if room is at capacity
   const checkRoomCapacity = useCallback(() => {
@@ -91,6 +91,12 @@ export function ConnectionStateLogger({
 
     onParticipantCountChange(participantCount);
 
+    // Mark the connection as stable when we have 2 participants
+    if (participantCount === 2 && !isStableConnection.current) {
+      console.log("Connection is now stable with 2 participants");
+      isStableConnection.current = true;
+    }
+
     // For auto-matching, we need to detect when a participant leaves
     const hadOtherParticipant = previousParticipantCountRef.current === 2;
     const nowAlone = participantCount === 1;
@@ -98,7 +104,8 @@ export function ConnectionStateLogger({
     if (
       hadOtherParticipant &&
       nowAlone &&
-      !hasTriggeredDisconnectAction.current
+      !hasTriggeredDisconnectAction.current &&
+      isStableConnection.current // Only trigger if we had a stable connection
     ) {
       console.log(
         "Other participant has disconnected - will look for new match"
@@ -113,7 +120,7 @@ export function ConnectionStateLogger({
         if (otherParticipantsRef.current.length > 0) {
           onOtherParticipantDisconnected(otherParticipantsRef.current[0]);
         }
-      }, 2000); // 2-second grace period
+      }, 3000); // 3-second grace period
     }
 
     previousParticipantCountRef.current = participantCount;
@@ -210,6 +217,7 @@ export function ConnectionStateLogger({
     checkRoomCapacity,
     onOtherParticipantDisconnected,
     onParticipantCountChange,
+    username,
   ]);
 
   // Clean up when the component unmounts

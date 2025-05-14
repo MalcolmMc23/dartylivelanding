@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
-import { v4 as uuidv4 } from "uuid";
-
-// In-memory queue system for demonstration
-// In a production environment, this should be moved to a database or Redis
-const waitingUsers: { username: string; timestamp: number }[] = [];
-const activeMatches: { [key: string]: string[] } = {}; // roomName -> usernames
+import * as hybridMatchingService from '@/utils/hybridMatchingService';
+import redis from '@/lib/redis';
 
 // Debug log with timestamps
 function debugLog(...messages: unknown[]): void {
@@ -21,99 +17,127 @@ export async function POST(request: Request) {
     }
 
     debugLog(`Check match request for user: ${username}`);
-    debugLog(`Current queue state: ${waitingUsers.length} waiting, ${Object.keys(activeMatches).length} active matches`);
-
-    // Check if user is already in an active match
-    for (const [roomName, users] of Object.entries(activeMatches)) {
-      if (users.includes(username)) {
-        debugLog(`User ${username} is already in active match: ${roomName}`);
-        return NextResponse.json({ match: true, roomName });
-      }
-    }
-
-    // Check if user is already in waiting queue, if not, add them
-    const existingUserIndex = waitingUsers.findIndex(user => user.username === username);
     
-    if (existingUserIndex === -1) {
-      // User not in queue, add them
-      waitingUsers.push({ username, timestamp: Date.now() });
-      debugLog(`Added ${username} to waiting queue, position: ${waitingUsers.length}`);
-    } else {
-      // User already in queue, update timestamp to prevent multiple entries
-      debugLog(`User ${username} already in queue at position ${existingUserIndex + 1}/${waitingUsers.length}`);
-    }
-
-    // If there's only one user in the queue (this user), no match yet
-    if (waitingUsers.length === 1) {
-      debugLog(`User ${username} is alone in queue, no match yet`);
+    // Clean up stale records
+    await hybridMatchingService.cleanupOldWaitingUsers();
+    await hybridMatchingService.cleanupOldMatches();
+    
+    // Check if user has a match using the Redis matching service
+    const status = await hybridMatchingService.getWaitingQueueStatus(username);
+    debugLog(`Current status for ${username}: ${JSON.stringify(status)}`);
+    
+    if (status.status === 'matched') {
+      // User has been matched with someone!
+      debugLog(`MATCH FOUND: ${username} matched with ${status.matchedWith} in room ${status.roomName}`);
+      
+      // Verify that room exists in Redis before sending back to client
+      if (status.roomName) {
+        const roomInfo = await hybridMatchingService.getRoomInfo(status.roomName);
+        if (!roomInfo.isActive) {
+          debugLog(`Room ${status.roomName} is not active, fixing match record...`);
+          // Attempt to create/fix the match
+          await hybridMatchingService.addUserToQueue(username, status.useDemo || false, false);
+          return NextResponse.json({ 
+            match: false,
+            debug: {
+              error: "Room not active, re-added to queue",
+              originalMatch: status
+            }
+          });
+        }
+        
+        return NextResponse.json({ 
+          match: true, 
+          roomName: status.roomName,
+          matchedWith: status.matchedWith,
+          useDemo: status.useDemo || false,
+          debug: {
+            matchedWith: status.matchedWith,
+            useDemo: status.useDemo || false,
+            roomInfo: roomInfo
+          }
+        });
+      } else {
+        debugLog(`Matched status but missing roomName, fixing...`);
+        // Re-add to queue if room name is missing
+        await hybridMatchingService.addUserToQueue(username, status.useDemo || false, false);
+        return NextResponse.json({ 
+          match: false,
+          debug: {
+            error: "Missing room name, re-added to queue",
+            originalMatch: status
+          }
+        });
+      }
+    } else if (status.status === 'waiting') {
+      // User is still waiting for a match
+      debugLog(`User ${username} is in waiting queue`);
+      
+      // Try to find a match now (more aggressive matching)
+      const matchResult = await hybridMatchingService.findMatchForUser(username, false);
+      
+      if (matchResult.status === 'matched') {
+        debugLog(`MATCH FOUND on aggressive try: ${username} matched with ${matchResult.matchedWith} in room ${matchResult.roomName}`);
+        
+        return NextResponse.json({ 
+          match: true, 
+          roomName: matchResult.roomName,
+          matchedWith: matchResult.matchedWith,
+          useDemo: matchResult.useDemo || false,
+          debug: {
+            matchedWith: matchResult.matchedWith,
+            useDemo: matchResult.useDemo || false,
+            matchType: "aggressive"
+          }
+        });
+      }
+      
+      return NextResponse.json({ 
+        match: false,
+        debug: {
+          queuePosition: status.position || 0,
+          queueLength: status.queueSize || 0,
+          waitTime: 0
+        }
+      });
+    } else if (status.status === 'not_waiting') {
+      // User is not in the waiting queue, re-add them
+      debugLog(`User ${username} is not in queue, adding back to queue`);
+      
+      // Re-add user to waiting queue with useDemo=false (default)
+      await hybridMatchingService.addUserToQueue(username, false);
+      
+      // Immediately try to find a match (more eager matching)
+      const immediateMatchResult = await hybridMatchingService.findMatchForUser(username, false);
+      
+      if (immediateMatchResult.status === 'matched') {
+        debugLog(`IMMEDIATE MATCH FOUND: ${username} matched with ${immediateMatchResult.matchedWith} in room ${immediateMatchResult.roomName}`);
+        
+        return NextResponse.json({ 
+          match: true, 
+          roomName: immediateMatchResult.roomName,
+          matchedWith: immediateMatchResult.matchedWith,
+          useDemo: immediateMatchResult.useDemo || false,
+          debug: {
+            matchedWith: immediateMatchResult.matchedWith,
+            useDemo: immediateMatchResult.useDemo || false,
+            matchType: "immediate"
+          }
+        });
+      }
+      
       return NextResponse.json({ 
         match: false,
         debug: {
           queuePosition: 1,
-          queueLength: waitingUsers.length,
-          waitTime: Math.floor((Date.now() - waitingUsers[0].timestamp) / 1000)
-        } 
-      });
-    }
-
-    // Find the earliest waiting user that isn't this user
-    let matchedUserIndex = -1;
-    
-    for (let i = 0; i < waitingUsers.length; i++) {
-      if (waitingUsers[i].username !== username) {
-        matchedUserIndex = i;
-        break;
-      }
-    }
-
-    // If we found a match
-    if (matchedUserIndex !== -1) {
-      const matchedUser = waitingUsers[matchedUserIndex];
-      
-      // Generate a room name
-      const roomName = uuidv4();
-      
-      debugLog(`MATCH FOUND: ${username} matched with ${matchedUser.username} in room ${roomName}`);
-      
-      // Remove both users from waiting queue
-      const usersToRemove = [username, matchedUser.username];
-      const filteredUsers = waitingUsers.filter(user => !usersToRemove.includes(user.username));
-      
-      debugLog(`Removing users from queue: ${usersToRemove.join(', ')}`);
-      debugLog(`Queue size before: ${waitingUsers.length}, after: ${filteredUsers.length}`);
-      
-      waitingUsers.length = 0;
-      waitingUsers.push(...filteredUsers);
-      
-      // Add to active matches
-      activeMatches[roomName] = [username, matchedUser.username];
-      
-      debugLog(`New active match created: ${roomName} with users ${activeMatches[roomName].join(', ')}`);
-      debugLog(`Total active matches: ${Object.keys(activeMatches).length}`);
-      
-      return NextResponse.json({ 
-        match: true, 
-        roomName,
-        debug: {
-          matchedWith: matchedUser.username,
-          waitTime: Math.floor((Date.now() - matchedUser.timestamp) / 1000)
+          queueLength: 1,
+          waitTime: 0
         }
       });
     }
-
-    // No match yet
-    const userPosition = waitingUsers.findIndex(user => user.username === username) + 1;
-    debugLog(`No match found for ${username}, still waiting at position ${userPosition}/${waitingUsers.length}`);
     
-    return NextResponse.json({ 
-      match: false,
-      debug: {
-        queuePosition: userPosition,
-        queueLength: waitingUsers.length,
-        waitTime: userPosition > 0 ? 
-          Math.floor((Date.now() - waitingUsers[userPosition-1].timestamp) / 1000) : 0
-      }
-    });
+    // Default response - no match yet
+    return NextResponse.json({ match: false });
   } catch (error) {
     console.error("Error in check-match API:", error);
     return NextResponse.json({ error: "Internal server error", details: String(error) }, { status: 500 });
@@ -122,10 +146,37 @@ export async function POST(request: Request) {
 
 // Helper function to get list of waiting users (for debugging)
 export async function GET() {
-  return NextResponse.json({ 
-    waitingUsers: waitingUsers.length,
-    activeMatches: Object.keys(activeMatches).length,
-    users: waitingUsers.map(u => u.username),
-    matches: Object.entries(activeMatches).map(([room, users]) => ({ room, users }))
-  });
+  try {
+    // Clean up stale records
+    await hybridMatchingService.cleanupOldWaitingUsers();
+    await hybridMatchingService.cleanupOldMatches();
+    
+    // For debugging, return the raw Redis queue data
+    const waitingQueueData = await redis.zrange('matching:waiting', 0, -1);
+    const inCallQueueData = await redis.zrange('matching:in_call', 0, -1);
+    const activeMatchesData = await redis.hgetall('matching:active');
+
+    return NextResponse.json({
+      waitingQueueSize: waitingQueueData.length,
+      inCallQueueSize: inCallQueueData.length,
+      activeMatchesCount: Object.keys(activeMatchesData || {}).length,
+      waitingQueue: waitingQueueData.map(d => {
+        try { return JSON.parse(d); } catch (e) { return d; }
+      }),
+      inCallQueue: inCallQueueData.map(d => {
+        try { return JSON.parse(d); } catch (e) { return d; }
+      }),
+      activeMatches: Object.entries(activeMatchesData || {}).reduce((acc, [key, value]) => {
+        try {
+          acc[key] = JSON.parse(value as string);
+        } catch (e) {
+          acc[key] = value;
+        }
+        return acc;
+      }, {} as Record<string, any>)
+    });
+  } catch (error) {
+    console.error("Error in check-match GET API:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 } 

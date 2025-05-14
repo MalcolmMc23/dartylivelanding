@@ -49,7 +49,6 @@ function VideoRoomManager() {
   const [isPostReset, setIsPostReset] = useState(false);
   // Store the default username for the uncontrolled input to use
   const [defaultUsername, setDefaultUsername] = useState("");
-  const [liveKitUrl, setLiveKitUrl] = useState("");
 
   // Define findRandomChat with useCallback
   const findRandomChat = useCallback(

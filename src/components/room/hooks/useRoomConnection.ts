@@ -40,12 +40,18 @@ export function useRoomConnection({
   const hasInitiatedNavigation = useRef(false);
   // Use ref to track if disconnect action has been triggered
   const hasTriggeredDisconnectAction = useRef(false);
+  // Track if connection has been stable
+  const hasEstablishedStableConnection = useRef(false);
+  // Track cleanup state to prevent multiple calls
+  const isCleaningUp = useRef(false);
 
   // Reset navigation state when room or username changes
   useEffect(() => {
     setIsRedirecting(false);
     hasInitiatedNavigation.current = false;
     hasTriggeredDisconnectAction.current = false;
+    hasEstablishedStableConnection.current = false;
+    isCleaningUp.current = false;
   }, [roomName, username]);
 
   // Get token from the API
@@ -116,6 +122,14 @@ export function useRoomConnection({
         if (typeof data.token === "string") {
           console.log(`Token received (length: ${data.token.length})`);
           setToken(data.token);
+          
+          // Mark connection as stable after a short delay
+          // This prevents premature disconnection handling during initial connection
+          setTimeout(() => {
+            hasEstablishedStableConnection.current = true;
+            console.log("Connection marked as stable");
+          }, 3000);
+          
           return true;
         } else {
           console.error("Invalid token format received:", typeof data.token);
@@ -148,11 +162,17 @@ export function useRoomConnection({
         return;
       }
 
+      // Don't handle disconnections until we have a stable connection
+      if (!hasEstablishedStableConnection.current) {
+        console.log("Connection not yet stable, ignoring disconnection event");
+        return;
+      }
+
       // Mark that we've handled the disconnection so we don't trigger this again
       hasTriggeredDisconnectAction.current = true;
 
-      // Add a grace period to avoid premature disconnection handling
-      // This helps with initial connection issues that might be misinterpreted as disconnections
+      // Add a longer grace period (10 seconds) to avoid premature disconnection handling
+      // This helps with initial connection issues and network fluctuations
       setTimeout(() => {
         // Notify server about disconnection - this will handle the disconnection logic
         try {
@@ -182,11 +202,12 @@ export function useRoomConnection({
                   const url = new URL("/video-chat", window.location.origin);
                   url.searchParams.set("reset", "true");
                   url.searchParams.set("username", username);
+                  url.searchParams.set("autoMatch", "true"); // Automatically try to find a new match
                   
                   // Use the router from the component that renders this hook
                   // This will happen automatically due to the unmount effect in RoomComponent
                   console.log("Redirecting to:", url.toString());
-                }, 100);
+                }, 500);
               }
             })
             .catch((error) => {
@@ -195,7 +216,7 @@ export function useRoomConnection({
         } catch (e) {
           console.error("Error notifying server about disconnection:", e);
         }
-      }, 3000); // 3-second grace period
+      }, 10000); // 10-second grace period
     },
     [roomName, username]
   );
@@ -214,6 +235,38 @@ export function useRoomConnection({
   useEffect(() => {
     fetchToken(usingDemoServer);
   }, [fetchToken, usingDemoServer]);
+
+  // Clean up when the component unmounts
+  useEffect(() => {
+    return () => {
+      // Only perform cleanup if we have a username and room name and haven't already cleaned up
+      if (username && roomName && !isCleaningUp.current && hasEstablishedStableConnection.current) {
+        isCleaningUp.current = true;
+        console.log(`Cleanup on unmount for user ${username} in room ${roomName}`);
+        
+        // Clean up room tracking when component unmounts
+        try {
+          fetch("/api/user-disconnect", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              username,
+              roomName,
+              reason: "component_cleanup"
+            }),
+            // Use keepalive to ensure the request completes even if the page is unloading
+            keepalive: true
+          }).catch(e => {
+            console.error("Error during cleanup:", e);
+          });
+        } catch (e) {
+          console.error("Error during cleanup:", e);
+        }
+      }
+    };
+  }, [username, roomName]);
 
   return {
     token,

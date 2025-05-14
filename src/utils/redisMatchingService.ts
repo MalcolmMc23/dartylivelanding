@@ -1,4 +1,4 @@
-import redis, { safeRedisOperation } from '../lib/redis';
+import redis from '../lib/redis';
 
 // Queue names
 const WAITING_QUEUE = 'matching:waiting';
@@ -216,27 +216,33 @@ export async function handleUserDisconnection(username: string, roomName: string
   const matchData = await redis.hget(ACTIVE_MATCHES, roomName);
   
   if (!matchData) {
+    console.log(`No active match found for room ${roomName}`);
     return { status: 'no_match_found' };
   }
   
   try {
     const match = JSON.parse(matchData as string);
     
-    // Remove match from active matches
-    await redis.hdel(ACTIVE_MATCHES, roomName);
-    
-    // Determine who was left behind
+    // Determine who was left behind (the other user in the match)
     let leftBehindUser = otherUsername;
     if (!leftBehindUser) {
       leftBehindUser = match.user1 === username ? match.user2 : match.user1;
     }
+    
+    console.log(`User ${username} disconnected from ${roomName}. Left-behind user: ${leftBehindUser}`);
+    
+    // Remove match from active matches
+    await redis.hdel(ACTIVE_MATCHES, roomName);
     
     if (leftBehindUser) {
       // Generate a brand new room name for the left-behind user
       // This ensures that when someone joins them, they get a completely fresh room
       const newRoomName = await generateUniqueRoomName();
       
-      // Add left-behind user back to queue with in_call=true
+      // First ensure the left-behind user is removed from any existing queue
+      await removeUserFromQueue(leftBehindUser);
+      
+      // Add left-behind user back to queue with in_call=true (they're waiting for a new match)
       await addUserToQueue(leftBehindUser, match.useDemo, true, newRoomName, {
         matchedWith: username
       });

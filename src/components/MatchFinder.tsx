@@ -126,10 +126,17 @@ export function MatchFinder({ username }: MatchFinderProps) {
         if (data.match) {
           // If match found, redirect to the room
           logWithTime(`Match found! Redirecting to room ${data.roomName}`);
+
+          // Include matchedWith in the URL if it's available
+          const matchedWith = data.matchedWith
+            ? `&matchedWith=${encodeURIComponent(data.matchedWith)}`
+            : "";
+          const useDemo = data.useDemo ? `&useDemo=true` : "";
+
           router.push(
             `/video-chat/room/${data.roomName}?username=${encodeURIComponent(
               username
-            )}`
+            )}${matchedWith}${useDemo}`
           );
         } else if (!cancelled && !forceReset) {
           // No match yet - log info from server

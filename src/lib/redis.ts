@@ -57,7 +57,8 @@ function createDummyRedisClient() {
     hdel: async () => 0,
     hgetall: async () => ({} as Record<string, string>),
     zremrangebyscore: async () => 0,
-    on: (event: string, callback: Function) => {
+    on: () => {
+      // Return the client to allow chaining
       return dummyClient;
     }
   } as unknown as Redis;
