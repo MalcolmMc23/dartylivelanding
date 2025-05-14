@@ -125,9 +125,14 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
       await removeUserFromQueue(user.username);
       
       // Make sure we have a valid room name
+      // Important: Use the room name from the in-call user
+      // This ensures we join their room correctly
       let roomName = user.roomName;
       if (!roomName) {
         roomName = await generateUniqueRoomName();
+        console.log(`No room name found for in-call user ${user.username}, generated new room: ${roomName}`);
+      } else {
+        console.log(`Using existing room name ${roomName} from in-call user ${user.username}`);
       }
       
       // Create match record
@@ -140,6 +145,7 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
       };
       
       await redis.hset(ACTIVE_MATCHES, matchData.roomName, JSON.stringify(matchData));
+      console.log(`Created match: ${username} with ${user.username} in room ${roomName}`);
       
       return {
         status: 'matched',
@@ -173,6 +179,7 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
       
       // Generate new room name
       const roomName = await generateUniqueRoomName();
+      console.log(`Generated new room ${roomName} for match between ${username} and ${user.username}`);
       
       // Create match record
       const matchData = {
@@ -184,6 +191,7 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
       };
       
       await redis.hset(ACTIVE_MATCHES, roomName, JSON.stringify(matchData));
+      console.log(`Created match: ${username} with ${user.username} in room ${roomName}`);
       
       return {
         status: 'matched',

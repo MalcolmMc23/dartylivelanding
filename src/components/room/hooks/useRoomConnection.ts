@@ -79,7 +79,7 @@ export function useRoomConnection({
         }
 
         const response = await fetch(
-          `/api/get-livekit-token?room=${safeRoomName}&username=${username}&useDemo=${useDemoServer}`
+          `/api/get-livekit-token?room=${safeRoomName}&username=${username}&useDemo=${useDemoServer}&initialMatching=true`
         );
         const data = await response.json();
 

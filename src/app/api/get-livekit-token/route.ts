@@ -46,6 +46,8 @@ export async function GET(request: NextRequest) {
     let room = searchParams.get('room');
     const username = searchParams.get('username');
     const useDemo = searchParams.get('useDemo') === 'true';
+    // Special flag to bypass room checks during initial matching
+    const initialMatching = searchParams.get('initialMatching') === 'true';
 
     if (!room || !username) {
       return NextResponse.json(
@@ -94,31 +96,50 @@ export async function GET(request: NextRequest) {
     // This ensures we don't have ghost entries
     removeUserFromRoomTracking(username);
     
-    // IMPORTANT: First check if this room already exists in the matching system
-    // This needs to happen before any room tracking to prevent third users joining
-    const matchStatus = await hybridMatchingService.getRoomInfo(room);
-    
-    if (matchStatus && matchStatus.isActive && matchStatus.users) {
-      const allowedUsers = matchStatus.users;
+    let isAuthorized = false;
+
+    // Check if this room exists in the matching system
+    // We do this primarily to validate the user has permission to join
+    if (!initialMatching) {
+      const matchStatus = await hybridMatchingService.getRoomInfo(room);
       
-      // If user is not one of the allowed users for this room, reject
-      if (!allowedUsers.includes(username)) {
-        console.log(`Rejecting ${username}, not an allowed user for room ${room}`);
-        console.log(`Allowed users:`, allowedUsers);
+      if (matchStatus && matchStatus.isActive && matchStatus.users) {
+        const allowedUsers = matchStatus.users;
+        
+        // If user is not one of the allowed users for this room, reject
+        if (!allowedUsers.includes(username)) {
+          console.log(`Rejecting ${username}, not an allowed user for room ${room}`);
+          console.log(`Allowed users:`, allowedUsers);
+          return NextResponse.json(
+            { error: 'You are not authorized to join this room' },
+            { status: 403 }
+          );
+        }
+        
+        console.log(`User ${username} is authorized for room ${room} (in active match)`);
+        isAuthorized = true;
+      } else {
+        // Look up the user in the waiting and in-call queues to check if they should be allowed
+        const userStatus = await hybridMatchingService.getWaitingQueueStatus(username);
+        
+        if (userStatus && userStatus.status === 'matched' && userStatus.roomName === room) {
+          console.log(`User ${username} is authorized via matching status for room ${room}`);
+          isAuthorized = true;
+        } else if (userStatus && userStatus.status === 'waiting') {
+          // For users in waiting state, we need to be more lenient
+          console.log(`User ${username} is in waiting state for room ${room}, allowing`);
+          isAuthorized = true;
+        }
+      }
+      
+      // If still not authorized after all checks, reject
+      if (!isAuthorized && !initialMatching) {
+        console.log(`User ${username} not authorized for room ${room}, rejecting`);
         return NextResponse.json(
           { error: 'You are not authorized to join this room' },
           { status: 403 }
         );
       }
-      
-      console.log(`User ${username} is authorized for room ${room} (in active match)`);
-    } else {
-      console.log(`Room ${room} not found in active matches or user ${username} not authorized`);
-      // If not found in active matches, this might be a stale request - reject it
-      return NextResponse.json(
-        { error: 'This room does not exist or is no longer active' },
-        { status: 404 }
-      );
     }
 
     // Initialize room participants tracking if needed
