@@ -110,16 +110,27 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
   // First try to match with someone already in a call (priority)
   const inCallUsers = await redis.zrange(IN_CALL_QUEUE, 0, -1);
   
+  console.log(`Looking for match for ${username}. Found ${inCallUsers.length} users in in-call queue`);
+  
   for (const userData of inCallUsers) {
     try {
       const user = JSON.parse(userData);
       
+      // Skip ourselves if somehow we're in the in-call queue too
+      if (user.username === username) continue;
+      
       // Skip if this is the user we just left
-      if (lastMatchedWith && user.username === lastMatchedWith) continue;
+      if (lastMatchedWith && user.username === lastMatchedWith) {
+        console.log(`Skipping recent match ${user.username} for user ${username}`);
+        continue;
+      }
       
       // Skip if we recently matched with this user (5-min cooldown)
       if (user.lastMatch?.matchedWith === username && 
-          (Date.now() - user.lastMatch.timestamp < 5 * 60 * 1000)) continue;
+          (Date.now() - user.lastMatch.timestamp < 5 * 60 * 1000)) {
+        console.log(`Skipping ${user.username} due to recent match cooldown`);
+        continue;
+      }
       
       // We found a match!
       await removeUserFromQueue(user.username);
@@ -243,9 +254,20 @@ export async function handleUserDisconnection(username: string, roomName: string
       await removeUserFromQueue(leftBehindUser);
       
       // Add left-behind user back to queue with in_call=true (they're waiting for a new match)
-      await addUserToQueue(leftBehindUser, match.useDemo, true, newRoomName, {
+      const addResult = await addUserToQueue(leftBehindUser, match.useDemo, true, newRoomName, {
         matchedWith: username
       });
+      
+      // Verify the user was added to the queue successfully
+      if (addResult.added) {
+        // Force a refresh of the queue timestamp to prevent early cleanup
+        // This is done by updating the score of the queue entry to current time
+        const userData = await scanQueueForUser(IN_CALL_QUEUE, leftBehindUser);
+        if (userData) {
+          await redis.zadd(IN_CALL_QUEUE, Date.now(), userData);
+          console.log(`Updated queue position timestamp for left-behind user ${leftBehindUser}`);
+        }
+      }
       
       console.log(`User ${username} disconnected from ${roomName}. Left-behind user ${leftBehindUser} added to in-call queue with new room ${newRoomName}`);
     }
@@ -263,11 +285,17 @@ export async function handleUserDisconnection(username: string, roomName: string
 
 // Cleanup functions
 export async function cleanupOldWaitingUsers() {
-  const maxWaitTime = Date.now() - (5 * 60 * 1000); // 5 minutes ago
+  // Regular waiting users timeout after 5 minutes
+  const maxWaitTime = Date.now() - (5 * 60 * 1000); 
   
-  // Remove users who joined more than 5 minutes ago
+  // In-call users have a longer timeout (15 minutes) since we want to prioritize matching them
+  const maxInCallWaitTime = Date.now() - (15 * 60 * 1000);
+  
+  // Remove users who joined more than 5 minutes ago from waiting queue
   const removedCount = await redis.zremrangebyscore(WAITING_QUEUE, 0, maxWaitTime);
-  const removedInCallCount = await redis.zremrangebyscore(IN_CALL_QUEUE, 0, maxWaitTime);
+  
+  // Remove users from in-call queue with a more generous timeout
+  const removedInCallCount = await redis.zremrangebyscore(IN_CALL_QUEUE, 0, maxInCallWaitTime);
   
   if (removedCount > 0 || removedInCallCount > 0) {
     console.log(`Cleaned up ${removedCount} waiting users and ${removedInCallCount} in-call users`);
@@ -352,21 +380,52 @@ export async function getWaitingQueueStatus(username: string) {
     }
   }
   
-  // Check if user is in waiting queue
+  // Check if user is in regular waiting queue
   const waitingUserData = await scanQueueForUser(WAITING_QUEUE, username);
+  
+  if (waitingUserData) {
+    const waitingUsers = await redis.zrange(WAITING_QUEUE, 0, -1, 'WITHSCORES');
+    const position = Math.floor(waitingUsers.indexOf(waitingUserData) / 2) + 1;
+    
+    // Parse user data to extract additional info
+    try {
+      const userInfo = JSON.parse(waitingUserData);
+      return {
+        status: 'waiting',
+        position,
+        queueSize: Math.floor(waitingUsers.length / 2), // WITHSCORES returns [member, score] pairs
+        useDemo: userInfo.useDemo
+      };
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (_) {
+      // Fallback if parsing fails
+      return {
+        status: 'waiting',
+        position,
+        queueSize: Math.floor(waitingUsers.length / 2)
+      };
+    }
+  }
+  
+  // Check if user is in in-call queue
   const inCallUserData = await scanQueueForUser(IN_CALL_QUEUE, username);
   
-  if (waitingUserData || inCallUserData) {
-    const waitingUsers = await redis.zrange(WAITING_QUEUE, 0, -1, 'WITHSCORES');
-    const position = waitingUserData ? 
-      Math.floor(waitingUsers.indexOf(waitingUserData) / 2) + 1 :
-      null;
-    
-    return {
-      status: 'waiting',
-      position,
-      queueSize: Math.floor(waitingUsers.length / 2) // WITHSCORES returns [member, score] pairs
-    };
+  if (inCallUserData) {
+    try {
+      const userInfo = JSON.parse(inCallUserData);
+      return {
+        status: 'in_call',
+        roomName: userInfo.roomName,
+        useDemo: userInfo.useDemo,
+        joinedAt: userInfo.joinedAt
+      };
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (_) {
+      // Fallback if parsing fails
+      return {
+        status: 'in_call'
+      };
+    }
   }
   
   return { status: 'not_waiting' };

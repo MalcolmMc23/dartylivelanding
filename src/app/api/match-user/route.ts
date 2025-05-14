@@ -5,7 +5,7 @@ export async function POST(request: NextRequest) {
   try {
     // Parse request body
     const body = await request.json();
-    const { username, useDemo = false } = body;
+    const { username, useDemo = false, isRematching = false } = body;
     
     if (!username) {
       return NextResponse.json(
@@ -14,9 +14,52 @@ export async function POST(request: NextRequest) {
       );
     }
     
+    console.log(`Match request for ${username} (useDemo: ${useDemo}, isRematching: ${isRematching})`);
+    
     // Clean up stale records
     await hybridMatchingService.cleanupOldWaitingUsers();
     await hybridMatchingService.cleanupOldMatches();
+    
+    // Special handling for users who are being re-matched
+    if (isRematching) {
+      console.log(`User ${username} is being re-matched after being left alone`);
+      
+      // First ensure user is removed from any existing queues or matches
+      await hybridMatchingService.removeUserFromQueue(username);
+      
+      // Look for users already in the in-call queue first (priority matching)
+      const matchResult = await hybridMatchingService.findMatchForUser(
+        username, 
+        useDemo,
+        body.lastMatch?.matchedWith
+      );
+      
+      if (matchResult.status === 'matched') {
+        console.log(`Re-matched user ${username} with ${matchResult.matchedWith} in room ${matchResult.roomName}`);
+        return NextResponse.json(matchResult);
+      }
+      
+      // If no match found, add to queue with priority
+      console.log(`No immediate match found for ${username}, adding to in-call queue for priority matching`);
+      
+      // Generate a new room name for this user
+      // const roomInfo = await hybridMatchingService.addUserToQueue(
+      await hybridMatchingService.addUserToQueue(
+        username,
+        useDemo,
+        true, // inCall=true for priority matching
+        undefined, // Let the service generate a room name
+        body.lastMatch // Provide any previous match info
+      );
+      
+      return NextResponse.json({
+        status: 'waiting',
+        message: 'Added to priority waiting queue',
+        isPriority: true
+      });
+    }
+    
+    // Regular matching flow (non-rematch) continues below
     
     // Check if user is already matched
     const status = await hybridMatchingService.getWaitingQueueStatus(username);
@@ -46,18 +89,6 @@ export async function POST(request: NextRequest) {
           // Try to ensure the match is properly recorded
           await hybridMatchingService.removeUserFromQueue(username);
           await hybridMatchingService.removeUserFromQueue(matchResult.matchedWith);
-          
-          // Re-create the match with both users
-          // const repairMatch = {
-          //   user1: username,
-          //   user2: matchResult.matchedWith,
-          //   roomName: matchResult.roomName,
-          //   useDemo: matchResult.useDemo,
-          //   matchedAt: Date.now()
-          // };
-          
-          // This helper function isn't directly exposed, so we'll have to assume the internal state gets fixed otherwise
-          // If the matchResult indicates a match, the system should have properly recorded it already
         }
       } catch (verifyError) {
         console.error(`Error verifying match for ${username}:`, verifyError);
@@ -119,15 +150,26 @@ export async function GET(request: NextRequest) {
     // Get status
     const status = await hybridMatchingService.getWaitingQueueStatus(username);
     
-    // If user is in 'waiting' state but it's been a while, refresh their position
-    if (status.status === 'waiting') {
+    // If user is in any queue (waiting or in-call), refresh their position
+    if (status.status === 'waiting' || status.status === 'in_call') {
       // Only refresh queue position if this is a regular poll, not explicit action
       if (!action) {
-        console.log(`User ${username} is waiting, refreshing queue position`);
+        console.log(`User ${username} is in ${status.status} state, refreshing queue position`);
         
-        // Touch the user's position in the queue to keep them active
-        await hybridMatchingService.removeUserFromQueue(username);
-        await hybridMatchingService.addUserToQueue(username, false);
+        // Remove and re-add to maintain the same queue state and room (if applicable)
+        const wasRemoved = await hybridMatchingService.removeUserFromQueue(username);
+        
+        if (wasRemoved) {
+          // Re-add with the same parameters to refresh timestamp
+          const inCall = status.status === 'in_call';
+          await hybridMatchingService.addUserToQueue(
+            username, 
+            status.useDemo || false, 
+            inCall,
+            status.roomName
+          );
+          console.log(`Refreshed queue position for ${username}, in-call: ${inCall}`);
+        }
       }
     }
     

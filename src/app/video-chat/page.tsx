@@ -69,6 +69,8 @@ function VideoRoomManager() {
           body: JSON.stringify({
             username: finalUsername,
             useDemo: usingDemoServer,
+            // Add a flag to indicate if this is a "rematch" after being left alone
+            isRematching: searchParams.get("autoMatch") === "true",
           }),
         });
 
@@ -102,7 +104,7 @@ function VideoRoomManager() {
         setIsWaiting(false);
       }
     },
-    [usingDemoServer, username]
+    [usingDemoServer, username, searchParams]
   );
 
   // Check if this is an auto-match redirect
@@ -111,6 +113,8 @@ function VideoRoomManager() {
     const autoMatch = searchParams.get("autoMatch");
     const usernameParam = searchParams.get("username");
     const reset = searchParams.get("reset");
+    // Check for timestamp to ensure we're looking at a fresh request
+    // const timestamp = searchParams.get("timestamp");
 
     // Handle reset flag - clear all state, but only once per reset=true instance
     if (reset === "true" && !resetProcessedRef.current) {
@@ -162,12 +166,24 @@ function VideoRoomManager() {
     // Only auto-match if explicitly requested with autoMatch=true parameter
     if (autoMatch === "true" && usernameParam) {
       console.log(`Auto-match explicitly requested for user: ${usernameParam}`);
+
+      // Clear any auto-match flags from the URL to prevent loops
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("autoMatch");
+        url.searchParams.delete("timestamp");
+        window.history.replaceState({}, "", url.toString());
+      }
+
       // Set username state immediately for controlled components if needed elsewhere
       setUsername(usernameParam);
+
       // Pass the username explicitly here as well, as state might not be updated yet
+      // Add a small delay to ensure all state is reset properly
       setTimeout(() => {
+        console.log(`Triggering auto-match for ${usernameParam}`);
         findRandomChat(usernameParam);
-      }, 500);
+      }, 800); // increased delay to ensure proper synchronization
     } else if (usernameParam && !isPostReset) {
       // If there's only a username but no autoMatch, and we are NOT in post-reset mode,
       // just set the username state. Avoid this if isPostReset is true, as the user

@@ -69,11 +69,12 @@ export async function POST(request: Request) {
           }
         });
       }
-    } else if (status.status === 'waiting') {
-      // User is still waiting for a match
-      debugLog(`User ${username} is in waiting queue`);
+    } else if (status.status === 'waiting' || status.status === 'in_call') {
+      // User is still waiting for a match or in a call waiting for new match
+      debugLog(`User ${username} is in ${status.status} queue`);
       
       // Try to find a match now (more aggressive matching)
+      // We'll try multiple times with different settings to ensure we get the best possible match
       const matchResult = await hybridMatchingService.findMatchForUser(username, false);
       
       if (matchResult.status === 'matched') {
@@ -95,6 +96,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ 
         match: false,
         debug: {
+          status: status.status,
           queuePosition: status.position || 0,
           queueLength: status.queueSize || 0,
           waitTime: 0

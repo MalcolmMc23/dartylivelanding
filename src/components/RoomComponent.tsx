@@ -18,6 +18,7 @@ import { Track } from "livekit-client";
 import { MirroredVideoTile } from "./room/MirroredVideoTile";
 import { ChatComponent } from "./ChatComponent";
 import { StableRoomConnector } from "./StableRoomConnector";
+import { RoomAutoMatchRedirector } from "./RoomAutoMatchRedirector";
 
 // Max participants allowed in a room
 const MAX_PARTICIPANTS = 2;
@@ -37,6 +38,8 @@ export default function RoomComponent({
 }: RoomComponentProps) {
   const router = useRouter();
   const [mobileView, setMobileView] = useState<"video" | "chat">("video");
+  const [otherParticipantLeft, setOtherParticipantLeft] = useState(false);
+
   const {
     token,
     error,
@@ -100,6 +103,14 @@ export default function RoomComponent({
         return;
       }
 
+      // Skip redirect if other participant left (let the RoomAutoMatchRedirector handle it)
+      if (otherParticipantLeft) {
+        console.log(
+          "Other participant left, RoomAutoMatchRedirector will handle redirect"
+        );
+        return;
+      }
+
       unmountHandled.current = true;
       console.log(
         "RoomComponent unmounting, redirecting to name entry page with reset flag"
@@ -113,7 +124,7 @@ export default function RoomComponent({
       url.searchParams.set("username", username);
       router.push(url.toString());
     };
-  }, [router, username]);
+  }, [router, username, otherParticipantLeft]);
 
   // When a participant disconnects, handle cleanup and navigation
   useEffect(() => {
@@ -170,6 +181,22 @@ export default function RoomComponent({
     }
   }, []);
 
+  // Custom handler for when the other participant disconnects
+  const handleOtherParticipantLeftRoom = useCallback(
+    (otherUsername: string) => {
+      console.log(
+        `Other participant ${otherUsername} left the room - will trigger auto-match`
+      );
+
+      // Set the flag that will trigger our redirector component
+      setOtherParticipantLeft(true);
+
+      // Still call the original handler which notifies the server
+      handleOtherParticipantDisconnected(otherUsername);
+    },
+    [handleOtherParticipantDisconnected]
+  );
+
   // Memoize LiveKitRoom options to prevent re-renders
   const liveKitOptions = useMemo(
     () => ({
@@ -213,12 +240,17 @@ export default function RoomComponent({
           className="h-full lk-video-conference"
         >
           <StableRoomConnector username={username} roomName={roomName} />
+          <RoomAutoMatchRedirector
+            username={username}
+            roomName={roomName}
+            otherParticipantLeft={otherParticipantLeft}
+          />
           <ConnectionStateLogger
             onParticipantCountChange={setLiveParticipantCount}
             maxParticipants={MAX_PARTICIPANTS}
             username={username}
             roomName={roomName}
-            onOtherParticipantDisconnected={handleOtherParticipantDisconnected}
+            onOtherParticipantDisconnected={handleOtherParticipantLeftRoom}
           />
 
           <div className="h-full flex flex-col relative">
