@@ -203,8 +203,8 @@ function VideoRoomManager() {
     let intervalId: NodeJS.Timeout;
 
     if (isWaiting && username) {
-      // Poll the status every 2 seconds
-      intervalId = setInterval(async () => {
+      // Initial check immediately when entering waiting state
+      const checkStatus = async () => {
         try {
           const response = await fetch(
             `/api/match-user?username=${encodeURIComponent(username)}`
@@ -231,7 +231,13 @@ function VideoRoomManager() {
         } catch (error) {
           console.error("Error polling status:", error);
         }
-      }, 2000);
+      };
+
+      // Check immediately
+      checkStatus();
+
+      // Then poll regularly
+      intervalId = setInterval(checkStatus, 2000);
     }
 
     return () => {
