@@ -107,85 +107,118 @@ function VideoRoomManager() {
 
   // Check if this is an auto-match redirect
   useEffect(() => {
-    console.log("Checking URL parameters for auto-matching and reset flags");
+    console.log(
+      "Checking URL parameters for auto-matching, direct join, and reset flags"
+    );
+    const roomNameFromUrl = searchParams.get("roomName");
+    const usernameFromUrl = searchParams.get("username");
     const autoMatch = searchParams.get("autoMatch");
-    const usernameParam = searchParams.get("username");
     const reset = searchParams.get("reset");
+    const useDemoFromUrl = searchParams.get("useDemo") === "true"; // Check for demo flag
 
-    // Handle reset flag - clear all state, but only once per reset=true instance
+    // Handle reset first
     if (reset === "true" && !resetProcessedRef.current) {
       console.log("Reset parameter detected - clearing all state");
       resetProcessedRef.current = true;
 
-      // Store current username before clearing state
-      const currentUsername = username || usernameParam || "";
+      const currentUsername = username || usernameFromUrl || "";
 
-      // Clear all room state
       setRoomName("");
       setIsJoined(false);
-      setUsingDemoServer(false);
+      setUsingDemoServer(false); // Reset demo server state
       setIsWaiting(false);
       setError("");
 
-      // Remove the reset parameter from the URL to prevent continuous resets
       if (typeof window !== "undefined") {
         const url = new URL(window.location.href);
         url.searchParams.delete("reset");
-        // Preserve the username parameter
         if (currentUsername) {
           url.searchParams.set("username", currentUsername);
-          // Now we can safely update the username state
           setUsername(currentUsername);
         }
         window.history.replaceState({}, "", url.toString());
-
-        // Focus the input field after a short delay to ensure component is rendered
         setTimeout(() => {
           if (inputRef.current) {
             inputRef.current.focus();
-            inputRef.current.select(); // Select all text for easy editing
+            inputRef.current.select();
           }
         }, 100);
       }
-
-      return; // Exit early to prevent auto-matching
+      return; // Exit early
     }
-
-    // Reset the resetProcessedRef when the reset parameter is no longer present
     if (reset !== "true") {
       resetProcessedRef.current = false;
     }
 
-    // Only auto-match if explicitly requested with autoMatch=true parameter
-    if (autoMatch === "true" && usernameParam) {
-      console.log(`Auto-match explicitly requested for user: ${usernameParam}`);
+    // Handle direct join if roomName and username are in URL (and not resetting or auto-matching implicitly)
+    if (roomNameFromUrl && usernameFromUrl && !autoMatch && reset !== "true") {
+      console.log(
+        `Direct join requested for room: ${roomNameFromUrl}, user: ${usernameFromUrl}`
+      );
+      setRoomName(roomNameFromUrl);
+      setUsername(usernameFromUrl);
+      setUsingDemoServer(useDemoFromUrl); // Set demo server based on URL
+      setIsJoined(true);
 
-      // Clear any auto-match flags from the URL to prevent loops
+      // Clean up URL params after processing direct join
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("roomName");
+        url.searchParams.delete("useDemo"); // Clean up demo flag
+        // Optionally keep username or remove it based on desired behavior after joining
+        // url.searchParams.delete("username");
+        window.history.replaceState({}, "", url.toString());
+      }
+      return; // Important to return to prevent other logic paths
+    }
+
+    // Handle auto-match (only if not already handled by direct join)
+    if (autoMatch === "true" && usernameFromUrl && reset !== "true") {
+      console.log(
+        `Auto-match explicitly requested for user: ${usernameFromUrl}`
+      );
+
       if (typeof window !== "undefined") {
         const url = new URL(window.location.href);
         url.searchParams.delete("autoMatch");
-        url.searchParams.delete("timestamp");
+        url.searchParams.delete("timestamp"); // Assuming timestamp was for uniqueness
         window.history.replaceState({}, "", url.toString());
       }
+      // Ensure username state is set if not already by previous conditions
+      if (!username) setUsername(usernameFromUrl);
+      // Set usingDemoServer if present in autoMatch URL
+      if (searchParams.has("useDemo")) {
+        setUsingDemoServer(searchParams.get("useDemo") === "true");
+      }
 
-      // Set username state immediately
-      setUsername(usernameParam);
-
-      // Pass the username explicitly here as well, as state might not be updated yet
-      // Add a small delay to ensure all state is reset properly
       setTimeout(() => {
-        console.log(`Triggering auto-match for ${usernameParam}`);
-        findRandomChat(usernameParam);
-      }, 800); // increased delay to ensure proper synchronization
-    } else if (usernameParam) {
-      console.log(
-        `Username found in URL: ${usernameParam}, setting username state (not auto-matching)`
-      );
-      setUsername(usernameParam);
-    } else {
-      console.log("No auto-match or relevant username parameters found");
+        console.log(`Triggering auto-match for ${usernameFromUrl}`);
+        findRandomChat(usernameFromUrl); // Pass username explicitly
+      }, 800);
+      return; // Return after initiating auto-match
     }
-  }, [searchParams, findRandomChat, username]);
+
+    // Set username if only username is present (and not other conditions met)
+    if (usernameFromUrl && reset !== "true" && !autoMatch && !roomNameFromUrl) {
+      console.log(
+        `Username found in URL: ${usernameFromUrl}, setting username state (not auto-matching or direct joining)`
+      );
+      setUsername(usernameFromUrl);
+      // Set usingDemoServer if present
+      if (searchParams.has("useDemo")) {
+        setUsingDemoServer(searchParams.get("useDemo") === "true");
+      }
+    } else if (
+      !usernameFromUrl &&
+      !roomNameFromUrl &&
+      !autoMatch &&
+      reset !== "true"
+    ) {
+      console.log(
+        "No direct join, auto-match, or relevant username parameters found"
+      );
+    }
+  }, [searchParams, findRandomChat, username]); // Ensure all dependencies are listed
 
   // Function to poll status while waiting
   useEffect(() => {
