@@ -29,29 +29,37 @@ export async function POST(request: NextRequest) {
       otherUsername
     );
     
-    // Special handling for immediate matches - the left-behind user got matched right away
+    // For the user INITIATING the disconnect (username), the response should be simpler.
+    // They are disconnecting, so they shouldn't get an "immediate_match" status related to the other user.
+    // Their client will take them to the reset page.
+
     if (result.status === 'disconnected_with_immediate_match' && result.immediateMatch) {
       console.log(`Left-behind user ${result.leftBehindUser} was immediately matched with ${result.immediateMatch.matchedWith}`);
       
-      // Return detailed information about the immediate match
       return NextResponse.json({
-        status: 'immediate_match',
+        status: 'disconnected_other_matched', // New status for the disconnecting user
         roomWasActive: roomInfo?.isActive || false,
         roomUsers: roomInfo?.users || [],
         leftBehindUser: result.leftBehindUser,
-        newRoomName: result.newRoomName,
-        immediateMatch: result.immediateMatch,
+        // Details for the left-behind user, not for the current user's redirection
+        detailsForLeftBehind: {
+            newRoomName: result.newRoomName,
+            immediateMatch: result.immediateMatch,
+        },
         timestamp: Date.now()
       });
     }
     
-    // Add debugging information about the room before disconnection
+    // Standard disconnection response if the other user wasn't immediately matched
     return NextResponse.json({
-      status: result.status,
+      status: result.status, // e.g., 'disconnected', 'no_match_found'
       roomWasActive: roomInfo?.isActive || false,
       roomUsers: roomInfo?.users || [],
       leftBehindUser: result.leftBehindUser,
-      newRoomName: result.newRoomName,
+      // Details for the left-behind user
+      detailsForLeftBehind: {
+        newRoomName: result.newRoomName, 
+      },
       timestamp: Date.now()
     });
   } catch (error) {

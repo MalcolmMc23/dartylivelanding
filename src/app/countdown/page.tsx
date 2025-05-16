@@ -14,6 +14,13 @@ export default function CountdownPage() {
           <CountdownDisplay />
         </Suspense>
       </main>
+      
+      {/* Contact Email - Minimal */}
+      <div className="absolute bottom-2 text-xs text-gray-500">
+        <a href="mailto:dormroomsocial1@gmail.com" className="hover:text-[#A0FF00] transition-colors">
+          dormroomsocial1@gmail.com
+        </a>
+      </div>
     </div>
   );
 }
