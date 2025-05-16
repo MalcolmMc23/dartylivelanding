@@ -1,6 +1,5 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useLeftBehindStatus } from "./hooks/useLeftBehindStatus";
 
@@ -22,34 +21,13 @@ export function LeftBehindNotification({
     matchRoom,
   } = useLeftBehindStatus(username);
 
-  const [timeLeft, setTimeLeft] = useState(15);
   const router = useRouter();
 
-  // Auto-redirect countdown when user is left behind
-  useEffect(() => {
-    if (isLeftBehind && newRoomName && !isMatched) {
-      const timer = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            onJoinNewRoom(newRoomName);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-
-      return () => {
-        clearInterval(timer);
-      };
-    } else if (isMatched && matchRoom) {
-      // If already matched, redirect immediately to that room
-      onJoinNewRoom(matchRoom);
-    } else {
-      // Reset timer when not left behind
-      setTimeLeft(15);
-    }
-  }, [isLeftBehind, newRoomName, isMatched, matchRoom, onJoinNewRoom]);
+  // If matched and have a match room, join it
+  if (isMatched && matchRoom) {
+    onJoinNewRoom(matchRoom);
+    return null;
+  }
 
   if (!isLeftBehind || (!newRoomName && !isMatched)) {
     return null;
@@ -69,15 +47,14 @@ export function LeftBehindNotification({
               {disconnectedFrom} has left the chat.
             </p>
             <p className="text-center mt-2">
-              Preparing a new room for you. You&apos;ll be redirected in{" "}
-              {timeLeft} seconds.
+              A new room has been prepared for you.
             </p>
             <div className="flex justify-center gap-4 mt-4">
               <button
                 onClick={() => onJoinNewRoom(newRoomName || "")}
                 className="bg-white text-red-600 px-4 py-2 rounded font-semibold hover:bg-gray-100"
               >
-                Join New Room Now
+                Join New Room
               </button>
               <button
                 onClick={() => router.push("/")}
