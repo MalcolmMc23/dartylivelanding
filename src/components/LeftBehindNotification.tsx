@@ -69,8 +69,8 @@ export function LeftBehindNotification({
               {disconnectedFrom} has left the chat.
             </p>
             <p className="text-center mt-2">
-              Preparing a new room for you. You'll be redirected in {timeLeft}{" "}
-              seconds.
+              Preparing a new room for you. You&apos;ll be redirected in{" "}
+              {timeLeft} seconds.
             </p>
             <div className="flex justify-center gap-4 mt-4">
               <button

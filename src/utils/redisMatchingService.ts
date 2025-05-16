@@ -631,7 +631,15 @@ async function handleLeftBehindUser(
   previousRoomName: string, 
   disconnectedUser: string,
   useDemo: boolean
-): Promise<{status: string, newRoomName?: string, immediateMatch?: any}> {
+): Promise<{
+  status: string, 
+  newRoomName?: string, 
+  immediateMatch?: { 
+    status: string;
+    roomName?: string;
+    matchedWith?: string;
+  }
+}> {
   console.log(`Handling left-behind user ${leftBehindUser} after ${disconnectedUser} disconnected`);
   
   // 1. Ensure the user is removed from any existing queue
@@ -670,7 +678,6 @@ async function handleLeftBehindUser(
   );
   
   // 4. Try to find an immediate match with much simpler logic
-  let immediateMatch = null;
   try {
     const matchResult = await findMatchForUser(
       leftBehindUser,
@@ -692,7 +699,6 @@ async function handleLeftBehindUser(
         300
       );
       
-      immediateMatch = matchResult;
       return {
         status: 'immediate_match',
         newRoomName: matchResult.roomName,
