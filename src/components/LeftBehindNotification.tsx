@@ -57,7 +57,14 @@ export function LeftBehindNotification({
                 Join New Room
               </button>
               <button
-                onClick={() => router.push("/")}
+                onClick={() => {
+                  const url = new URL("/video-chat", window.location.origin);
+                  url.searchParams.set("reset", "true");
+                  if (username) {
+                    url.searchParams.set("username", username);
+                  }
+                  router.push(url.toString());
+                }}
                 className="bg-transparent border border-white text-white px-4 py-2 rounded font-semibold hover:bg-red-600"
               >
                 Return Home
