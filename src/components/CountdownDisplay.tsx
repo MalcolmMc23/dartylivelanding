@@ -1,13 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import CountdownTimer from "./CountdownTimer";
 import { getNextSundayNoon } from "@/utils/dateUtils";
 
 export default function CountdownDisplay() {
-  const searchParams = useSearchParams();
-  const email = searchParams.get("email") || "dormparty.live@uoregon.edu";
+
   const [targetDate, setTargetDate] = useState<Date | null>(null);
 
   useEffect(() => {
@@ -28,10 +26,10 @@ export default function CountdownDisplay() {
       {/* Countdown Timer */}
       <CountdownTimer targetDate={targetDate} />
 
-      {/* Email notification message */}
+      {/* Notification message */}
       <p className="text-sm text-gray-400">
-        We&apos;ll notify you at <span className="text-[#A0FF00]">{email}</span>{" "}
-        when Dormparty goes live.
+        You&apos;re on the <span className="text-[#A0FF00]">exclusive waitlist</span>!{" "}
+        We&apos;ll notify you as soon as we launch.
       </p>
     </>
   );
