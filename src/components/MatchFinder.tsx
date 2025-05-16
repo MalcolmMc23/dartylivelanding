@@ -133,11 +133,13 @@ export function MatchFinder({ username }: MatchFinderProps) {
             : "";
           const useDemo = data.useDemo ? `&useDemo=true` : "";
 
-          router.push(
-            `/video-chat/room/${data.roomName}?username=${encodeURIComponent(
-              username
-            )}${matchedWith}${useDemo}`
-          );
+          // Use the proper route format
+          const roomUrl = `/video-chat/room/${
+            data.roomName
+          }?username=${encodeURIComponent(username)}${matchedWith}${useDemo}`;
+
+          console.log(`Navigating to room: ${roomUrl}`);
+          router.push(roomUrl);
         } else if (!cancelled && !forceReset) {
           // No match yet - log info from server
           if (data.debug) {

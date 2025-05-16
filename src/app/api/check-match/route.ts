@@ -46,11 +46,13 @@ export async function POST(request: Request) {
           });
         }
         
+        // Include additional navigation information to ensure proper routing
         return NextResponse.json({ 
           match: true, 
           roomName: status.roomName,
           matchedWith: status.matchedWith,
           useDemo: status.useDemo || false,
+          routeType: 'room', // Add a route type to help the client
           debug: {
             matchedWith: status.matchedWith,
             useDemo: status.useDemo || false,
@@ -85,6 +87,7 @@ export async function POST(request: Request) {
           roomName: matchResult.roomName,
           matchedWith: matchResult.matchedWith,
           useDemo: matchResult.useDemo || false,
+          routeType: 'room', // Add a route type to help the client
           debug: {
             matchedWith: matchResult.matchedWith,
             useDemo: matchResult.useDemo || false,
@@ -120,6 +123,7 @@ export async function POST(request: Request) {
           roomName: immediateMatchResult.roomName,
           matchedWith: immediateMatchResult.matchedWith,
           useDemo: immediateMatchResult.useDemo || false,
+          routeType: 'room', // Add a route type to help the client
           debug: {
             matchedWith: immediateMatchResult.matchedWith,
             useDemo: immediateMatchResult.useDemo || false,

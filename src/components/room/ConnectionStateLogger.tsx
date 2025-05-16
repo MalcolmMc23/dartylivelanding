@@ -8,6 +8,7 @@ import {
   Participant,
   RemoteParticipant,
 } from "livekit-client";
+import { handleDisconnection } from "@/utils/disconnectionService";
 
 interface ConnectionStateLoggerProps {
   onParticipantCountChange: (count: number) => void;
@@ -21,16 +22,10 @@ interface ConnectionStateLoggerProps {
 // We use fetch here since we can't directly import from API routes in components
 const cleanupRoomTracking = async (username: string, roomName: string) => {
   try {
-    await fetch("/api/user-disconnect", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        username,
-        roomName,
-        reason: "component_cleanup",
-      }),
+    await handleDisconnection({
+      username,
+      roomName,
+      reason: "component_cleanup",
     });
     console.log(
       `Sent cleanup request for user ${username} in room ${roomName}`

@@ -1,7 +1,10 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { handleDisconnection } from "@/utils/disconnectionService";
 import { DebugInfo } from "../types";
+
+// Type definitions for server response
 
 interface UseRoomConnectionProps {
   roomName: string;
@@ -171,52 +174,31 @@ export function useRoomConnection({
       // Mark that we've handled the disconnection so we don't trigger this again
       hasTriggeredDisconnectAction.current = true;
 
-      // Add a longer grace period (10 seconds) to avoid premature disconnection handling
+      // Add a longer grace period to avoid premature disconnection handling
       // This helps with initial connection issues and network fluctuations
       setTimeout(() => {
-        // Notify server about disconnection - this will handle the disconnection logic
-        try {
-          fetch("/api/user-disconnect", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              username: username, // Current user
-              otherUsername: otherUsername, // User who disconnected
-              roomName: roomName,
-              reason: "user_disconnected",
-            }),
-          })
-            .then((response) => response.json())
-            .then((data) => {
-              console.log("Disconnection response:", data);
+        // Use the disconnection service to handle this event
+        handleDisconnection({
+          username: username, // Current user
+          otherUsername: otherUsername, // User who disconnected
+          roomName: roomName,
+          reason: "user_disconnected",
+          onComplete: (result) => {
+            console.log("Disconnection response:", result);
+            
+            // Navigate back to video chat page with reset flag
+            if (!hasInitiatedNavigation.current) {
+              hasInitiatedNavigation.current = true;
+              setIsRedirecting(true);
               
-              // Navigate back to video chat page with reset flag
-              if (!hasInitiatedNavigation.current) {
-                hasInitiatedNavigation.current = true;
-                setIsRedirecting(true);
-                
-                // Add a small delay to ensure state updates and allow server to process
-                setTimeout(() => {
-                  const url = new URL("/video-chat", window.location.origin);
-                  url.searchParams.set("reset", "true");
-                  url.searchParams.set("username", username);
-                  url.searchParams.set("autoMatch", "true"); // Automatically try to find a new match
-                  
-                  // Use the router from the component that renders this hook
-                  // This will happen automatically due to the unmount effect in RoomComponent
-                  console.log("Redirecting to:", url.toString());
-                }, 500);
-              }
-            })
-            .catch((error) => {
-              console.error("Error notifying server about disconnection:", error);
-            });
-        } catch (e) {
-          console.error("Error notifying server about disconnection:", e);
-        }
-      }, 10000); // 10-second grace period
+              // The navigation will be handled by the disconnection service
+              console.log("Disconnection service handling navigation");
+            }
+          }
+        }).catch((error) => {
+          console.error("Error notifying server about disconnection:", error);
+        });
+      }, 3000); // 3 seconds grace period for connection issues
     },
     [roomName, username]
   );
@@ -260,26 +242,15 @@ export function useRoomConnection({
         isCleaningUp.current = true;
         console.log(`Cleanup on unmount for user ${username} in room ${roomName} after ${componentLifetime}ms`);
         
-        // Clean up room tracking when component unmounts
-        try {
-          fetch("/api/user-disconnect", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              username,
-              roomName,
-              reason: "component_cleanup"
-            }),
-            // Use keepalive to ensure the request completes even if the page is unloading
-            keepalive: true
-          }).catch(e => {
-            console.error("Error during cleanup:", e);
-          });
-        } catch (e) {
+        // Use disconnection service for cleanup
+        handleDisconnection({
+          username, 
+          roomName,
+          reason: "component_cleanup",
+          // Use keepalive to ensure the request completes even if the page is unloading
+        }).catch(e => {
           console.error("Error during cleanup:", e);
-        }
+        });
       } else if (componentLifetime <= 3000) {
         console.log(`Skipping cleanup for quick unmount (${componentLifetime}ms) - likely a navigation issue`);
       }

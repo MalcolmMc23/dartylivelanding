@@ -1,7 +1,6 @@
 "use client";
 
 import { LiveKitRoom, RoomAudioRenderer } from "@livekit/components-react";
-import { ConnectionStateLogger } from "./room/ConnectionStateLogger";
 import { LoadingIndicator } from "./room/LoadingIndicator";
 import { ErrorDisplay } from "./room/ErrorDisplay";
 import { RoomStatusIndicators } from "./room/RoomStatusIndicators";
@@ -19,6 +18,9 @@ import { MirroredVideoTile } from "./room/MirroredVideoTile";
 import { ChatComponent } from "./ChatComponent";
 import { StableRoomConnector } from "./StableRoomConnector";
 import { RoomAutoMatchRedirector } from "./RoomAutoMatchRedirector";
+import { ActiveMatchPoller } from "./ActiveMatchPoller";
+import { handleDisconnection } from "@/utils/disconnectionService";
+import { LeftBehindNotification } from "./LeftBehindNotification";
 
 // Max participants allowed in a room
 const MAX_PARTICIPANTS = 2;
@@ -39,6 +41,7 @@ export default function RoomComponent({
   const router = useRouter();
   const [mobileView, setMobileView] = useState<"video" | "chat">("video");
   const [otherParticipantLeft, setOtherParticipantLeft] = useState(false);
+  const [wasLeftBehind, setWasLeftBehind] = useState(false);
 
   const {
     token,
@@ -57,10 +60,34 @@ export default function RoomComponent({
     useDemo,
   });
 
+  // Handler for when the user needs to join a new room (after being left behind)
+  const handleJoinNewRoom = useCallback(
+    (newRoomName: string) => {
+      console.log(`Redirecting left-behind user to new room: ${newRoomName}`);
+
+      // Prevent the unmount handler from running since we're handling navigation here
+      unmountHandled.current = true;
+
+      // Navigate to the new room
+      router.push(
+        `/video-chat?roomName=${encodeURIComponent(
+          newRoomName
+        )}&username=${encodeURIComponent(username)}`
+      );
+    },
+    [router, username]
+  );
+
   // We need a local state to track real-time participant count from LiveKit events
   const [liveParticipantCount, setLiveParticipantCount] = useState(
     initialParticipantCount
   );
+
+  // Use the participant count from the component
+  useEffect(() => {
+    // Update the local participant count when it changes from the hook
+    setLiveParticipantCount(initialParticipantCount);
+  }, [initialParticipantCount]);
 
   // Flag to track if unmount handling has been executed
   const unmountHandled = useRef(false);
@@ -116,32 +143,31 @@ export default function RoomComponent({
         "RoomComponent unmounting, redirecting to name entry page with reset flag"
       );
 
-      // Redirect back to video chat page when user leaves the call
-      // Add reset=true parameter to ensure state is cleared
-      // Also preserve username to maintain input state
-      const url = new URL("/video-chat", window.location.origin);
-      url.searchParams.set("reset", "true");
-      url.searchParams.set("username", username);
-      router.push(url.toString());
+      // Use disconnection service for unmounting
+      handleDisconnection({
+        username,
+        roomName,
+        reason: "component_cleanup",
+        router,
+      }).catch((err) => console.error("Error during unmount disconnect:", err));
     };
-  }, [router, username, otherParticipantLeft]);
+  }, [router, username, roomName, otherParticipantLeft]);
 
   // When a participant disconnects, handle cleanup and navigation
   useEffect(() => {
     const handleBeforeUnload = () => {
       // If this component is being unloaded due to navigation or page close,
       // make sure we notify about the disconnection
+      handleDisconnection({
+        username,
+        roomName,
+        reason: "browser_closed",
+        // Can't use router here as the page is unloading
+      }).catch((err) => console.error("Error sending disconnect:", err));
+
+      // Call onDisconnect callback if provided
       if (onDisconnect) {
-        fetch("/api/user-disconnect", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            username,
-            roomName,
-            reason: "browser_closed",
-          }),
-          keepalive: true,
-        }).catch((err) => console.error("Error sending disconnect:", err));
+        onDisconnect();
       }
     };
 
@@ -191,6 +217,9 @@ export default function RoomComponent({
       // Set the flag that will trigger our redirector component
       setOtherParticipantLeft(true);
 
+      // Mark this user as being left behind for the ActiveMatchPoller
+      setWasLeftBehind(true);
+
       // Still call the original handler which notifies the server
       handleOtherParticipantDisconnected(otherUsername);
     },
@@ -229,7 +258,25 @@ export default function RoomComponent({
   console.log(`LiveKit URL being used: ${liveKitUrl}`);
 
   return (
-    <div className="w-full h-screen bg-[#0C0C0C] overflow-hidden">
+    <div className="relative h-full">
+      {/* Add the ActiveMatchPoller when user is left behind */}
+      {wasLeftBehind && (
+        <ActiveMatchPoller
+          username={username}
+          isLeftBehind={wasLeftBehind}
+          useDemo={usingDemoServer}
+        />
+      )}
+
+      {/* Redirect to auto-match if other participant left */}
+      {otherParticipantLeft && (
+        <RoomAutoMatchRedirector
+          username={username}
+          roomName={roomName}
+          otherParticipantLeft={otherParticipantLeft}
+        />
+      )}
+
       {token && liveKitUrl && (
         <LiveKitRoom
           {...liveKitOptions}
@@ -239,18 +286,16 @@ export default function RoomComponent({
           data-lk-theme="default"
           className="h-full lk-video-conference"
         >
-          <StableRoomConnector username={username} roomName={roomName} />
-          <RoomAutoMatchRedirector
+          <LeftBehindNotification
             username={username}
-            roomName={roomName}
-            otherParticipantLeft={otherParticipantLeft}
+            onJoinNewRoom={handleJoinNewRoom}
           />
-          <ConnectionStateLogger
-            onParticipantCountChange={setLiveParticipantCount}
+          <StableRoomConnector username={username} roomName={roomName} />
+          <RoomStatusIndicators
+            usingDemoServer={usingDemoServer}
+            participantCount={liveParticipantCount}
             maxParticipants={MAX_PARTICIPANTS}
-            username={username}
-            roomName={roomName}
-            onOtherParticipantDisconnected={handleOtherParticipantLeftRoom}
+            onParticipantLeft={handleOtherParticipantLeftRoom}
           />
 
           <div className="h-full flex flex-col relative">

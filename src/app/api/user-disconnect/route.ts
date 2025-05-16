@@ -29,12 +29,29 @@ export async function POST(request: NextRequest) {
       otherUsername
     );
     
+    // Special handling for immediate matches - the left-behind user got matched right away
+    if (result.status === 'disconnected_with_immediate_match' && result.immediateMatch) {
+      console.log(`Left-behind user ${result.leftBehindUser} was immediately matched with ${result.immediateMatch.matchedWith}`);
+      
+      // Return detailed information about the immediate match
+      return NextResponse.json({
+        status: 'immediate_match',
+        roomWasActive: roomInfo?.isActive || false,
+        roomUsers: roomInfo?.users || [],
+        leftBehindUser: result.leftBehindUser,
+        newRoomName: result.newRoomName,
+        immediateMatch: result.immediateMatch,
+        timestamp: Date.now()
+      });
+    }
+    
     // Add debugging information about the room before disconnection
     return NextResponse.json({
       status: result.status,
       roomWasActive: roomInfo?.isActive || false,
       roomUsers: roomInfo?.users || [],
       leftBehindUser: result.leftBehindUser,
+      newRoomName: result.newRoomName,
       timestamp: Date.now()
     });
   } catch (error) {

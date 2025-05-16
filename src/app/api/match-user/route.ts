@@ -28,23 +28,34 @@ export async function POST(request: NextRequest) {
       // First ensure user is removed from any existing queues or matches
       await hybridMatchingService.removeUserFromQueue(username);
       
-      // Look for users already in the in-call queue first (priority matching)
-      const matchResult = await hybridMatchingService.findMatchForUser(
-        username, 
-        useDemo,
-        body.lastMatch?.matchedWith
-      );
+      // Try multiple aggressive match attempts for left-behind users
+      let attempts = 0;
+      const maxAttempts = 3;
       
-      if (matchResult.status === 'matched') {
-        console.log(`Re-matched user ${username} with ${matchResult.matchedWith} in room ${matchResult.roomName}`);
-        return NextResponse.json(matchResult);
+      while (attempts < maxAttempts) {
+        // Look for users already in the in-call queue first (priority matching)
+        const matchResult = await hybridMatchingService.findMatchForUser(
+          username, 
+          useDemo,
+          body.lastMatch?.matchedWith
+        );
+        
+        if (matchResult.status === 'matched') {
+          console.log(`Re-matched user ${username} with ${matchResult.matchedWith} in room ${matchResult.roomName} (attempt ${attempts + 1})`);
+          return NextResponse.json(matchResult);
+        }
+        
+        // Add a small delay between attempts
+        if (attempts < maxAttempts - 1) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+        
+        attempts++;
       }
       
-      // If no match found, add to queue with priority
-      console.log(`No immediate match found for ${username}, adding to in-call queue for priority matching`);
+      console.log(`No immediate match found for ${username} after ${maxAttempts} attempts, adding to in-call queue for priority matching`);
       
       // Generate a new room name for this user
-      // const roomInfo = await hybridMatchingService.addUserToQueue(
       await hybridMatchingService.addUserToQueue(
         username,
         useDemo,

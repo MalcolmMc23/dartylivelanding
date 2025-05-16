@@ -2,19 +2,60 @@
 
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { useParticipants } from "@livekit/components-react";
 
 interface RoomStatusIndicatorsProps {
   usingDemoServer: boolean;
   participantCount: number;
   maxParticipants: number;
+  onParticipantLeft?: (otherUsername: string) => void;
 }
 
 export function RoomStatusIndicators({
   usingDemoServer,
   participantCount,
   maxParticipants,
+  onParticipantLeft,
 }: RoomStatusIndicatorsProps) {
   const [showDemoIndicator, setShowDemoIndicator] = useState(true);
+  const participants = useParticipants();
+
+  // Track participants and detect when someone leaves
+  useEffect(() => {
+    if (!onParticipantLeft) return;
+
+    const participantIds = new Set(participants.map((p) => p.identity));
+    const handleParticipantChange = () => {
+      const currentParticipantIds = new Set(
+        participants.map((p) => p.identity)
+      );
+
+      // Check if any participant has left
+      participantIds.forEach((id) => {
+        if (!currentParticipantIds.has(id)) {
+          console.log(`Participant ${id} has left the room`);
+          onParticipantLeft(id);
+        }
+      });
+
+      // Update our tracking set
+      participantIds.clear();
+      currentParticipantIds.forEach((id) => participantIds.add(id));
+    };
+
+    // Initialize our tracking set
+    participants.forEach((p) => participantIds.add(p.identity));
+
+    // Create an observer to watch for participant changes
+    const observer = new MutationObserver(handleParticipantChange);
+
+    // Observe any DOM changes that might indicate participant changes
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [participants, onParticipantLeft]);
 
   // Hide the demo indicator after a few seconds
   useEffect(() => {

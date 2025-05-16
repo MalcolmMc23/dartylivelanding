@@ -17,6 +17,10 @@ import {
   CameraOffIcon,
   LeaveCallIcon,
 } from "./LiveKitIcons";
+import {
+  handleDisconnection,
+  resetNavigationState,
+} from "@/utils/disconnectionService";
 
 interface CustomControlBarProps extends ControlBarProps {
   username: string;
@@ -72,6 +76,7 @@ export function CustomControlBar({
   useEffect(() => {
     setIsRedirecting(false);
     navigationOccurred.current = false;
+    resetNavigationState();
   }, [username, roomName]);
 
   // Handle leaving the call to return to the search screen
@@ -106,32 +111,18 @@ export function CustomControlBar({
         console.log(`Found other participant: ${otherParticipantIdentity}`);
       }
 
-      // Notify the server that we're leaving
+      // Use the disconnection service
       try {
-        const response = await fetch("/api/user-disconnect", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            username,
-            roomName,
-            otherUsername: otherParticipantIdentity, // Include the other participant's identity
-            reason: "user_left",
-          }),
+        await handleDisconnection({
+          username,
+          roomName,
+          otherUsername: otherParticipantIdentity,
+          reason: "user_left",
+          router,
         });
-
-        const data = await response.json();
-        console.log("Leave call response:", data);
 
         // Disconnect from the current room
         room.disconnect();
-
-        // Redirect to the video-chat page with reset flag
-        const url = new URL("/video-chat", window.location.origin);
-        url.searchParams.set("reset", "true");
-        url.searchParams.set("username", username);
-        router.push(url.toString());
       } catch (e) {
         console.error("Error initiating leave call:", e);
         // Still disconnect and redirect in case of error
