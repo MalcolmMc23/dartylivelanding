@@ -238,7 +238,9 @@ export function useRoomConnection({
         return;
       }
       
-      if (username && roomName && !isCleaningUp.current && hasEstablishedStableConnection.current && componentLifetime > 3000) {
+      if (username && roomName && !isCleaningUp.current && 
+          hasEstablishedStableConnection.current && 
+          componentLifetime > 5000) { // Increased from 3000 to 5000 ms
         isCleaningUp.current = true;
         console.log(`Cleanup on unmount for user ${username} in room ${roomName} after ${componentLifetime}ms`);
         
@@ -251,8 +253,8 @@ export function useRoomConnection({
         }).catch(e => {
           console.error("Error during cleanup:", e);
         });
-      } else if (componentLifetime <= 3000) {
-        console.log(`Skipping cleanup for quick unmount (${componentLifetime}ms) - likely a navigation issue`);
+      } else if (componentLifetime <= 5000 || shouldSkipDisconnect) { // Increased from 3000 to 5000 ms
+        console.log(`Skipping cleanup for quick unmount (${componentLifetime}ms) or navigation - likely a navigation issue`);
       }
     };
   }, [username, roomName]);

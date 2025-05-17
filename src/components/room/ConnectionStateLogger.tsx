@@ -156,10 +156,31 @@ export function ConnectionStateLogger({
       if (connectionEstablishedAt.current === null) {
         connectionEstablishedAt.current = Date.now();
         console.log("Connection established timestamp set");
+
+        // Reset the disconnect action flag when we connect
+        hasTriggeredDisconnectAction.current = false;
       }
 
       // Initial capacity check
       checkRoomCapacity();
+    } else if (connectionState === ConnectionState.Reconnecting) {
+      // Don't trigger any actions during reconnection, wait for LiveKit's reconnect logic
+      console.log("LiveKit is attempting to reconnect automatically...");
+    } else if (connectionState === ConnectionState.Disconnected) {
+      // When we're disconnected, check if it's a quick disconnection (could be navigation)
+      const connectionTime = connectionEstablishedAt.current
+        ? Date.now() - connectionEstablishedAt.current
+        : 0;
+
+      if (connectionTime < 5000) {
+        console.log(
+          "Ignoring disconnection during navigation or initial connection period"
+        );
+      } else {
+        console.log("Connection fully disconnected");
+        // Reset the flag only if this wasn't a quick disconnect
+        hasTriggeredDisconnectAction.current = false;
+      }
     }
 
     // Set up event listeners for participants

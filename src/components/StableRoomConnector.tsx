@@ -15,6 +15,7 @@ export function StableRoomConnector({
 }) {
   const mountTimeRef = useRef(Date.now());
   const stableRef = useRef(false);
+  const connectionStabilizingRef = useRef(true);
 
   // Prevent disconnections during navigation
   useEffect(() => {
@@ -22,10 +23,21 @@ export function StableRoomConnector({
       `StableRoomConnector: Stabilizing connection for ${username} in room ${roomName}`
     );
 
+    // Mark the connection as stabilizing for a longer period (10 seconds)
+    // This prevents reconnections from happening too quickly
+    connectionStabilizingRef.current = true;
+
+    // Store connection info in sessionStorage so we can recover if needed
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem("currentRoom", roomName);
+      window.sessionStorage.setItem("currentUsername", username);
+    }
+
     const stabilizationTimer = setTimeout(() => {
       stableRef.current = true;
+      connectionStabilizingRef.current = false;
       console.log(`Connection stabilized for ${username} in room ${roomName}`);
-    }, 5000); // 5 seconds should be enough for connection to stabilize
+    }, 10000); // 10 seconds to ensure a stable connection
 
     // Capture the mount time value in the effect
     const mountTime = mountTimeRef.current;
@@ -38,7 +50,8 @@ export function StableRoomConnector({
       const unmountTime = Date.now();
       const mountDuration = unmountTime - mountTime;
 
-      if (mountDuration < 3000) {
+      if (mountDuration < 5000) {
+        // Increased from 3000 to 5000 ms
         console.log(
           `Skipping disconnect for ${username} - component was only mounted for ${mountDuration}ms`
         );
@@ -46,13 +59,21 @@ export function StableRoomConnector({
         // Prevent disconnection by setting a flag in sessionStorage
         if (typeof window !== "undefined") {
           window.sessionStorage.setItem("skipDisconnect", "true");
-          // Clear the flag after a short delay
+          window.sessionStorage.setItem("reconnectToRoom", roomName);
+          window.sessionStorage.setItem("reconnectUsername", username);
+
+          // Clear the flag after a longer delay
           setTimeout(() => {
             window.sessionStorage.removeItem("skipDisconnect");
-          }, 5000);
+          }, 10000); // Increased from 5000 to 10000 ms
         }
       } else if (stableRef.current) {
         console.log(`Clean unmount for ${username} after ${mountDuration}ms`);
+        // Clear connection info since this is a clean disconnect
+        if (typeof window !== "undefined") {
+          window.sessionStorage.removeItem("currentRoom");
+          window.sessionStorage.removeItem("currentUsername");
+        }
       }
     };
   }, [username, roomName]);

@@ -98,15 +98,15 @@ export default function RoomComponent({
 
   // Set a connection stabilization period
   useEffect(() => {
-    // Mark the first 5 seconds as an initial connection period
+    // Mark the first 10 seconds as an initial connection period
     // During this time, we'll ignore disconnection events
     isInitialConnectionPeriod.current = true;
 
-    // Clear the connection period after 5 seconds
+    // Clear the connection period after 10 seconds
     initialConnectionTimeout.current = setTimeout(() => {
       console.log("Initial connection stabilization period ended");
       isInitialConnectionPeriod.current = false;
-    }, 5000);
+    }, 10000); // Increased from 5000 to 10000 ms
 
     return () => {
       if (initialConnectionTimeout.current) {
@@ -204,6 +204,18 @@ export default function RoomComponent({
     // Ignore disconnections during initial connection period
     if (isInitialConnectionPeriod.current) {
       console.log("Ignoring disconnection during initial connection period");
+      return;
+    }
+
+    // Check if we should skip disconnection (set by StableRoomConnector)
+    const shouldSkipDisconnect =
+      typeof window !== "undefined" &&
+      window.sessionStorage.getItem("skipDisconnect") === "true";
+
+    if (shouldSkipDisconnect) {
+      console.log(
+        "Ignoring LiveKit disconnection due to navigation (skipDisconnect flag is set)"
+      );
     }
   }, []);
 
