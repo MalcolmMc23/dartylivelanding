@@ -21,6 +21,7 @@ import { RoomAutoMatchRedirector } from "./RoomAutoMatchRedirector";
 import { ActiveMatchPoller } from "./ActiveMatchPoller";
 import { handleDisconnection } from "@/utils/disconnectionService";
 import { LeftBehindNotification } from "./LeftBehindNotification";
+import { ParticipantCounter } from "./ParticipantCounter";
 
 // Max participants allowed in a room
 const MAX_PARTICIPANTS = 2;
@@ -65,9 +66,6 @@ export default function RoomComponent({
     (newRoomName: string) => {
       console.log(`Redirecting left-behind user to new room: ${newRoomName}`);
 
-      // Prevent the unmount handler from running since we're handling navigation here
-      unmountHandled.current = true;
-
       // Navigate to the new room
       router.push(
         `/video-chat/room/${encodeURIComponent(
@@ -82,15 +80,6 @@ export default function RoomComponent({
   const [liveParticipantCount, setLiveParticipantCount] = useState(
     initialParticipantCount
   );
-
-  // Use the participant count from the component
-  useEffect(() => {
-    // Update the local participant count when it changes from the hook
-    setLiveParticipantCount(initialParticipantCount);
-  }, [initialParticipantCount]);
-
-  // Flag to track if unmount handling has been executed
-  const unmountHandled = useRef(false);
 
   // Use ref to track initial connection period
   const isInitialConnectionPeriod = useRef(true);
@@ -118,12 +107,6 @@ export default function RoomComponent({
   // Handle redirect when component unmounts
   useEffect(() => {
     return () => {
-      // Prevent multiple redirects
-      if (unmountHandled.current) {
-        console.log("Unmount already handled, skipping redirect");
-        return;
-      }
-
       // Skip redirect during initial connection period to prevent flashing
       if (isInitialConnectionPeriod.current) {
         console.log("In initial connection period, skipping redirect");
@@ -138,7 +121,6 @@ export default function RoomComponent({
         return;
       }
 
-      unmountHandled.current = true;
       console.log(
         "RoomComponent unmounting, redirecting to name entry page with reset flag"
       );
@@ -303,6 +285,8 @@ export default function RoomComponent({
             onJoinNewRoom={handleJoinNewRoom}
           />
           <StableRoomConnector username={username} roomName={roomName} />
+          {/* Improved participant counter with detailed diagnostics */}
+          <ParticipantCounter onCountChange={setLiveParticipantCount} />
           <RoomStatusIndicators
             usingDemoServer={usingDemoServer}
             participantCount={liveParticipantCount}

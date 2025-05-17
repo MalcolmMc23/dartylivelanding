@@ -741,3 +741,27 @@ async function handleLeftBehindUser(
     return { status: 'error' };
   }
 }
+
+// Add this new function
+export async function confirmUserRematch(username: string, matchRoom: string, matchedWith: string) {
+  const key = `left_behind:${username}`;
+  try {
+    const existingData = await redis.get(key);
+    if (existingData) {
+      const leftBehindState = JSON.parse(existingData);
+      leftBehindState.processed = true;
+      leftBehindState.matchRoom = matchRoom;
+      leftBehindState.matchedWith = matchedWith;
+      leftBehindState.timestamp = Date.now();
+      // Update the key with the new state, defaulting to 5 min expiry like in handleLeftBehindUser
+      await redis.set(key, JSON.stringify(leftBehindState), 'EX', 300);
+      console.log(`Confirmed rematch for ${username} in ${matchRoom}, updated left_behind state.`);
+    } else {
+      // If no existing left_behind key, maybe it expired or was never set for this rematch flow.
+      // This is fine, nothing to update at this point. Could be logged if becomes an issue.
+      console.log(`No existing left_behind state found for ${username} upon confirming rematch. This might be okay if key expired or was cleared.`);
+    }
+  } catch (error) {
+    console.error(`Error confirming rematch for ${username}:`, error);
+  }
+}

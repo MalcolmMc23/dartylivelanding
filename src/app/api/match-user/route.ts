@@ -42,6 +42,9 @@ export async function POST(request: NextRequest) {
         
         if (matchResult.status === 'matched') {
           console.log(`Re-matched user ${username} with ${matchResult.matchedWith} in room ${matchResult.roomName} (attempt ${attempts + 1})`);
+          if (matchResult.roomName && matchResult.matchedWith) {
+            await hybridMatchingService.confirmUserRematch(username, matchResult.roomName, matchResult.matchedWith);
+          }
           return NextResponse.json(matchResult);
         }
         
@@ -78,6 +81,14 @@ export async function POST(request: NextRequest) {
     
     if (status.status === 'matched') {
       console.log(`User ${username} is already matched in room ${status.roomName}`);
+      // If already matched, also update any left_behind state for consistency
+      if (status.roomName && status.matchedWith) {
+        try {
+          await hybridMatchingService.confirmUserRematch(username, status.roomName, status.matchedWith);
+        } catch (e) {
+          console.error(`Error confirming rematch for already matched user ${username}:`, e);
+        }
+      }
       return NextResponse.json(status);
     }
     
@@ -90,6 +101,15 @@ export async function POST(request: NextRequest) {
     
     if (matchResult.status === 'matched') {
       console.log(`User ${username} matched with ${matchResult.matchedWith} in room ${matchResult.roomName}`);
+      
+      // Also update any left_behind state when a match is found
+      if (matchResult.roomName && matchResult.matchedWith) {
+        try {
+          await hybridMatchingService.confirmUserRematch(username, matchResult.roomName, matchResult.matchedWith);
+        } catch (e) {
+          console.error(`Error confirming rematch after regular match for ${username}:`, e);
+        }
+      }
       
       // Add extra verification that both users are properly tracked in the match
       try {
@@ -126,6 +146,15 @@ export async function POST(request: NextRequest) {
 
     if (retryMatchResult.status === 'matched') {
       console.log(`Retry match found! User ${username} matched with ${retryMatchResult.matchedWith} in room ${retryMatchResult.roomName}`);
+      
+      // Also update any left_behind state for the retry match scenario
+      if (retryMatchResult.roomName && retryMatchResult.matchedWith) {
+        try {
+          await hybridMatchingService.confirmUserRematch(username, retryMatchResult.roomName, retryMatchResult.matchedWith);
+        } catch (e) {
+          console.error(`Error confirming rematch after retry match for ${username}:`, e);
+        }
+      }
       
       // Add extra verification for the retry match to ensure both users are properly matched
       try {
@@ -209,6 +238,14 @@ export async function GET(request: NextRequest) {
     if (action === 'cancel') {
       // Remove from waiting queue
       const wasRemoved = await hybridMatchingService.removeUserFromQueue(username);
+      
+      // Also attempt to clear any 'left_behind' status if user cancels
+      try {
+        await redis.del(`left_behind:${username}`);
+        console.log(`Cleared left_behind state for ${username} due to cancel action`);
+      } catch (e) {
+        console.error(`Error clearing left_behind state for ${username} on cancel:`, e);
+      }
       
       return NextResponse.json({
         status: wasRemoved ? 'cancelled' : 'not_found',
