@@ -53,9 +53,9 @@ export function RoomAutoMatchRedirector({
             `User ${username} already has a match in room ${data.roomName}, redirecting there`
           );
           router.push(
-            `/video-chat?roomName=${encodeURIComponent(
+            `/video-chat/room/${encodeURIComponent(
               data.roomName
-            )}&username=${encodeURIComponent(username)}`
+            )}?username=${encodeURIComponent(username)}`
           );
           return;
         }

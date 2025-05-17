@@ -1,16 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback, Suspense, useRef } from "react";
-import dynamic from "next/dynamic";
 import WaitingRoomComponent from "@/components/WaitingRoomComponent";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import NoSSR from "@/components/NoSSR";
 import { AdminDebugPanel } from "@/components/AdminDebugPanel";
-
-// Dynamically import the RoomComponent with no SSR to avoid hydration errors
-const RoomComponent = dynamic(() => import("@/components/RoomComponent"), {
-  ssr: false,
-});
 
 // Wrap the main content in a client-side only component
 export default function VideoChat() {
@@ -40,11 +34,11 @@ export default function VideoChat() {
 function VideoRoomManager() {
   const [roomName, setRoomName] = useState("");
   const [username, setUsername] = useState("");
-  const [isJoined, setIsJoined] = useState(false);
   const [usingDemoServer, setUsingDemoServer] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
   const [error, setError] = useState("");
   const searchParams = useSearchParams();
+  const router = useRouter();
   const resetProcessedRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -84,7 +78,12 @@ function VideoRoomManager() {
           setRoomName(data.roomName);
           setUsingDemoServer(data.useDemo); // Use the demo setting that was decided
           setIsWaiting(false);
-          setIsJoined(true);
+          // Navigate to the canonical room route
+          router.push(
+            `/video-chat/room/${data.roomName}?username=${encodeURIComponent(
+              finalUsername
+            )}`
+          );
         } else if (data.status === "waiting") {
           // We're in the waiting queue
           console.log("Added to waiting queue, waiting for match...");
@@ -102,7 +101,7 @@ function VideoRoomManager() {
         setIsWaiting(false);
       }
     },
-    [usingDemoServer, username, searchParams]
+    [usingDemoServer, username, searchParams, router]
   );
 
   // Check if this is an auto-match redirect
@@ -124,8 +123,6 @@ function VideoRoomManager() {
       const currentUsername = username || usernameFromUrl || "";
 
       setRoomName("");
-      setIsJoined(false);
-      setUsingDemoServer(false); // Reset demo server state
       setIsWaiting(false);
       setError("");
 
@@ -157,18 +154,13 @@ function VideoRoomManager() {
       );
       setRoomName(roomNameFromUrl);
       setUsername(usernameFromUrl);
-      setUsingDemoServer(useDemoFromUrl); // Set demo server based on URL
-      setIsJoined(true);
-
-      // Clean up URL params after processing direct join
-      if (typeof window !== "undefined") {
-        const url = new URL(window.location.href);
-        url.searchParams.delete("roomName");
-        url.searchParams.delete("useDemo"); // Clean up demo flag
-        // Optionally keep username or remove it based on desired behavior after joining
-        // url.searchParams.delete("username");
-        window.history.replaceState({}, "", url.toString());
-      }
+      setUsingDemoServer(useDemoFromUrl);
+      // Navigate directly to the canonical room route instead of rendering here
+      router.push(
+        `/video-chat/room/${roomNameFromUrl}?username=${encodeURIComponent(
+          usernameFromUrl
+        )}`
+      );
       return; // Important to return to prevent other logic paths
     }
 
@@ -218,7 +210,7 @@ function VideoRoomManager() {
         "No direct join, auto-match, or relevant username parameters found"
       );
     }
-  }, [searchParams, findRandomChat, username]); // Ensure all dependencies are listed
+  }, [searchParams, findRandomChat, username, router]); // Ensure all dependencies are listed
 
   // Function to poll status while waiting
   useEffect(() => {
@@ -240,10 +232,13 @@ function VideoRoomManager() {
             console.log(
               `Matched with ${data.matchedWith} in room ${data.roomName}`
             );
-            setRoomName(data.roomName);
-            setUsingDemoServer(data.useDemo);
             setIsWaiting(false);
-            setIsJoined(true);
+            setUsingDemoServer(data.useDemo);
+            router.push(
+              `/video-chat/room/${data.roomName}?username=${encodeURIComponent(
+                username
+              )}`
+            );
           } else if (data.status === "not_waiting") {
             // This could happen if the server restarted or the user's session expired
             console.log("User no longer in waiting queue, cancelling wait");
@@ -267,7 +262,7 @@ function VideoRoomManager() {
         clearInterval(intervalId);
       }
     };
-  }, [isWaiting, username]);
+  }, [isWaiting, username, router]);
 
   const joinRoom = () => {
     if (roomName && username) {
@@ -277,7 +272,13 @@ function VideoRoomManager() {
         if (sanitizedRoom !== roomName) {
           setRoomName(sanitizedRoom);
         }
-        setIsJoined(true);
+        setIsWaiting(true);
+        // Navigate to the canonical room route
+        router.push(
+          `/video-chat/room/${sanitizedRoom}?username=${encodeURIComponent(
+            username
+          )}`
+        );
       }
     }
   };
@@ -310,33 +311,9 @@ function VideoRoomManager() {
     setUsingDemoServer(!usingDemoServer);
   };
 
-  // Handle disconnection from a chat
-  const handleDisconnect = useCallback(() => {
-    console.log("User disconnected, returning to initial screen");
-    setIsJoined(false);
-    setRoomName("");
-    setIsWaiting(false);
-    setError("");
-
-    // Add the reset flag to the URL to ensure full state reset
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      url.searchParams.set("reset", "true");
-      url.searchParams.set("username", username);
-      window.history.replaceState({}, "", url.toString());
-    }
-  }, [username]);
-
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-[#121212] text-white p-4 md:p-8 font-[family-name:var(--font-geist-sans)]">
-      {isJoined ? (
-        <RoomComponent
-          roomName={roomName}
-          username={username}
-          useDemo={usingDemoServer}
-          onDisconnect={handleDisconnect}
-        />
-      ) : isWaiting ? (
+      {isWaiting ? (
         <WaitingRoomComponent username={username} onCancel={cancelWaiting} />
       ) : (
         <div className="w-full max-w-md p-6 bg-[#1E1E1E] rounded-lg shadow-md">

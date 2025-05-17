@@ -70,9 +70,9 @@ export default function RoomComponent({
 
       // Navigate to the new room
       router.push(
-        `/video-chat?roomName=${encodeURIComponent(
+        `/video-chat/room/${encodeURIComponent(
           newRoomName
-        )}&username=${encodeURIComponent(username)}`
+        )}?username=${encodeURIComponent(username)}`
       );
     },
     [router, username]
