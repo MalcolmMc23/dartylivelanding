@@ -15,28 +15,25 @@
   margin: 2.5rem 0;
   max-width: 900px;
   padding: 0 3rem;
-}
-
-/* Adding fade in/out effects that match the background */
-.scrollContainer::before,
-.scrollContainer::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  width: 100px;
-  height: 100%;
-  z-index: 2;
-  pointer-events: none;
-}
-
-.scrollContainer::before {
-  left: 0;
-  background: linear-gradient(to right, #121212, transparent);
-}
-
-.scrollContainer::after {
-  right: 0;
-  background: linear-gradient(to left, #121212, transparent);
+  /* Apply a more subtle, gradual fade */
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    rgba(0, 0, 0, 0.5) 5%,
+    black 15%,
+    black 85%,
+    rgba(0, 0, 0, 0.5) 95%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    rgba(0, 0, 0, 0.5) 5%,
+    black 15%,
+    black 85%,
+    rgba(0, 0, 0, 0.5) 95%,
+    transparent 100%
+  );
 }
 
 .scrollTrack {
