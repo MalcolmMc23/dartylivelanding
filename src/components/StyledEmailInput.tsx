@@ -9,7 +9,7 @@ interface StyledEmailInputProps {
 }
 
 const StyledEmailInput: React.FC<StyledEmailInputProps> = ({
-  placeholder = "Ex. johndoe@exmpl.edu",
+  placeholder = "Ex. johndoe@exmple.edu",
   onEmailChange,
 }) => {
   const [email, setEmail] = useState("");
