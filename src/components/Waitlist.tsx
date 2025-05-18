@@ -3,7 +3,8 @@
 import StyledEmailInput from "@/components/StyledEmailInput";
 import UniversityLogoScroll from "@/components/UniversityLogoScroll";
 import AnimatedStars from "@/components/AnimatedStars";
-import { useState } from "react";
+import CountdownTimer from "@/components/CountdownTimer";
+import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 
 export default function Waitlist() {
@@ -11,6 +12,13 @@ export default function Waitlist() {
   const [showWarning, setShowWarning] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const router = useRouter();
+
+  // Set target date 3 days from now
+  const targetDate = useMemo(() => {
+    const date = new Date();
+    date.setDate(date.getDate() + 3);
+    return date;
+  }, []);
 
   const handleTryVideoChat = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -56,6 +64,19 @@ export default function Waitlist() {
           <h1 className="text-4xl md:text-5xl font-bold mt-8">
             DormParty<span className="text-[#A259FF]">.live</span>
           </h1>
+
+          {/* Waitlist announcement */}
+          <div className="mt-4 mb-2">
+            <h2 className="text-2xl md:text-3xl font-bold text-white">
+              The first batch of the waitlist has gone out!
+            </h2>
+            <p className="text-xl md:text-2xl mt-2 text-[#A259FF] font-semibold">
+              Next batch in:
+            </p>
+          </div>
+
+          {/* Countdown Timer */}
+          <CountdownTimer targetDate={targetDate} />
 
           {/* Subtitle */}
           <p className="text-lg text-gray-400">Sign in with .edu</p>
