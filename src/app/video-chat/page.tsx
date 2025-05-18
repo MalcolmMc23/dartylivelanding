@@ -1,16 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback, Suspense, useRef } from "react";
-import dynamic from "next/dynamic";
 import WaitingRoomComponent from "@/components/WaitingRoomComponent";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import NoSSR from "@/components/NoSSR";
 import { AdminDebugPanel } from "@/components/AdminDebugPanel";
-
-// Dynamically import the RoomComponent with no SSR to avoid hydration errors
-const RoomComponent = dynamic(() => import("@/components/RoomComponent"), {
-  ssr: false,
-});
 
 // Wrap the main content in a client-side only component
 export default function VideoChat() {
@@ -40,11 +34,11 @@ export default function VideoChat() {
 function VideoRoomManager() {
   const [roomName, setRoomName] = useState("");
   const [username, setUsername] = useState("");
-  const [isJoined, setIsJoined] = useState(false);
   const [usingDemoServer, setUsingDemoServer] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
   const [error, setError] = useState("");
   const searchParams = useSearchParams();
+  const router = useRouter();
   const resetProcessedRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -84,7 +78,12 @@ function VideoRoomManager() {
           setRoomName(data.roomName);
           setUsingDemoServer(data.useDemo); // Use the demo setting that was decided
           setIsWaiting(false);
-          setIsJoined(true);
+          // Navigate to the canonical room route
+          router.push(
+            `/video-chat/room/${data.roomName}?username=${encodeURIComponent(
+              finalUsername
+            )}`
+          );
         } else if (data.status === "waiting") {
           // We're in the waiting queue
           console.log("Added to waiting queue, waiting for match...");
@@ -102,7 +101,7 @@ function VideoRoomManager() {
         setIsWaiting(false);
       }
     },
-    [usingDemoServer, username, searchParams]
+    [usingDemoServer, username, searchParams, router]
   );
 
   // Check if this is an auto-match redirect
@@ -124,8 +123,6 @@ function VideoRoomManager() {
       const currentUsername = username || usernameFromUrl || "";
 
       setRoomName("");
-      setIsJoined(false);
-      setUsingDemoServer(false); // Reset demo server state
       setIsWaiting(false);
       setError("");
 
@@ -157,18 +154,13 @@ function VideoRoomManager() {
       );
       setRoomName(roomNameFromUrl);
       setUsername(usernameFromUrl);
-      setUsingDemoServer(useDemoFromUrl); // Set demo server based on URL
-      setIsJoined(true);
-
-      // Clean up URL params after processing direct join
-      if (typeof window !== "undefined") {
-        const url = new URL(window.location.href);
-        url.searchParams.delete("roomName");
-        url.searchParams.delete("useDemo"); // Clean up demo flag
-        // Optionally keep username or remove it based on desired behavior after joining
-        // url.searchParams.delete("username");
-        window.history.replaceState({}, "", url.toString());
-      }
+      setUsingDemoServer(useDemoFromUrl);
+      // Navigate directly to the canonical room route instead of rendering here
+      router.push(
+        `/video-chat/room/${roomNameFromUrl}?username=${encodeURIComponent(
+          usernameFromUrl
+        )}`
+      );
       return; // Important to return to prevent other logic paths
     }
 
@@ -218,7 +210,7 @@ function VideoRoomManager() {
         "No direct join, auto-match, or relevant username parameters found"
       );
     }
-  }, [searchParams, findRandomChat, username]); // Ensure all dependencies are listed
+  }, [searchParams, findRandomChat, username, router]); // Ensure all dependencies are listed
 
   // Function to poll status while waiting
   useEffect(() => {
@@ -240,10 +232,13 @@ function VideoRoomManager() {
             console.log(
               `Matched with ${data.matchedWith} in room ${data.roomName}`
             );
-            setRoomName(data.roomName);
-            setUsingDemoServer(data.useDemo);
             setIsWaiting(false);
-            setIsJoined(true);
+            setUsingDemoServer(data.useDemo);
+            router.push(
+              `/video-chat/room/${data.roomName}?username=${encodeURIComponent(
+                username
+              )}`
+            );
           } else if (data.status === "not_waiting") {
             // This could happen if the server restarted or the user's session expired
             console.log("User no longer in waiting queue, cancelling wait");
@@ -267,7 +262,7 @@ function VideoRoomManager() {
         clearInterval(intervalId);
       }
     };
-  }, [isWaiting, username]);
+  }, [isWaiting, username, router]);
 
   const joinRoom = () => {
     if (roomName && username) {
@@ -277,7 +272,13 @@ function VideoRoomManager() {
         if (sanitizedRoom !== roomName) {
           setRoomName(sanitizedRoom);
         }
-        setIsJoined(true);
+        setIsWaiting(true);
+        // Navigate to the canonical room route
+        router.push(
+          `/video-chat/room/${sanitizedRoom}?username=${encodeURIComponent(
+            username
+          )}`
+        );
       }
     }
   };
@@ -310,38 +311,14 @@ function VideoRoomManager() {
     setUsingDemoServer(!usingDemoServer);
   };
 
-  // Handle disconnection from a chat
-  const handleDisconnect = useCallback(() => {
-    console.log("User disconnected, returning to initial screen");
-    setIsJoined(false);
-    setRoomName("");
-    setIsWaiting(false);
-    setError("");
-
-    // Add the reset flag to the URL to ensure full state reset
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      url.searchParams.set("reset", "true");
-      url.searchParams.set("username", username);
-      window.history.replaceState({}, "", url.toString());
-    }
-  }, [username]);
-
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-[#121212] text-white p-4 md:p-8 font-[family-name:var(--font-geist-sans)]">
-      {isJoined ? (
-        <RoomComponent
-          roomName={roomName}
-          username={username}
-          useDemo={usingDemoServer}
-          onDisconnect={handleDisconnect}
-        />
-      ) : isWaiting ? (
+      {isWaiting ? (
         <WaitingRoomComponent username={username} onCancel={cancelWaiting} />
       ) : (
-        <div className="w-full max-w-md p-6 bg-[#1E1E1E] rounded-lg shadow-md">
-          <h1 className="text-2xl font-bold mb-6 text-center">
-            DormParty<span className="text-[#A0FF00]">.live</span> Chat
+        <div className="w-full max-w-md p-8 bg-[#1A1A1A] rounded-2xl shadow-2xl backdrop-blur-sm border border-[#2A2A2A]">
+          <h1 className="text-3xl font-bold mb-8 text-center tracking-tight">
+            DormParty<span className="text-[#A855F7]">.live</span>
           </h1>
 
           {error && (
@@ -354,42 +331,42 @@ function VideoRoomManager() {
             </div>
           )}
 
-          <div className="mb-6">
-            <label className="block text-sm font-medium mb-1">Your Name</label>
+          <div className="mb-8">
+            <label className="block text-sm font-medium mb-2 text-gray-300">Your Name</label>
             <input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full p-2 border rounded bg-[#2A2A2A] border-[#3A3A3A] text-white"
+              className="w-full p-3 border rounded-xl bg-[#2A2A2A] border-[#3A3A3A] text-white focus:outline-none focus:ring-2 focus:ring-[#A855F7] focus:border-transparent transition-all"
               placeholder="Enter your name"
               autoComplete="off"
               ref={inputRef}
             />
           </div>
 
-          <div className="flex flex-col gap-4 mb-6">
+          <div className="flex flex-col gap-4 mb-8">
             <button
               onClick={() => {
                 findRandomChat();
               }}
               disabled={!username}
-              className="w-full bg-[#A0FF00] text-black p-3 rounded font-semibold disabled:bg-[#4A4A4A] disabled:text-[#8A8A8A] hover:bg-opacity-90"
+              className="w-full bg-[#A855F7] text-white p-3.5 rounded-xl font-semibold disabled:bg-[#2A2A2A] disabled:text-[#666666] disabled:cursor-not-allowed enabled:hover:cursor-pointer enabled:hover:bg-[#9333EA] transition-all duration-200 shadow-lg shadow-[#A855F7]/20"
             >
               Find Random Chat
             </button>
 
             <div className="text-center">
-              <span className="text-gray-400">- or -</span>
+              <span className="text-gray-500">- or -</span>
             </div>
 
             <div className="relative">
               <details className="w-full">
-                <summary className="cursor-pointer p-2 text-center text-sm text-gray-400 hover:text-white">
+                <summary className="cursor-pointer p-2 text-center text-sm text-gray-400 hover:text-white transition-colors">
                   Join with room code (advanced)
                 </summary>
-                <div className="mt-4 p-4 bg-[#1A1A1A] rounded-lg">
+                <div className="mt-4 p-6 bg-[#1E1E1E] rounded-xl border border-[#2A2A2A]">
                   <div className="mb-4">
-                    <label className="block text-sm font-medium mb-1">
+                    <label className="block text-sm font-medium mb-2 text-gray-300">
                       Room Code
                     </label>
                     <div className="flex">
@@ -397,7 +374,7 @@ function VideoRoomManager() {
                         type="text"
                         value={roomName}
                         onChange={(e) => setRoomName(e.target.value)}
-                        className="w-full p-2 border rounded-l bg-[#2A2A2A] border-[#3A3A3A] text-white"
+                        className="w-full p-3 border rounded-l-xl bg-[#2A2A2A] border-[#3A3A3A] text-white focus:outline-none focus:ring-2 focus:ring-[#A855F7] focus:border-transparent transition-all"
                         placeholder="Enter room code"
                       />
                       <button
@@ -408,7 +385,7 @@ function VideoRoomManager() {
                             .toUpperCase();
                           setRoomName(newRoomCode);
                         }}
-                        className="bg-[#2A2A2A] text-white px-4 py-2 rounded-r border-l-0 border border-[#3A3A3A] hover:bg-[#3A3A3A]"
+                        className="bg-[#2A2A2A] text-white px-4 py-3 rounded-r-xl border-l-0 border border-[#3A3A3A] hover:bg-[#3A3A3A] transition-colors"
                       >
                         Generate
                       </button>
@@ -417,11 +394,10 @@ function VideoRoomManager() {
 
                   <button
                     onClick={() => {
-                      // Just call joinRoom directly since we're using a controlled input
                       joinRoom();
                     }}
                     disabled={!roomName || !username}
-                    className="w-full bg-[#2A2A2A] text-white p-2 rounded font-semibold hover:bg-[#3A3A3A] disabled:bg-[#1A1A1A] disabled:text-[#4A4A4A]"
+                    className="w-full bg-[#2A2A2A] text-white p-3 rounded-xl font-semibold hover:bg-[#3A3A3A] disabled:bg-[#1A1A1A] disabled:text-[#4A4A4A] transition-all duration-200"
                   >
                     Join Specific Room
                   </button>
@@ -430,13 +406,13 @@ function VideoRoomManager() {
             </div>
           </div>
 
-          <div className="flex items-center mb-2 text-sm">
+          <div className="flex items-center mb-2 text-sm text-gray-300">
             <input
               type="checkbox"
               id="demoServer"
               checked={usingDemoServer}
               onChange={toggleDemoServer}
-              className="mr-2"
+              className="mr-2 accent-[#A855F7]"
             />
             <label htmlFor="demoServer">
               Use LiveKit demo server (more reliable for testing)
@@ -444,9 +420,9 @@ function VideoRoomManager() {
           </div>
 
           {usingDemoServer && (
-            <div className="mt-4 p-3 bg-yellow-900 bg-opacity-30 rounded text-yellow-400 text-xs">
+            <div className="mt-4 p-4 bg-[#A855F7]/10 rounded-xl text-[#A855F7] text-xs border border-[#A855F7]/20">
               <p className="font-semibold">Using LiveKit Demo Server</p>
-              <p className="mt-1">
+              <p className="mt-1 text-[#A855F7]/80">
                 This mode uses LiveKit&apos;s public demo server instead of your
                 configured server. It&apos;s useful for testing if you&apos;re
                 having connection issues.

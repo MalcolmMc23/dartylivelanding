@@ -172,10 +172,27 @@ export function ConnectionStateLogger({
         ? Date.now() - connectionEstablishedAt.current
         : 0;
 
+      // Log disconnection details
+      console.log(
+        `Disconnected from room ${room.name} after ${connectionTime}ms`
+      );
+
+      // For short connection times, this is likely a navigation or immediate kick-out
       if (connectionTime < 5000) {
-        console.log(
-          "Ignoring disconnection during navigation or initial connection period"
-        );
+        // Check if this was actually a case where we were kicked due to room being full
+        const participantsCount = room.numParticipants;
+
+        if (participantsCount > maxParticipants) {
+          console.log(
+            `Room was over capacity with ${participantsCount} participants. This looks like a kick-out scenario.`
+          );
+        } else {
+          console.log(
+            "Ignoring disconnection during navigation or initial connection period. Connection time: " +
+              connectionTime +
+              "ms"
+          );
+        }
       } else {
         console.log("Connection fully disconnected");
         // Reset the flag only if this wasn't a quick disconnect
@@ -196,11 +213,25 @@ export function ConnectionStateLogger({
 
       // Clean up room tracking to prevent ghost users
       if (participant.identity !== username) {
-        // This is the other participant who left
-        onOtherParticipantDisconnected(participant.identity);
+        // Track when the disconnect happened
+        const disconnectionTime = Date.now();
+        console.log(
+          `Other participant ${participant.identity} disconnected at ${new Date(
+            disconnectionTime
+          ).toISOString()}`
+        );
 
-        // Clean up room tracking
-        cleanupRoomTracking(participant.identity, room.name);
+        // Add a short delay to allow for potential reconnection
+        const disconnectionTimeout = setTimeout(() => {
+          // This is the other participant who left
+          onOtherParticipantDisconnected(participant.identity);
+
+          // Clean up room tracking
+          cleanupRoomTracking(participant.identity, room.name);
+        }, 3000); // Give 3 seconds for potential reconnection
+
+        // Return cleanup function to clear the timeout if component unmounts
+        return () => clearTimeout(disconnectionTimeout);
       }
 
       checkRoomCapacity();
@@ -234,6 +265,7 @@ export function ConnectionStateLogger({
     onOtherParticipantDisconnected,
     onParticipantCountChange,
     username,
+    maxParticipants,
   ]);
 
   // Clean up when the component unmounts
@@ -279,7 +311,7 @@ export function ConnectionStateLogger({
         cleanupRoomTracking(username, room.name);
       }
     };
-  }, [username, room?.name]);
+  }, [username, room?.name, maxParticipants]);
 
   // Render room full message if applicable
   if (isRoomFull && connectionState === ConnectionState.Disconnected) {

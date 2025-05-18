@@ -11,6 +11,7 @@ interface LeftBehindStatus {
   matchedWith?: string;
   matchRoom?: string;
   error?: string;
+  inQueue?: boolean;
 }
 
 export function useLeftBehindStatus(username: string | null) {
@@ -64,7 +65,8 @@ export function useLeftBehindStatus(username: string | null) {
           newRoomName: data.newRoomName,
           previousRoom: data.previousRoom,
           disconnectedFrom: data.disconnectedFrom,
-          timestamp: data.timestamp
+          timestamp: data.timestamp,
+          inQueue: data.inQueue
         });
       }
     } catch (error) {
@@ -83,7 +85,7 @@ export function useLeftBehindStatus(username: string | null) {
     
     // Set up polling if needed
     if (username) {
-      const interval = setInterval(checkStatus, 3000); // Check every 3 seconds
+      const interval = setInterval(checkStatus, 2000); // Check every 2 seconds
       return () => clearInterval(interval);
     }
   }, [username, checkStatus]);

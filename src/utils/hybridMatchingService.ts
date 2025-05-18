@@ -52,5 +52,10 @@ export async function getWaitingQueueStatus(username: string) {
   return await redisMatchingService.getWaitingQueueStatus(username);
 }
 
+// Confirm a user's rematch and update their left-behind status
+export async function confirmUserRematch(username: string, matchRoom: string, matchedWith: string) {
+  return await redisMatchingService.confirmUserRematch(username, matchRoom, matchedWith);
+}
+
 // Add a console log to show we're using Redis implementation
 console.log('Using Redis-based matching service for improved performance and reliability.'); 
