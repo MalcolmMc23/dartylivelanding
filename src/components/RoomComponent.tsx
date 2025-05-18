@@ -21,6 +21,7 @@ import { RoomAutoMatchRedirector } from "./RoomAutoMatchRedirector";
 import { ActiveMatchPoller } from "./ActiveMatchPoller";
 import { handleDisconnection } from "@/utils/disconnectionService";
 import { LeftBehindNotification } from "./LeftBehindNotification";
+import { ParticipantCounter } from "./ParticipantCounter";
 
 // Max participants allowed in a room
 const MAX_PARTICIPANTS = 2;
@@ -65,14 +66,11 @@ export default function RoomComponent({
     (newRoomName: string) => {
       console.log(`Redirecting left-behind user to new room: ${newRoomName}`);
 
-      // Prevent the unmount handler from running since we're handling navigation here
-      unmountHandled.current = true;
-
       // Navigate to the new room
       router.push(
-        `/video-chat?roomName=${encodeURIComponent(
+        `/video-chat/room/${encodeURIComponent(
           newRoomName
-        )}&username=${encodeURIComponent(username)}`
+        )}?username=${encodeURIComponent(username)}`
       );
     },
     [router, username]
@@ -82,15 +80,6 @@ export default function RoomComponent({
   const [liveParticipantCount, setLiveParticipantCount] = useState(
     initialParticipantCount
   );
-
-  // Use the participant count from the component
-  useEffect(() => {
-    // Update the local participant count when it changes from the hook
-    setLiveParticipantCount(initialParticipantCount);
-  }, [initialParticipantCount]);
-
-  // Flag to track if unmount handling has been executed
-  const unmountHandled = useRef(false);
 
   // Use ref to track initial connection period
   const isInitialConnectionPeriod = useRef(true);
@@ -118,12 +107,6 @@ export default function RoomComponent({
   // Handle redirect when component unmounts
   useEffect(() => {
     return () => {
-      // Prevent multiple redirects
-      if (unmountHandled.current) {
-        console.log("Unmount already handled, skipping redirect");
-        return;
-      }
-
       // Skip redirect during initial connection period to prevent flashing
       if (isInitialConnectionPeriod.current) {
         console.log("In initial connection period, skipping redirect");
@@ -138,7 +121,6 @@ export default function RoomComponent({
         return;
       }
 
-      unmountHandled.current = true;
       console.log(
         "RoomComponent unmounting, redirecting to name entry page with reset flag"
       );
@@ -303,11 +285,14 @@ export default function RoomComponent({
             onJoinNewRoom={handleJoinNewRoom}
           />
           <StableRoomConnector username={username} roomName={roomName} />
+          {/* Improved participant counter with detailed diagnostics */}
+          <ParticipantCounter onCountChange={setLiveParticipantCount} />
           <RoomStatusIndicators
             usingDemoServer={usingDemoServer}
             participantCount={liveParticipantCount}
             maxParticipants={MAX_PARTICIPANTS}
             onParticipantLeft={handleOtherParticipantLeftRoom}
+            otherParticipantLeft={otherParticipantLeft}
           />
 
           <div className="h-full flex flex-col relative">
@@ -351,18 +336,21 @@ export default function RoomComponent({
                   mobileView === "chat" ? "hidden" : "block"
                 } md:block`}
               >
-                <VideoContainer />
+                <VideoContainer otherParticipantLeft={otherParticipantLeft} />
 
                 {/* Overlay when waiting alone in a call */}
                 {liveParticipantCount === 1 && (
                   <div className="absolute inset-0 md:w-3/5 flex items-center justify-center bg-black bg-opacity-50 pointer-events-none">
                     <div className="bg-blue-900 bg-opacity-80 p-6 rounded-lg max-w-md text-center">
                       <h2 className="text-xl font-bold text-white mb-4">
-                        Looking for a new match...
+                        {otherParticipantLeft
+                          ? "Finding you a new match..."
+                          : "Looking for a match..."}
                       </h2>
                       <p className="mb-4 text-white">
-                        You are in the matching queue. Someone will join you
-                        soon. Stay in this call.
+                        {otherParticipantLeft
+                          ? "The other user left. You'll be automatically matched with someone new."
+                          : "You are in the matching queue. Someone will join you soon."}
                       </p>
                       <div className="flex justify-center">
                         <div className="animate-bounce mx-1 h-3 w-3 bg-white rounded-full"></div>
@@ -402,7 +390,11 @@ export default function RoomComponent({
 }
 
 // VideoContainer component to replace the missing VideoLayout
-function VideoContainer() {
+function VideoContainer({
+  otherParticipantLeft,
+}: {
+  otherParticipantLeft?: boolean;
+}) {
   const participants = useParticipants();
   const totalParticipants = participants.length + 1; // Including local participant
 
@@ -410,8 +402,12 @@ function VideoContainer() {
   const renderCount = useRef(0);
   useEffect(() => {
     renderCount.current += 1;
-    console.log(`VideoContainer rendered: ${renderCount.current} times`);
-  }, []);
+    console.log(
+      `VideoContainer rendered: ${renderCount.current} times${
+        otherParticipantLeft ? " (other participant left)" : ""
+      }`
+    );
+  }, [otherParticipantLeft]);
 
   // Get camera and screen share tracks with useMemo to prevent unnecessary processing
   const trackSources = useMemo(

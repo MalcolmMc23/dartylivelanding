@@ -9,6 +9,7 @@ interface RoomStatusIndicatorsProps {
   participantCount: number;
   maxParticipants: number;
   onParticipantLeft?: (otherUsername: string) => void;
+  otherParticipantLeft?: boolean;
 }
 
 export function RoomStatusIndicators({
@@ -16,6 +17,7 @@ export function RoomStatusIndicators({
   participantCount,
   maxParticipants,
   onParticipantLeft,
+  otherParticipantLeft = false,
 }: RoomStatusIndicatorsProps) {
   const [showDemoIndicator, setShowDemoIndicator] = useState(true);
   const participants = useParticipants();
@@ -107,7 +109,9 @@ export function RoomStatusIndicators({
       {/* Waiting for match indicator */}
       {participantCount === 1 && (
         <div className="mt-3 bg-blue-600 text-white text-xs md:text-sm px-3 py-1 rounded-full animate-pulse">
-          Waiting for someone to join...
+          {otherParticipantLeft
+            ? "Finding a new match..."
+            : "Looking for a match..."}
         </div>
       )}
     </div>

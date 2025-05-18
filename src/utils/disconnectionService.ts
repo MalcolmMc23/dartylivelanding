@@ -103,18 +103,10 @@ export async function handleDisconnection({
         // Handle different redirection scenarios
         if (redirectToNewRoom && data.newRoomName) {
           // If we have a specific room to redirect to
-          const url = new URL('/video-chat', window.location.origin);
-          url.searchParams.set('roomName', data.newRoomName);
-          url.searchParams.set('username', username);
-          console.log(`Redirecting to new room: ${url.toString()}`);
-          router.push(url.toString());
+          router.push(`/video-chat/room/${data.newRoomName}?username=${encodeURIComponent(username)}`);
         } else if (data.status === 'immediate_match' && data.immediateMatch?.roomName) {
           // If we have an immediate match
-          const url = new URL('/video-chat', window.location.origin);
-          url.searchParams.set('roomName', data.immediateMatch.roomName);
-          url.searchParams.set('username', username);
-          console.log(`Redirecting to immediate match room: ${url.toString()}`);
-          router.push(url.toString());
+          router.push(`/video-chat/room/${data.immediateMatch.roomName}?username=${encodeURIComponent(username)}`);
         } else {
           // Default behavior - reset to video chat with auto-match if needed
           const url = new URL('/video-chat', window.location.origin);
@@ -154,12 +146,7 @@ export async function handleDisconnection({
         if (redirectToNewRoom) {
           // Generate a new room name based on timestamp since we don't have the server-generated one
           const fallbackRoomName = `error-recovery-${Date.now()}`;
-          const url = new URL('/video-chat', window.location.origin);
-          url.searchParams.set('roomName', fallbackRoomName);
-          url.searchParams.set('username', username);
-          url.searchParams.set('errorRecovery', 'true');
-          console.log(`Error during disconnection, redirecting to fallback room: ${url.toString()}`);
-          router.push(url.toString());
+          router.push(`/video-chat/room/${fallbackRoomName}?username=${encodeURIComponent(username)}&errorRecovery=true`);
         } else {
           // Default behavior - go back to the entry page
           const url = new URL('/video-chat', window.location.origin);

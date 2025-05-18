@@ -36,6 +36,9 @@ export function RoomAutoMatchRedirector({
       `Other participant left, preparing redirection handling for ${username}`
     );
 
+    // Optional safety timer that we may create later
+    let safetyTimer: ReturnType<typeof setTimeout> | null = null;
+
     // Add a slight delay to allow cleanup processes to complete
     const redirectTimer = setTimeout(async () => {
       try {
@@ -47,39 +50,108 @@ export function RoomAutoMatchRedirector({
         );
         const data = await response.json();
 
+        // 1. If the server already paired us with someone, go straight there.
         if (data.status === "already_matched" && data.roomName) {
           // User already has a match, go to that room
           console.log(
             `User ${username} already has a match in room ${data.roomName}, redirecting there`
           );
           router.push(
-            `/video-chat?roomName=${encodeURIComponent(
+            `/video-chat/room/${encodeURIComponent(
               data.roomName
-            )}&username=${encodeURIComponent(username)}`
+            )}?username=${encodeURIComponent(username)}`
           );
           return;
         }
 
-        if (data.status === "left_behind" && data.newRoomName) {
-          // User is in left-behind state but not matched yet
-          // Let the LeftBehindNotification component handle this
+        if (data.status === "left_behind") {
+          /**
+           * 2. The user has been marked as "left_behind".
+           *    This indicates the server knows they're alone and has placed them
+           *    back in the queue for matching. We'll let ActiveMatchPoller handle
+           *    redirecting them when a new match is found.
+           */
+
           console.log(
-            `User ${username} is in left-behind state, notification will handle it`
+            `User ${username} is in left-behind state – already in queue for a new match.`
           );
-          redirectInProgressRef.current = false;
-          return;
+
+          // Make an immediate request to ensure they're in the queue
+          await fetch("/api/match-user", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              username,
+              isRematching: true,
+            }),
+          });
+
+          // No need for a redirect - ActiveMatchPoller will handle it
+          // We just need to make sure user state is updated on the server
+
+          // Optional safety-net: after some time, ensure user is still in queue
+          const SAFETY_TIMEOUT_MS = 15000; // 15 seconds
+
+          safetyTimer = setTimeout(async () => {
+            try {
+              console.log(
+                `Safety-net triggered for ${username}. Checking status after ${SAFETY_TIMEOUT_MS}ms.`
+              );
+
+              // Instead of redirecting, just check and ensure user is still in queue
+              const response = await fetch(
+                `/api/check-left-behind-status?username=${encodeURIComponent(
+                  username
+                )}`
+              );
+              const data = await response.json();
+
+              if (
+                data.status !== "left_behind" &&
+                data.status !== "already_matched"
+              ) {
+                console.log(
+                  "User no longer in left-behind state, ensuring they stay in queue"
+                );
+
+                // Re-add to queue if not already in a match
+                await fetch("/api/match-user", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    username,
+                    useDemo: false, // We don't know this value here, so default to false
+                    isRematching: true,
+                  }),
+                });
+              }
+            } catch (err) {
+              console.error("Safety-net check failed:", err);
+            }
+          }, SAFETY_TIMEOUT_MS);
+
+          // We DO NOT call handleDisconnection here - we want to keep the left-behind record
+          return; // exit the redirectTimer callback early
         }
 
-        // Otherwise proceed with disconnection handling and auto-matching
+        /**
+         * 3. Normal case – we were *not* marked left-behind, so proceed with the
+         *    standard disconnection flow and let the server place us back in the
+         *    matching queue.
+         */
+
         console.log(
-          `Normal disconnection handling for ${username}, going to auto-match`
+          `Normal disconnection handling for ${username}, going to auto-match.`
         );
 
-        // Use disconnection service to properly handle state
         await handleDisconnection({
           username,
           roomName,
-          reason: "user_left",
+          reason: "user_disconnected",
           router,
           redirectToNewRoom: true,
         });
@@ -107,11 +179,13 @@ export function RoomAutoMatchRedirector({
         router.push(url.toString());
       } finally {
         redirectInProgressRef.current = false;
+        if (safetyTimer) clearTimeout(safetyTimer);
       }
     }, 1000); // Reduced to 1-second delay since we now have better handling
 
     return () => {
       clearTimeout(redirectTimer);
+      if (safetyTimer) clearTimeout(safetyTimer);
     };
   }, [otherParticipantLeft, username, roomName, router]);
 

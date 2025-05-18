@@ -31,6 +31,9 @@ export function StableRoomConnector({
     if (typeof window !== "undefined") {
       window.sessionStorage.setItem("currentRoom", roomName);
       window.sessionStorage.setItem("currentUsername", username);
+
+      // Clear any previous skipDisconnect flag to ensure we start fresh
+      window.sessionStorage.removeItem("skipDisconnect");
     }
 
     const stabilizationTimer = setTimeout(() => {
@@ -62,10 +65,16 @@ export function StableRoomConnector({
           window.sessionStorage.setItem("reconnectToRoom", roomName);
           window.sessionStorage.setItem("reconnectUsername", username);
 
-          // Clear the flag after a longer delay
-          setTimeout(() => {
+          // Clear the flag after a much longer delay to ensure it's present
+          // during the entire unmount and remount cycle
+          const clearSkipFlag = () => {
+            console.log(`Clearing skipDisconnect flag for ${username}`);
             window.sessionStorage.removeItem("skipDisconnect");
-          }, 10000); // Increased from 5000 to 10000 ms
+          };
+
+          // Use a longer timeout and store it in the window object to prevent garbage collection
+          // @ts-expect-error - This is intentionally attached to window
+          window.skipDisconnectTimer = setTimeout(clearSkipFlag, 15000); // Increased from 10000 to 15000 ms
         }
       } else if (stableRef.current) {
         console.log(`Clean unmount for ${username} after ${mountDuration}ms`);
@@ -73,6 +82,14 @@ export function StableRoomConnector({
         if (typeof window !== "undefined") {
           window.sessionStorage.removeItem("currentRoom");
           window.sessionStorage.removeItem("currentUsername");
+          window.sessionStorage.removeItem("skipDisconnect");
+
+          // Clear any existing skip disconnect timer
+          // @ts-expect-error - This is intentionally attached to window
+          if (window.skipDisconnectTimer) {
+            // @ts-expect-error - This is intentionally attached to window
+            clearTimeout(window.skipDisconnectTimer);
+          }
         }
       }
     };
