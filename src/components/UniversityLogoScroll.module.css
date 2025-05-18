@@ -17,7 +17,7 @@
   padding: 0 3rem;
 }
 
-/* Adding back fade in/out effects with correct background color */
+/* Adding fade in/out effects that match the background */
 .scrollContainer::before,
 .scrollContainer::after {
   content: "";
@@ -31,12 +31,12 @@
 
 .scrollContainer::before {
   left: 0;
-  background: linear-gradient(to right, #0a0a0a, rgba(10, 10, 10, 0));
+  background: linear-gradient(to right, #121212, transparent);
 }
 
 .scrollContainer::after {
   right: 0;
-  background: linear-gradient(to left, #0a0a0a, rgba(10, 10, 10, 0));
+  background: linear-gradient(to left, #121212, transparent);
 }
 
 .scrollTrack {
