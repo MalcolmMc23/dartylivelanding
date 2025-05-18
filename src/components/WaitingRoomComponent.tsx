@@ -65,7 +65,7 @@ export default function WaitingRoomComponent({
 
       <button
         onClick={onCancel}
-        className="w-full bg-[#2A2A2A]/80 text-white p-3 rounded-xl font-semibold shadow-md hover:bg-[#A020F0] hover:text-white transition-all duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[#A020F0]/60"
+        className="w-full bg-[#2A2A2A]/80 text-white p-3 rounded-xl font-semibold shadow-md hover:cursor-pointer hover:bg-[#A020F0] hover:text-white transition-all duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[#A020F0]/60"
       >
         Cancel
       </button>
