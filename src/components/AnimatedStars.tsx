@@ -3,15 +3,17 @@
 import { useEffect, useState } from "react";
 
 const AnimatedStars = () => {
-  const [stars, setStars] = useState<{ 
-    id: number; 
-    x: number; 
-    y: number; 
-    size: number; 
-    duration: number;
-    floatDuration: number;
-    floatDelay: number;
-  }[]>([]);
+  const [stars, setStars] = useState<
+    {
+      id: number;
+      x: number;
+      y: number;
+      size: number;
+      duration: number;
+      floatDuration: number;
+      floatDelay: number;
+    }[]
+  >([]);
 
   useEffect(() => {
     // Generate 100 stars with random positions, sizes, and animation properties
@@ -42,7 +44,7 @@ const AnimatedStars = () => {
             animationDuration: `${star.duration}s, ${star.floatDuration}s`,
             animationDelay: `0s, ${star.floatDelay}s`,
             opacity: Math.random() * 0.5 + 0.5,
-            boxShadow: '0 0 4px #A259FF',
+            boxShadow: "0 0 4px #A259FF",
           }}
         />
       ))}
@@ -50,4 +52,4 @@ const AnimatedStars = () => {
   );
 };
 
-export default AnimatedStars; 
+export default AnimatedStars;

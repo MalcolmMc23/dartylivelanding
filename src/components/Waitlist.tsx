@@ -95,14 +95,17 @@ export default function Waitlist() {
             )}
           </div>
         </main>
-        
+
         {/* Contact Email - Non-overlapping Footer */}
         <div className="w-full text-center py-4 text-xs text-gray-500 mt-auto">
-          <a href="mailto:dormroomsocial1@gmail.com" className="hover:text-[#A259FF] transition-colors inline-block px-2 py-1">
+          <a
+            href="mailto:dormroomsocial1@gmail.com"
+            className="hover:text-[#A259FF] transition-colors inline-block px-2 py-1"
+          >
             dormroomsocial1@gmail.com
           </a>
         </div>
       </div>
     </div>
   );
-} 
+}

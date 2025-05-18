@@ -17,26 +17,6 @@
   padding: 0 3rem;
 }
 
-.scrollContainer::before,
-.scrollContainer::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  width: 150px;
-  height: 100%;
-  z-index: 2;
-}
-
-.scrollContainer::before {
-  left: 0;
-  background: linear-gradient(to right, rgba(18, 18, 18, 1), rgba(18, 18, 18, 0));
-}
-
-.scrollContainer::after {
-  right: 0;
-  background: linear-gradient(to left, rgba(18, 18, 18, 1), rgba(18, 18, 18, 0));
-}
-
 .scrollTrack {
   display: flex;
   gap: 5rem;
