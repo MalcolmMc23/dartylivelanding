@@ -1,8 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useLeftBehindStatus } from "./hooks/useLeftBehindStatus";
-import { useState, useEffect } from "react";
 
 interface LeftBehindNotificationProps {
   username: string;
@@ -13,33 +11,7 @@ export function LeftBehindNotification({
   username,
   onJoinNewRoom,
 }: LeftBehindNotificationProps) {
-  const {
-    isLeftBehind,
-    newRoomName,
-    disconnectedFrom,
-    isMatched,
-    matchedWith,
-    matchRoom,
-  } = useLeftBehindStatus(username);
-
-  const [searchTime, setSearchTime] = useState(0);
-
-  // Track how long we've been searching for a match
-  useEffect(() => {
-    let timerId: NodeJS.Timeout | null = null;
-
-    if (isLeftBehind && !isMatched) {
-      timerId = setInterval(() => {
-        setSearchTime((prev) => prev + 1);
-      }, 1000);
-    }
-
-    return () => {
-      if (timerId) clearInterval(timerId);
-    };
-  }, [isLeftBehind, isMatched]);
-
-  const router = useRouter();
+  const { isMatched, matchRoom } = useLeftBehindStatus(username);
 
   // If matched and have a match room, join it
   if (isMatched && matchRoom) {
@@ -47,55 +19,6 @@ export function LeftBehindNotification({
     return null;
   }
 
-  if (!isLeftBehind || (!newRoomName && !isMatched)) {
-    return null;
-  }
-
-  return (
-    <div className="fixed top-0 left-0 right-0 z-50 bg-red-500 text-white p-4 shadow-xl">
-      <div className="max-w-4xl mx-auto">
-        {isMatched ? (
-          <p className="font-semibold text-center">
-            We&apos;ve found you a new match! Connecting you with {matchedWith}
-            ...
-          </p>
-        ) : (
-          <>
-            <p className="font-semibold text-center">
-              {disconnectedFrom} has left the chat.
-            </p>
-            <p className="text-center mt-2">
-              Looking for a new match for you...{" "}
-              {searchTime > 0 && `(${searchTime}s)`}
-            </p>
-            <p className="text-center text-sm mt-1">
-              You&apos;ll be automatically connected when we find someone for
-              you.
-            </p>
-            <div className="flex justify-center gap-4 mt-4">
-              <button
-                onClick={() => onJoinNewRoom(newRoomName || "")}
-                className="bg-white text-red-600 px-4 py-2 rounded font-semibold hover:bg-gray-100"
-              >
-                Join New Empty Room
-              </button>
-              <button
-                onClick={() => {
-                  const url = new URL("/video-chat", window.location.origin);
-                  url.searchParams.set("reset", "true");
-                  if (username) {
-                    url.searchParams.set("username", username);
-                  }
-                  router.push(url.toString());
-                }}
-                className="bg-transparent border border-white text-white px-4 py-2 rounded font-semibold hover:bg-red-600"
-              >
-                Return Home
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
+  // Return null - don't show any notification UI
+  return null;
 }

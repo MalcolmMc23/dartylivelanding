@@ -66,24 +66,38 @@ export function RoomAutoMatchRedirector({
 
         if (data.status === "left_behind") {
           /**
-           * 2. The user has been marked as "left_behind".  From this point on we trust
-           *    ActiveMatchPoller + LeftBehindNotification to move them to a new room.
-           *    We purposely DO NOT call handleDisconnection here, otherwise we would
-           *    remove the left-behind record that the server relies on for pairing.
+           * 2. The user has been marked as "left_behind".
+           *    This indicates the server knows they're alone and has placed them
+           *    back in the queue for matching. We'll let ActiveMatchPoller handle
+           *    redirecting them when a new match is found.
            */
 
           console.log(
-            `User ${username} is in left-behind state – waiting for automatic re-match.`
+            `User ${username} is in left-behind state – already in queue for a new match.`
           );
 
-          // Optional safety-net: after N seconds, if no match arrived, ensure
-          // the user is still in the queue but don't force a navigation
+          // Make an immediate request to ensure they're in the queue
+          await fetch("/api/match-user", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              username,
+              isRematching: true,
+            }),
+          });
+
+          // No need for a redirect - ActiveMatchPoller will handle it
+          // We just need to make sure user state is updated on the server
+
+          // Optional safety-net: after some time, ensure user is still in queue
           const SAFETY_TIMEOUT_MS = 15000; // 15 seconds
 
           safetyTimer = setTimeout(async () => {
             try {
               console.log(
-                `Safety-net triggered for ${username}. No new match after ${SAFETY_TIMEOUT_MS}ms.`
+                `Safety-net triggered for ${username}. Checking status after ${SAFETY_TIMEOUT_MS}ms.`
               );
 
               // Instead of redirecting, just check and ensure user is still in queue
@@ -120,7 +134,7 @@ export function RoomAutoMatchRedirector({
             }
           }, SAFETY_TIMEOUT_MS);
 
-          // We do NOT call handleDisconnection right now – we wait for the safety timer.
+          // We DO NOT call handleDisconnection here - we want to keep the left-behind record
           return; // exit the redirectTimer callback early
         }
 

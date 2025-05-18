@@ -292,6 +292,7 @@ export default function RoomComponent({
             participantCount={liveParticipantCount}
             maxParticipants={MAX_PARTICIPANTS}
             onParticipantLeft={handleOtherParticipantLeftRoom}
+            otherParticipantLeft={otherParticipantLeft}
           />
 
           <div className="h-full flex flex-col relative">
@@ -335,18 +336,21 @@ export default function RoomComponent({
                   mobileView === "chat" ? "hidden" : "block"
                 } md:block`}
               >
-                <VideoContainer />
+                <VideoContainer otherParticipantLeft={otherParticipantLeft} />
 
                 {/* Overlay when waiting alone in a call */}
                 {liveParticipantCount === 1 && (
                   <div className="absolute inset-0 md:w-3/5 flex items-center justify-center bg-black bg-opacity-50 pointer-events-none">
                     <div className="bg-blue-900 bg-opacity-80 p-6 rounded-lg max-w-md text-center">
                       <h2 className="text-xl font-bold text-white mb-4">
-                        Looking for a new match...
+                        {otherParticipantLeft
+                          ? "Finding you a new match..."
+                          : "Looking for a match..."}
                       </h2>
                       <p className="mb-4 text-white">
-                        You are in the matching queue. Someone will join you
-                        soon. Stay in this call.
+                        {otherParticipantLeft
+                          ? "The other user left. You'll be automatically matched with someone new."
+                          : "You are in the matching queue. Someone will join you soon."}
                       </p>
                       <div className="flex justify-center">
                         <div className="animate-bounce mx-1 h-3 w-3 bg-white rounded-full"></div>
@@ -386,7 +390,11 @@ export default function RoomComponent({
 }
 
 // VideoContainer component to replace the missing VideoLayout
-function VideoContainer() {
+function VideoContainer({
+  otherParticipantLeft,
+}: {
+  otherParticipantLeft?: boolean;
+}) {
   const participants = useParticipants();
   const totalParticipants = participants.length + 1; // Including local participant
 
@@ -394,8 +402,12 @@ function VideoContainer() {
   const renderCount = useRef(0);
   useEffect(() => {
     renderCount.current += 1;
-    console.log(`VideoContainer rendered: ${renderCount.current} times`);
-  }, []);
+    console.log(
+      `VideoContainer rendered: ${renderCount.current} times${
+        otherParticipantLeft ? " (other participant left)" : ""
+      }`
+    );
+  }, [otherParticipantLeft]);
 
   // Get camera and screen share tracks with useMemo to prevent unnecessary processing
   const trackSources = useMemo(
