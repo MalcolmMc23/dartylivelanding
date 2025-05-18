@@ -76,7 +76,7 @@ const StyledEmailInput: React.FC<StyledEmailInputProps> = ({
           placeholder={placeholder}
           className={`w-full px-6 py-3 rounded-full bg-[#2A2A2A] border ${
             error ? "border-red-500" : "border-[#4A4A4A]"
-          } text-white placeholder-gray-500 focus:outline-none focus:border-[#A0FF00] focus:ring-1 focus:ring-[#A0FF00] transition-colors duration-200`}
+          } text-white placeholder-gray-500 focus:outline-none focus:border-[#A259FF] focus:ring-1 focus:ring-[#A259FF] transition-colors duration-200`}
           disabled={isSubmitting}
         />
         <button
