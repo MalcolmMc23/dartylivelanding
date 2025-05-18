@@ -322,8 +322,12 @@ function VideoRoomManager() {
           </h1>
 
           {error && (
-            <div className="mb-6 p-4 bg-red-900/20 rounded-xl text-red-400 text-sm border border-red-900/30">
-              {error}
+            <div className="mb-4 flex items-center gap-3 p-4 rounded-lg bg-[#1a1a1a] border border-[#ff3b3b] shadow-sm">
+              <svg className="w-5 h-5 text-[#ff3b3b] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+              <span className="text-base font-bold text-white">{error}</span>
             </div>
           )}
 

@@ -41,30 +41,31 @@ export default function WaitingRoomComponent({
   };
 
   return (
-    <div className="w-full max-w-md p-6 bg-[#1E1E1E] rounded-lg shadow-md text-center">
-      <h2 className="text-2xl font-bold mb-6">
-        Finding You a Match<span className="text-[#A0FF00]">{dots}</span>
+    <div className="w-full max-w-md p-6 rounded-2xl shadow-2xl text-center bg-gradient-to-br from-[#232526]/80 to-[#1E1E1E]/90 backdrop-blur-md border border-[#A020F0]/20">
+      <h2 className="text-3xl font-extrabold mb-8 tracking-tight text-white drop-shadow">
+        Finding You a Match
+        <span className="text-[#A020F0]">{dots}</span>
       </h2>
 
-      <div className="mb-8">
-        <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-[#2A2A2A] flex items-center justify-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-[#A0FF00]"></div>
+      <div className="mb-10">
+        <div className="w-28 h-28 mx-auto mb-6 rounded-full bg-[#2A2A2A]/70 flex items-center justify-center shadow-lg">
+          <div className="animate-spin rounded-full h-20 w-20 border-[6px] border-t-[#A020F0] border-b-[#A020F0]/40 border-l-transparent border-r-transparent"></div>
         </div>
 
-        <p className="text-white mb-2">
-          Hi <span className="font-medium">{username}</span>!
+        <p className="text-white mb-2 text-lg font-medium">
+          Hi <span className="font-semibold text-[#A020F0]">{username}</span>!
         </p>
-        <p className="text-gray-300 mb-2">
+        <p className="text-gray-300 mb-2 text-base">
           Waiting for someone to chat with...
         </p>
-        <p className="text-sm text-gray-500">
+        <p className="text-xs text-gray-400 tracking-wide">
           Wait time: {formatTime(waitTime)}
         </p>
       </div>
 
       <button
         onClick={onCancel}
-        className="w-full bg-[#2A2A2A] text-white p-2 rounded font-semibold hover:bg-[#3A3A3A]"
+        className="w-full bg-[#2A2A2A]/80 text-white p-3 rounded-xl font-semibold shadow-md hover:cursor-pointer hover:bg-[#A020F0] hover:text-white transition-all duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[#A020F0]/60"
       >
         Cancel
       </button>
