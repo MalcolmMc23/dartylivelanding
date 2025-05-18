@@ -4,7 +4,7 @@ import StyledEmailInput from "@/components/StyledEmailInput";
 import UniversityLogoScroll from "@/components/UniversityLogoScroll";
 import AnimatedStars from "@/components/AnimatedStars";
 import CountdownTimer from "@/components/CountdownTimer";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 export default function Waitlist() {
@@ -12,12 +12,22 @@ export default function Waitlist() {
   const [showWarning, setShowWarning] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const router = useRouter();
+  const [targetDate, setTargetDate] = useState<Date | null>(null);
 
-  // Set target date 3 days from now
-  const targetDate = useMemo(() => {
-    const date = new Date();
-    date.setDate(date.getDate() + 3);
-    return date;
+  useEffect(() => {
+    // Check localStorage for a stored start time
+    const storedStart = localStorage.getItem("waitlistCountdownStart");
+    let startDate: Date;
+    if (storedStart) {
+      startDate = new Date(storedStart);
+    } else {
+      startDate = new Date();
+      localStorage.setItem("waitlistCountdownStart", startDate.toISOString());
+    }
+    // Set target date to 3 days from start
+    const target = new Date(startDate);
+    target.setDate(target.getDate() + 3);
+    setTargetDate(target);
   }, []);
 
   const handleTryVideoChat = async (e: React.MouseEvent) => {
@@ -76,7 +86,7 @@ export default function Waitlist() {
           </div>
 
           {/* Countdown Timer */}
-          <CountdownTimer targetDate={targetDate} />
+          {targetDate && <CountdownTimer targetDate={targetDate} />}
 
           {/* Subtitle */}
           <p className="text-lg text-gray-400">Sign in with .edu</p>
