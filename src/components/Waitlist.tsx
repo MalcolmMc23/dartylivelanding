@@ -4,7 +4,7 @@ import StyledEmailInput from "@/components/StyledEmailInput";
 import UniversityLogoScroll from "@/components/UniversityLogoScroll";
 import AnimatedStars from "@/components/AnimatedStars";
 import CountdownTimer from "@/components/CountdownTimer";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 export default function Waitlist() {

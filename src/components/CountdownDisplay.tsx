@@ -1,14 +1,25 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
 import CountdownTimer from "./CountdownTimer";
 
 export default function CountdownDisplay() {
-  // Set target date 3 days from now to match the main page
-  const targetDate = useMemo(() => {
-    const date = new Date();
-    date.setDate(date.getDate() + 3);
-    return date;
+  const [targetDate, setTargetDate] = useState<Date | null>(null);
+
+  useEffect(() => {
+    // Check localStorage for a stored start time
+    const storedStart = localStorage.getItem("waitlistCountdownStart");
+    let startDate: Date;
+    if (storedStart) {
+      startDate = new Date(storedStart);
+    } else {
+      startDate = new Date();
+      localStorage.setItem("waitlistCountdownStart", startDate.toISOString());
+    }
+    // Set target date to 3 days from start
+    const target = new Date(startDate);
+    target.setDate(target.getDate() + 3);
+    setTargetDate(target);
   }, []);
 
   if (!targetDate) {
