@@ -25,6 +25,32 @@ export async function handleUserDisconnection(username: string, roomName: string
     
     console.log(`User ${username} disconnected from ${roomName}. Left-behind user: ${leftBehindUser}`);
     
+    // Check if we already have a left-behind record for this user
+    if (leftBehindUser) {
+      const leftBehindKey = `${LEFT_BEHIND_PREFIX}${leftBehindUser}`;
+      const existingLeftBehindData = await redis.get(leftBehindKey);
+      
+      // If the user is already marked as left-behind in this room, prevent double processing
+      if (existingLeftBehindData) {
+        try {
+          const leftBehindState = JSON.parse(existingLeftBehindData);
+          
+          // If this is the same room and the user being disconnected is actually the one who was 
+          // previously left behind (might happen if the client fires disconnection events incorrectly)
+          if (leftBehindState.previousRoom === roomName && username === leftBehindUser) {
+            console.log(`WARNING: User ${username} appears to be the left-behind user that was already processed. Skipping duplicate disconnection.`);
+            return {
+              status: 'already_processed',
+              leftBehindUser,
+              users: [match.user1, match.user2]
+            };
+          }
+        } catch (e) {
+          console.error('Error parsing left-behind data:', e);
+        }
+      }
+    }
+    
     // Remove match from active matches
     await redis.hdel(ACTIVE_MATCHES, roomName);
     

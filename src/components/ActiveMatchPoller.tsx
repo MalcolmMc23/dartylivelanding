@@ -17,8 +17,7 @@ export function ActiveMatchPoller({
   const router = useRouter();
   const pollingInterval = useRef<NodeJS.Timeout | null>(null);
   const pollCountRef = useRef(0);
-  const maxPolls = 20; // Poll up to 20 times (10 seconds total)
-  const pollFrequency = 500; // Poll every 500ms
+  const pollFrequency = 2000; // Increase polling interval to reduce server load
 
   useEffect(() => {
     // Only start polling if this user was left behind by another user
@@ -70,15 +69,14 @@ export function ActiveMatchPoller({
             );
           }
 
-          // Update poll count using ref instead of state
+          // Update poll count for logging purposes
           pollCountRef.current += 1;
-          if (pollCountRef.current >= maxPolls) {
-            // If we've reached max polls, clear the interval
-            if (pollingInterval.current) {
-              clearInterval(pollingInterval.current);
-              pollingInterval.current = null;
-            }
-            console.log(`Stopped active polling after ${maxPolls} attempts`);
+
+          // Log status every 10 polls
+          if (pollCountRef.current % 10 === 0) {
+            console.log(
+              `Still polling for match after ${pollCountRef.current} attempts`
+            );
           }
         } catch (error) {
           console.error("Error polling for match:", error);

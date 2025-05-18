@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useLeftBehindStatus } from "./hooks/useLeftBehindStatus";
+import { useState, useEffect } from "react";
 
 interface LeftBehindNotificationProps {
   username: string;
@@ -20,6 +21,23 @@ export function LeftBehindNotification({
     matchedWith,
     matchRoom,
   } = useLeftBehindStatus(username);
+
+  const [searchTime, setSearchTime] = useState(0);
+
+  // Track how long we've been searching for a match
+  useEffect(() => {
+    let timerId: NodeJS.Timeout | null = null;
+
+    if (isLeftBehind && !isMatched) {
+      timerId = setInterval(() => {
+        setSearchTime((prev) => prev + 1);
+      }, 1000);
+    }
+
+    return () => {
+      if (timerId) clearInterval(timerId);
+    };
+  }, [isLeftBehind, isMatched]);
 
   const router = useRouter();
 
@@ -47,14 +65,19 @@ export function LeftBehindNotification({
               {disconnectedFrom} has left the chat.
             </p>
             <p className="text-center mt-2">
-              A new room has been prepared for you.
+              Looking for a new match for you...{" "}
+              {searchTime > 0 && `(${searchTime}s)`}
+            </p>
+            <p className="text-center text-sm mt-1">
+              You&apos;ll be automatically connected when we find someone for
+              you.
             </p>
             <div className="flex justify-center gap-4 mt-4">
               <button
                 onClick={() => onJoinNewRoom(newRoomName || "")}
                 className="bg-white text-red-600 px-4 py-2 rounded font-semibold hover:bg-gray-100"
               >
-                Join New Room
+                Join New Empty Room
               </button>
               <button
                 onClick={() => {

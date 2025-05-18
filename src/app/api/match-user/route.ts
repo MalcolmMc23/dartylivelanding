@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as hybridMatchingService from '@/utils/hybridMatchingService';
 import redis from '@/lib/redis';
+import { LEFT_BEHIND_PREFIX } from '@/utils/redis/constants';
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,6 +25,22 @@ export async function POST(request: NextRequest) {
     // Special handling for users who are being re-matched
     if (isRematching) {
       console.log(`User ${username} is being re-matched after being left alone`);
+      
+      // First, check if they have a left-behind record
+      const leftBehindKey = `${LEFT_BEHIND_PREFIX}${username}`;
+      const leftBehindData = await redis.get(leftBehindKey);
+      let leftBehindState = null;
+      
+      if (leftBehindData) {
+        try {
+          leftBehindState = JSON.parse(leftBehindData);
+          console.log(`Found left-behind state for ${username}: inQueue=${leftBehindState.inQueue}, processed=${leftBehindState.processed}`);
+        } catch (e) {
+          console.error(`Error parsing left-behind state for ${username}:`, e);
+        }
+      } else {
+        console.log(`No left-behind state found for ${username}, will create new queue entry`);
+      }
       
       // First ensure user is removed from any existing queues or matches
       await hybridMatchingService.removeUserFromQueue(username);
@@ -56,16 +73,37 @@ export async function POST(request: NextRequest) {
         attempts++;
       }
       
-      console.log(`No immediate match found for ${username} after ${maxAttempts} attempts, adding to in-call queue for priority matching`);
+      // If we still have the left-behind record, use its roomName for consistency
+      let roomName = undefined;
+      if (leftBehindState && leftBehindState.newRoomName) {
+        roomName = leftBehindState.newRoomName;
+        console.log(`Using existing room name ${roomName} from left-behind state for ${username}`);
+      }
       
-      // Generate a new room name for this user
+      console.log(`No immediate match found for ${username} after ${maxAttempts} attempts, adding to in-call queue${roomName ? ` with room ${roomName}` : ''} for priority matching`);
+      
+      // Always ensure we're in the in-call queue
       await hybridMatchingService.addUserToQueue(
         username,
         useDemo,
         true, // inCall=true for priority matching
-        undefined, // Let the service generate a room name
+        roomName, // Use room name from left-behind state if available
         body.lastMatch // Provide any previous match info
       );
+      
+      // If we had a left-behind state, update it to ensure we're marked as in-queue
+      if (leftBehindState) {
+        leftBehindState.inQueue = true;
+        leftBehindState.queueTime = Date.now();
+        
+        // Update the record with newer expiry time to prevent expiration while waiting
+        await redis.set(
+          leftBehindKey,
+          JSON.stringify(leftBehindState),
+          'EX',
+          600 // 10 minute expiry (extended from 5 minutes)
+        );
+      }
       
       return NextResponse.json({
         status: 'waiting',
