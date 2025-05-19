@@ -263,7 +263,7 @@ export default function RoomComponent({
   console.log(`LiveKit URL being used: ${liveKitUrl}`);
 
   return (
-    <div className="relative h-full">
+    <div className="relative h-full min-h-screen">
       {/* Add the ActiveMatchPoller when user is left behind */}
       {wasLeftBehind && (
         <ActiveMatchPoller
@@ -321,7 +321,7 @@ export default function RoomComponent({
             <div className="flex-grow flex h-full items-center justify-center">
               {/* Videos on the left */}
               <div
-                className={`w-[75vw] h-[75vh] max-w-[75vw] max-h-[75vh] flex items-center justify-center mx-auto my-6 ${
+                className={`w-[75vw] h-[75vh] max-w-[75vw] max-h-[75vh] flex items-center justify-center mx-auto my-8 ${
                   mobileView === "chat" ? "hidden" : "block"
                 } md:block`}
               >
@@ -335,20 +335,24 @@ export default function RoomComponent({
               </div>
             </div>
 
-            <div className="flex justify-center">
-              <CustomControlBar 
-                username={username} 
-                roomName={roomName} 
-                onChatClick={() => setIsChatOpen(true)}
-                hasUnreadChat={hasUnreadChat} // PASS TO CONTROL BAR
-              />
-            </div>
+            {/* Remove the flex wrapper and absolutely position the control bar */}
+            {/* <div className="flex justify-center"> */}
+            {/*   <CustomControlBar ... /> */}
+            {/* </div> */}
+            <CustomControlBar
+              username={username}
+              roomName={roomName}
+              onChatClick={() => setIsChatOpen(true)}
+              hasUnreadChat={hasUnreadChat}
+              // Position at the bottom center, above all content
+              className="fixed bottom-0 left-1/2 -translate-x-1/2 z-50"
+            />
 
             <ChatDialog
               username={username}
               isOpen={isChatOpen}
               onClose={() => setIsChatOpen(false)}
-              onNewMessage={handleNewChatMessage} // PASS CALLBACK
+              onNewMessage={handleNewChatMessage}
             />
 
             <RoomAudioRenderer />
