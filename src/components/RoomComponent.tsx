@@ -340,28 +340,35 @@ export default function RoomComponent({
 
                 {/* Overlay when waiting alone in a call */}
                 {liveParticipantCount === 1 && (
-                  <div className="absolute inset-0 md:w-3/5 flex items-center justify-center bg-black bg-opacity-50 pointer-events-none">
-                    <div className="bg-blue-900 bg-opacity-80 p-6 rounded-lg max-w-md text-center">
-                      <h2 className="text-xl font-bold text-white mb-4">
+                  <div className="absolute inset-0 md:w-3/5 flex items-center justify-center pointer-events-none z-30">
+                    <div
+                      className="backdrop-blur-lg bg-gradient-to-br from-[#2d0036cc] via-[#3a0066cc] to-[#1a0026cc] border border-[#7c3aed] shadow-2xl p-8 rounded-2xl max-w-lg w-full mx-4 text-center"
+                      style={{
+                        boxShadow:
+                          "0 8px 32px 0 rgba(124,58,237,0.25), 0 1.5px 8px 0 rgba(0,0,0,0.25)",
+                        border: "1.5px solid #7c3aed55",
+                      }}
+                    >
+                      <h2 className="text-2xl md:text-3xl font-extrabold mb-3 text-transparent bg-clip-text bg-gradient-to-r from-[#a78bfa] via-[#c084fc] to-[#7c3aed] drop-shadow-[0_2px_8px_rgba(124,58,237,0.25)]">
                         {otherParticipantLeft
                           ? "Finding you a new match..."
                           : "Looking for a match..."}
                       </h2>
-                      <p className="mb-4 text-white">
+                      <p className="mb-6 text-[#e0e0ff] text-base md:text-lg font-medium">
                         {otherParticipantLeft
                           ? "The other user left. You'll be automatically matched with someone new."
                           : "You are in the matching queue. Someone will join you soon."}
                       </p>
-                      <div className="flex justify-center">
-                        <div className="animate-bounce mx-1 h-3 w-3 bg-white rounded-full"></div>
+                      <div className="flex justify-center gap-2 mt-2">
+                        <div className="h-3 w-3 rounded-full bg-[#a78bfa] animate-pulse shadow-[0_0_8px_2px_#a78bfa99]" />
                         <div
-                          className="animate-bounce mx-1 h-3 w-3 bg-white rounded-full"
-                          style={{ animationDelay: "0.2s" }}
-                        ></div>
+                          className="h-3 w-3 rounded-full bg-[#c084fc] animate-pulse shadow-[0_0_8px_2px_#c084fc99]"
+                          style={{ animationDelay: "0.18s" }}
+                        />
                         <div
-                          className="animate-bounce mx-1 h-3 w-3 bg-white rounded-full"
-                          style={{ animationDelay: "0.4s" }}
-                        ></div>
+                          className="h-3 w-3 rounded-full bg-[#7c3aed] animate-pulse shadow-[0_0_8px_2px_#7c3aed99]"
+                          style={{ animationDelay: "0.36s" }}
+                        />
                       </div>
                     </div>
                   </div>
@@ -448,7 +455,7 @@ function VideoContainer({
             <MirroredVideoTile trackRef={track} className="h-full" />
             {/* Custom participant name tag */}
             <div
-              className="absolute bottom-6 left-6 bg-black bg-opacity-80 px-4 py-2 rounded-md text-white text-base font-medium z-20 shadow-md"
+              className="absolute bottom-6 left-6 bg-black bg-opacity-80 px-4 py-2 rounded-md text-white text-base font-medium z-40 shadow-md"
               id={`custom-name-tag-${
                 isLocalParticipant ? "local" : track.participant?.identity
               }`}
@@ -475,7 +482,7 @@ function VideoContainer({
               />
               {/* Custom participant name tag */}
               <div
-                className="absolute bottom-6 left-6 bg-black bg-opacity-80 px-4 py-2 rounded-md text-white text-base font-medium z-20 shadow-md"
+                className="absolute bottom-6 left-6 bg-black bg-opacity-80 px-4 py-2 rounded-md text-white text-base font-medium z-40 shadow-md"
                 id="custom-name-tag-local"
               >
                 You
