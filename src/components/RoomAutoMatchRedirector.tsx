@@ -2,7 +2,6 @@
 
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { handleDisconnection } from "@/utils/disconnectionService";
 
 interface RoomAutoMatchRedirectorProps {
   username: string;
@@ -20,172 +19,90 @@ export function RoomAutoMatchRedirector({
   otherParticipantLeft,
 }: RoomAutoMatchRedirectorProps) {
   const router = useRouter();
-  const redirectInProgressRef = useRef(false);
+  const actionInProgressRef = useRef(false);
 
   useEffect(() => {
-    // Only trigger if the other participant has left
-    if (!otherParticipantLeft || !username) return;
+    if (!otherParticipantLeft || !username || !roomName) return;
 
-    // Prevent multiple redirects
-    if (redirectInProgressRef.current) return;
-
-    // Set the flag to prevent multiple redirects
-    redirectInProgressRef.current = true;
+    if (actionInProgressRef.current) {
+      console.log(
+        `RoomAutoMatchRedirector: Action already in progress for ${username}. Skipping.`
+      );
+      return;
+    }
+    actionInProgressRef.current = true;
 
     console.log(
-      `Other participant left, preparing redirection handling for ${username}`
+      `RoomAutoMatchRedirector: Other participant left room ${roomName}. ${username} will be re-queued and sent to matchmaking page.`
     );
 
-    // Optional safety timer that we may create later
-    let safetyTimer: ReturnType<typeof setTimeout> | null = null;
-
-    // Add a slight delay to allow cleanup processes to complete
-    const redirectTimer = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       try {
-        // Check for left-behind status first
-        const response = await fetch(
-          `/api/check-left-behind-status?username=${encodeURIComponent(
-            username
-          )}`
-        );
-        const data = await response.json();
-
-        // 1. If the server already paired us with someone, go straight there.
-        if (data.status === "already_matched" && data.roomName) {
-          // User already has a match, go to that room
-          console.log(
-            `User ${username} already has a match in room ${data.roomName}, redirecting there`
-          );
-          router.push(
-            `/video-chat/room/${encodeURIComponent(
-              data.roomName
-            )}?username=${encodeURIComponent(username)}`
-          );
-          return;
-        }
-
-        if (data.status === "left_behind") {
-          /**
-           * 2. The user has been marked as "left_behind".
-           *    This indicates the server knows they're alone and has placed them
-           *    back in the queue for matching. We'll let ActiveMatchPoller handle
-           *    redirecting them when a new match is found.
-           */
-
-          console.log(
-            `User ${username} is in left-behind state – already in queue for a new match.`
-          );
-
-          // Make an immediate request to ensure they're in the queue
-          await fetch("/api/match-user", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              username,
-              isRematching: true,
-            }),
-          });
-
-          // No need for a redirect - ActiveMatchPoller will handle it
-          // We just need to make sure user state is updated on the server
-
-          // Optional safety-net: after some time, ensure user is still in queue
-          const SAFETY_TIMEOUT_MS = 15000; // 15 seconds
-
-          safetyTimer = setTimeout(async () => {
-            try {
-              console.log(
-                `Safety-net triggered for ${username}. Checking status after ${SAFETY_TIMEOUT_MS}ms.`
-              );
-
-              // Instead of redirecting, just check and ensure user is still in queue
-              const response = await fetch(
-                `/api/check-left-behind-status?username=${encodeURIComponent(
-                  username
-                )}`
-              );
-              const data = await response.json();
-
-              if (
-                data.status !== "left_behind" &&
-                data.status !== "already_matched"
-              ) {
-                console.log(
-                  "User no longer in left-behind state, ensuring they stay in queue"
-                );
-
-                // Re-add to queue if not already in a match
-                await fetch("/api/match-user", {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify({
-                    username,
-                    useDemo: false, // We don't know this value here, so default to false
-                    isRematching: true,
-                  }),
-                });
-              }
-            } catch (err) {
-              console.error("Safety-net check failed:", err);
-            }
-          }, SAFETY_TIMEOUT_MS);
-
-          // We DO NOT call handleDisconnection here - we want to keep the left-behind record
-          return; // exit the redirectTimer callback early
-        }
-
-        /**
-         * 3. Normal case – we were *not* marked left-behind, so proceed with the
-         *    standard disconnection flow and let the server place us back in the
-         *    matching queue.
-         */
-
+        // Step 1: Notify the server that this user was left alone
+        // and should be placed in the general matchmaking queue.
+        // This call ensures the server cleans up the old room state for this user
+        // and makes them available for matching from the main /video-chat page.
         console.log(
-          `Normal disconnection handling for ${username}, going to auto-match.`
+          `RoomAutoMatchRedirector: Notifying server for ${username} being left in ${roomName}.`
         );
-
-        await handleDisconnection({
-          username,
-          roomName,
-          reason: "user_disconnected",
-          router,
-          redirectToNewRoom: true,
+        const notifyResponse = await fetch("/api/user-disconnect", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username,
+            roomName,
+            reason: "partner_left_nav_to_matchmaking", // A specific reason
+          }),
         });
-      } catch (error) {
-        console.error("Error during redirection handling:", error);
 
-        // Fallback to original redirection logic
-        console.log(
-          `Falling back to default auto-match redirection for ${username}`
+        if (!notifyResponse.ok) {
+          console.warn(
+            `RoomAutoMatchRedirector: Server notification for ${username} failed: ${notifyResponse.status}`
+          );
+          // Proceed with navigation even if notification fails, to unblock the user.
+        } else {
+          const notifyData = await notifyResponse.json();
+          console.log(
+            `RoomAutoMatchRedirector: Server notification response for ${username}:`,
+            notifyData
+          );
+        }
+      } catch (apiError) {
+        console.error(
+          `RoomAutoMatchRedirector: API call to notify server for ${username} failed:`,
+          apiError
         );
-
-        // Construct URL with parameters for auto-matching
+        // Proceed with navigation even if notification fails.
+      } finally {
+        // Step 2: ALWAYS navigate the user to the main matchmaking page.
+        console.log(
+          `RoomAutoMatchRedirector: Navigating ${username} to matchmaking page.`
+        );
         const url = new URL("/video-chat", window.location.origin);
         url.searchParams.set("username", username);
-        url.searchParams.set("autoMatch", "true");
+        url.searchParams.set("autoMatch", "true"); // Ensure they start matching
+        url.searchParams.set("fromRoom", roomName); // Contextual, optional
         url.searchParams.set("timestamp", Date.now().toString()); // Prevent caching
 
-        // Clear any previous room page mounting flag from sessionStorage
+        // Clear session storage items that might interfere with a fresh matchmaking start
         if (typeof window !== "undefined") {
           window.sessionStorage.removeItem("roomPageMounted");
           window.sessionStorage.removeItem("skipDisconnect");
+          // Potentially clear other room-specific states if necessary
         }
 
-        // Use router.push for client-side navigation
         router.push(url.toString());
-      } finally {
-        redirectInProgressRef.current = false;
-        if (safetyTimer) clearTimeout(safetyTimer);
+        // Note: actionInProgressRef will remain true for this instance.
+        // If the component unmounts and remounts, it will get a new ref.
+        // This is generally fine as navigation will occur.
       }
-    }, 1000); // Reduced to 1-second delay since we now have better handling
+    }, 1000); // 1-second delay to allow other cleanup or state updates
 
     return () => {
-      clearTimeout(redirectTimer);
-      if (safetyTimer) clearTimeout(safetyTimer);
+      clearTimeout(timer);
+      // Reset ref if component unmounts before action completes,
+      // though navigation usually makes this less critical.
+      actionInProgressRef.current = false;
     };
   }, [otherParticipantLeft, username, roomName, router]);
 

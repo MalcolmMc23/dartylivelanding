@@ -74,20 +74,20 @@ export async function POST(request: NextRequest) {
       }
       
       // If we still have the left-behind record, use its roomName for consistency
-      let roomName = undefined;
+      let roomNameToUseInQueue = undefined;
       if (leftBehindState && leftBehindState.newRoomName) {
-        roomName = leftBehindState.newRoomName;
-        console.log(`Using existing room name ${roomName} from left-behind state for ${username}`);
+        roomNameToUseInQueue = leftBehindState.newRoomName;
+        console.log(`Using existing room name ${roomNameToUseInQueue} from left-behind state for ${username}`);
       }
       
-      console.log(`No immediate match found for ${username} after ${maxAttempts} attempts, adding to in-call queue${roomName ? ` with room ${roomName}` : ''} for priority matching`);
+      console.log(`No immediate match found for ${username} after ${maxAttempts} attempts, adding to in-call queue${roomNameToUseInQueue ? ` with room ${roomNameToUseInQueue}` : ''} for priority matching`);
       
       // Always ensure we're in the in-call queue
       await hybridMatchingService.addUserToQueue(
         username,
         useDemo,
         true, // inCall=true for priority matching
-        roomName, // Use room name from left-behind state if available
+        roomNameToUseInQueue, // Use room name from left-behind state if available
         body.lastMatch // Provide any previous match info
       );
       
@@ -108,7 +108,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         status: 'waiting',
         message: 'Added to priority waiting queue',
-        isPriority: true
+        isPriority: true,
+        roomName: roomNameToUseInQueue
       });
     }
     
