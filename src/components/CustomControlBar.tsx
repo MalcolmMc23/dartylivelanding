@@ -15,7 +15,6 @@ import {
   MicrophoneOffIcon,
   CameraOnIcon,
   CameraOffIcon,
-  LeaveCallIcon,
 } from "./LiveKitIcons";
 import {
   handleDisconnection,

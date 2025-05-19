@@ -1,6 +1,5 @@
 "use client";
 
-import { cn } from "@/lib/utils";
 
 export interface ControlButtonProps {
   onClick: () => void;
@@ -17,8 +16,6 @@ export function ControlButton({
   onClick,
   disabled,
   active,
-  activeColor = "bg-gray-700 hover:bg-gray-600",
-  inactiveColor = "bg-red-600 hover:bg-red-500",
   ariaLabel,
   activeIcon,
   inactiveIcon,
