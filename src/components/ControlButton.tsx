@@ -1,6 +1,5 @@
 "use client";
 
-
 export interface ControlButtonProps {
   onClick: () => void;
   disabled: boolean;
@@ -10,6 +9,7 @@ export interface ControlButtonProps {
   ariaLabel: string;
   activeIcon: React.ReactNode;
   inactiveIcon?: React.ReactNode;
+  variant?: 'default' | 'chat';
 }
 
 export function ControlButton({
@@ -19,6 +19,7 @@ export function ControlButton({
   ariaLabel,
   activeIcon,
   inactiveIcon,
+  variant = 'default',
 }: ControlButtonProps) {
   return (
     <div className="relative group">
@@ -31,9 +32,11 @@ export function ControlButton({
           rounded-full
           shadow-md
           transition-all
-          ${active
-            ? "bg-gradient-to-br from-[#a259ff] to-[#6a1b9a] text-white"
-            : "bg-[#22153a]/80 text-[#a259ff] border border-[#3a1857]"}
+          ${variant === 'chat' 
+            ? "bg-[#22153a]/80 text-[#a259ff] border border-[#3a1857] hover:bg-[#2a1857]"
+            : active
+              ? "bg-gradient-to-br from-[#a259ff] to-[#6a1b9a] text-white"
+              : "bg-[#22153a]/80 text-[#a259ff] border border-[#3a1857]"}
           ${ariaLabel === "Leave call" ? "bg-gradient-to-br from-red-600 via-red-500 to-red-700 shadow-lg hover:scale-110" : ""}
           hover:scale-105
           disabled:opacity-50
@@ -53,7 +56,9 @@ export function ControlButton({
           ? "End Call"
           : ariaLabel.includes("camera")
             ? "Toggle Camera"
-            : "Toggle Microphone"}
+            : ariaLabel.includes("chat")
+              ? "Toggle Chat"
+              : "Toggle Microphone"}
       </span>
     </div>
   );

@@ -8,7 +8,6 @@ import { useRoomConnection } from "./room/hooks/useRoomConnection";
 import { CustomControlBar } from "./CustomControlBar";
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ChatComponent } from "./ChatComponent";
 import { StableRoomConnector } from "./StableRoomConnector";
 import { RoomAutoMatchRedirector } from "./RoomAutoMatchRedirector";
 import { ActiveMatchPoller } from "./ActiveMatchPoller";
@@ -18,6 +17,7 @@ import { ParticipantCounter } from "./ParticipantCounter";
 import { VideoContainer } from "./room/VideoContainer";
 import { WaitingOverlay } from "./room/WaitingOverlay";
 import { MobileViewToggle } from "./room/MobileViewToggle";
+import { ChatDialog } from "./ChatDialog";
 
 // Max participants allowed in a room
 const MAX_PARTICIPANTS = 2;
@@ -39,6 +39,7 @@ export default function RoomComponent({
   const [mobileView, setMobileView] = useState<"video" | "chat">("video");
   const [otherParticipantLeft, setOtherParticipantLeft] = useState(false);
   const [wasLeftBehind, setWasLeftBehind] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   const {
     token,
@@ -303,33 +304,37 @@ export default function RoomComponent({
               setMobileView={setMobileView}
             />
 
-            <div className="flex-grow flex h-full items-center">
+            <div className="flex-grow flex h-full items-center justify-center">
               {/* Videos on the left */}
               <div
-                className={`w-full md:w-2/3 h-full overflow-y-auto flex items-center justify-center pt-8 ${
+                className={`w-[75vw] h-[75vh] max-w-[75vw] max-h-[75vh] flex items-center justify-center mx-auto my-6 ${
                   mobileView === "chat" ? "hidden" : "block"
                 } md:block`}
               >
-                <VideoContainer otherParticipantLeft={otherParticipantLeft} />
+                <div className="aspect-[16/9] w-full h-full max-w-full max-h-full flex items-center justify-center">
+                  <VideoContainer otherParticipantLeft={otherParticipantLeft} />
+                </div>
 
                 {liveParticipantCount === 1 && (
                   <WaitingOverlay otherParticipantLeft={otherParticipantLeft} />
                 )}
               </div>
-
-              {/* Chat & Control Bar on the right */}
-              <div
-                className={`w-full md:w-1/2 h-full flex-grow-0 items-center justify-center px-4 md:px-8 ${
-                  mobileView === "video" ? "hidden" : "block"
-                } md:block`}
-              >
-                <ChatComponent username={username} roomName={roomName}>
-                  <div className="flex justify-center mt-2">
-                    <CustomControlBar username={username} roomName={roomName} />
-                  </div>
-                </ChatComponent>
-              </div>
             </div>
+
+            <div className="flex justify-center mt-2">
+              <CustomControlBar 
+                username={username} 
+                roomName={roomName} 
+                onChatClick={() => setIsChatOpen(true)}
+              />
+            </div>
+
+            <ChatDialog
+              username={username}
+              roomName={roomName}
+              isOpen={isChatOpen}
+              onClose={() => setIsChatOpen(false)}
+            />
 
             <RoomAudioRenderer />
           </div>
