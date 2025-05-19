@@ -22,9 +22,10 @@ interface ChatDialogProps {
   username: string;
   isOpen: boolean;
   onClose: () => void;
+  onNewMessage?: () => void; // NEW PROP
 }
 
-export function ChatDialog({ username, isOpen, onClose }: ChatDialogProps) {
+export function ChatDialog({ username, isOpen, onClose, onNewMessage }: ChatDialogProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -68,6 +69,10 @@ export function ChatDialog({ username, isOpen, onClose }: ChatDialogProps) {
           };
 
           setMessages((prevMessages) => [...prevMessages, newMessage]);
+          // Notify parent if message is from someone else
+          if (data.sender !== username && onNewMessage) {
+            onNewMessage();
+          }
         }
       } catch (e) {
         console.error("Error parsing data message:", e);

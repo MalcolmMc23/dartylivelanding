@@ -33,10 +33,10 @@ export function ControlButton({
           shadow-md
           transition-all
           ${variant === 'chat' 
-            ? "bg-[#22153a]/80 text-[#a259ff] border border-[#3a1857] hover:bg-[#2a1857]"
+            ? "bg-gradient-to-r from-[#ad5389] to-[#3c1053] text-white border border-[#3c1053] hover:brightness-110"
             : active
-              ? "bg-gradient-to-br from-[#a259ff] to-[#6a1b9a] text-white"
-              : "bg-[#22153a]/80 text-[#a259ff] border border-[#3a1857]"}
+              ? "bg-gradient-to-r from-[#ad5389] to-[#3c1053] text-white"
+              : "bg-gradient-to-r from-[#ad5389] to-[#3c1053] text-white border border-[#3c1053]"}
           ${ariaLabel === "Leave call" ? "bg-gradient-to-br from-red-600 via-red-500 to-red-700 shadow-lg hover:scale-110" : ""}
           hover:scale-105
           disabled:opacity-50
