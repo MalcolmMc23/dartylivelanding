@@ -45,34 +45,35 @@ export function VideoContainer({ otherParticipantLeft }: VideoContainerProps) {
   const cameraTracks = useTracks(trackSources, trackOptions);
 
   // Memoize the rendered tracks to prevent unnecessary re-renders
-  const renderedTracks = useMemo(() => {
-    console.log("Rendering tracks:", cameraTracks.length);
-    return cameraTracks.map(
-      (track: TrackReferenceOrPlaceholder, index: number) => {
-        const participantIdentity =
-          track.participant?.identity || (index === 0 ? "You" : "Participant");
-        const isLocalParticipant = track.participant?.isLocal || false;
+  // rendered tracks does not get used, commented out for deployment
+  // const renderedTracks = useMemo(() => {
+  //   console.log("Rendering tracks:", cameraTracks.length);
+  //   return cameraTracks.map(
+  //     (track: TrackReferenceOrPlaceholder, index: number) => {
+  //       const participantIdentity =
+  //         track.participant?.identity || (index === 0 ? "You" : "Participant");
+  //       const isLocalParticipant = track.participant?.isLocal || false;
 
-        return (
-          <div
-            key={track.publication?.trackSid || `participant-${index}`}
-            className="w-full h-auto rounded-lg overflow-hidden border border-[#212121] shadow-md transition-all relative"
-            style={{ aspectRatio: "16 / 9" }}
-          >
-            <MirroredVideoTile trackRef={track} className="h-full" />
-            <div
-              className="absolute bottom-6 left-6 bg-black bg-opacity-80 px-4 py-2 rounded-md text-white text-base font-medium z-40 shadow-md"
-              id={`custom-name-tag-${
-                isLocalParticipant ? "local" : track.participant?.identity
-              }`}
-            >
-              {isLocalParticipant ? "You" : participantIdentity}
-            </div>
-          </div>
-        );
-      }
-    );
-  }, [cameraTracks]);
+  //       return (
+  //         <div
+  //           key={track.publication?.trackSid || `participant-${index}`}
+  //           className="w-full h-auto rounded-lg overflow-hidden border border-[#212121] shadow-md transition-all relative"
+  //           style={{ aspectRatio: "16 / 9" }}
+  //         >
+  //           <MirroredVideoTile trackRef={track} className="h-full" />
+  //           <div
+  //             className="absolute bottom-6 left-6 bg-black bg-opacity-80 px-4 py-2 rounded-md text-white text-base font-medium z-40 shadow-md"
+  //             id={`custom-name-tag-${
+  //               isLocalParticipant ? "local" : track.participant?.identity
+  //             }`}
+  //           >
+  //             {isLocalParticipant ? "You" : participantIdentity}
+  //           </div>
+  //         </div>
+  //       );
+  //     }
+  //   );
+  // }, [cameraTracks]);
 
   // Calculate the max width for two stacked 16:9 videos to fit in 75vh
   // Each video: height = h, width = (16/9) * h
