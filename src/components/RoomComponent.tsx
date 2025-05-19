@@ -331,7 +331,6 @@ export default function RoomComponent({
 
             <ChatDialog
               username={username}
-              roomName={roomName}
               isOpen={isChatOpen}
               onClose={() => setIsChatOpen(false)}
             />

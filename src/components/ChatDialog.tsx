@@ -7,7 +7,6 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-  DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,16 +20,16 @@ interface Message {
 
 interface ChatDialogProps {
   username: string;
-  roomName: string;
   isOpen: boolean;
   onClose: () => void;
 }
 
-export function ChatDialog({ username, roomName, isOpen, onClose }: ChatDialogProps) {
+export function ChatDialog({ username, isOpen, onClose }: ChatDialogProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const room = useRoomContext();
+  
 
   // Scroll to bottom when messages change
   const scrollToBottom = () => {
