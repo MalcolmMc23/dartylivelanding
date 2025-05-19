@@ -1,6 +1,6 @@
 "use client";
 
-import { useParticipants, useTracks, TrackReferenceOrPlaceholder } from "@livekit/components-react";
+import { useParticipants, useTracks} from "@livekit/components-react";
 import { Track } from "livekit-client";
 import { MirroredVideoTile } from "./MirroredVideoTile";
 import { useMemo, useRef, useEffect } from "react";
