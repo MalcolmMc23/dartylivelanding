@@ -298,12 +298,15 @@ export default function RoomComponent({
               maxParticipants={MAX_PARTICIPANTS}
             />
 
-            <MobileViewToggle mobileView={mobileView} setMobileView={setMobileView} />
+            <MobileViewToggle
+              mobileView={mobileView}
+              setMobileView={setMobileView}
+            />
 
-            <div className="flex-grow flex h-full pb-16">
+            <div className="flex-grow flex h-full items-center">
               {/* Videos on the left */}
               <div
-                className={`w-full md:w-3/5 h-full overflow-y-auto flex items-center justify-center ${
+                className={`w-full md:w-2/3 h-full overflow-y-auto flex items-center justify-center pt-8 ${
                   mobileView === "chat" ? "hidden" : "block"
                 } md:block`}
               >
@@ -314,9 +317,9 @@ export default function RoomComponent({
                 )}
               </div>
 
-              {/* Chat on the right */}
+              {/* Chat & Control Bar on the right */}
               <div
-                className={`w-full md:w-2/5 h-full ${
+                className={`w-full md:w-1/2 h-full flex-grow-0 items-center justify-center px-4 md:px-8 ${
                   mobileView === "video" ? "hidden" : "block"
                 } md:block`}
               >

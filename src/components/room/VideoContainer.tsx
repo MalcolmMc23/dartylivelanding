@@ -56,7 +56,7 @@ export function VideoContainer({ otherParticipantLeft }: VideoContainerProps) {
         return (
           <div
             key={track.publication?.trackSid || `participant-${index}`}
-            className="w-full max-w-lg h-auto rounded-xl overflow-hidden border-2 border-[#212121] shadow-lg transition-all relative"
+            className="w-[95%] max-w-[95%] h-auto rounded-lg overflow-hidden border border-[#212121] shadow-md transition-all relative"
             style={{ aspectRatio: "16 / 9" }}
           >
             <MirroredVideoTile trackRef={track} className="h-full" />
@@ -76,8 +76,8 @@ export function VideoContainer({ otherParticipantLeft }: VideoContainerProps) {
 
   if (totalParticipants === 1) {
     return (
-      <div className="flex flex-col items-center justify-center h-full w-full p-4">
-        <div className="w-full max-w-lg aspect-video rounded-xl overflow-hidden border-2 border-[#212121] shadow-lg relative">
+      <div className="flex flex-col items-center justify-center h-full w-[95%] max-w-[95%] p-0">
+        <div className="w-full aspect-video rounded-lg overflow-hidden border border-[#212121] shadow-md relative">
           {cameraTracks.length > 0 && (
             <>
               <MirroredVideoTile
@@ -99,7 +99,7 @@ export function VideoContainer({ otherParticipantLeft }: VideoContainerProps) {
   }
 
   return (
-    <div className="w-full p-2 md:p-4 flex flex-col items-center justify-center gap-3 md:gap-6">
+    <div className="w-[95%] max-w-[95%] p-0 md:p-0.5 flex flex-col items-center justify-center gap-0 md:gap-0.5">
       {renderedTracks}
     </div>
   );

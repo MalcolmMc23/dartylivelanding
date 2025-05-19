@@ -121,15 +121,15 @@ export function ChatComponent({ username, roomName, children }: ChatComponentPro
   };
 
   return (
-    <div className="fixed top-20 right-1/4 z-50">
-      <div className="relative w-full max-w-sm min-w-[320px] flex flex-col bg-white/10 backdrop-blur-lg border border-[#3a1857] rounded-2xl shadow-2xl pointer-events-auto"
+    <div className="flex flex-col h-full">
+      <div className="relative w-full flex flex-col bg-white/10 backdrop-blur-lg border border-[#3a1857] rounded-2xl shadow-2xl flex-grow-0"
            style={{ maxHeight: '70vh' }}>
         <div className="p-4 border-b border-[#3a1857] bg-gradient-to-r from-[#2a1857] to-[#3a1857] rounded-t-2xl">
           <h2 className="text-xl font-bold text-white tracking-wide">Chat</h2>
         </div>
 
         <div className="flex-grow overflow-y-auto px-5 py-4 custom-scrollbar"
-             style={{ maxHeight: '40vh' }}>
+             style={{ maxHeight: '50vh' }}>
           {messages.length === 0 ? (
             <div className="flex items-center justify-center h-full text-[#b39ddb] text-center p-4">
               <p>
