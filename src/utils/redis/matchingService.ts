@@ -81,24 +81,19 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
         }
         
         // We found a match!
-        await removeUserFromQueue(user.username);
+        await removeUserFromQueue(user.username); // Remove targetUser from queue
         
-        // Make sure we have a valid room name
-        // Important: Use the room name from the in-call user
-        // This ensures we join their room correctly
-        let roomName = user.roomName;
+        // For in-call users
+        let roomName = user.roomName; // This is roomName of the person found in IN_CALL_QUEUE
         if (!roomName) {
           roomName = await generateUniqueRoomName();
-          console.log(`No room name found for in-call user ${user.username}, generated new room: ${roomName}`);
-        } else {
-          console.log(`Using existing room name ${roomName} from in-call user ${user.username}`);
         }
         
         // Create match record
         const matchData = {
           user1: username,
           user2: user.username,
-          roomName,
+          roomName, // Use the newly generated roomName
           useDemo: useDemo || user.useDemo,
           matchedAt: Date.now()
         };
@@ -107,7 +102,7 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
         console.log(`Created match: ${username} with ${user.username} in room ${roomName}`);
         
         // Make sure both users are removed from all queues
-        await removeUserFromQueue(username);
+        await removeUserFromQueue(username); // Remove caller from all queues as well
         
         return {
           status: 'matched',
@@ -116,7 +111,7 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
           useDemo: useDemo || user.useDemo
         };
       } catch (e) {
-        console.error('Error processing user data:', e);
+        console.error('Error processing user data from in-call queue:', e);
       }
     }
     
@@ -141,7 +136,7 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
         
         // Generate new room name
         const roomName = await generateUniqueRoomName();
-        console.log(`Generated new room ${roomName} for match between ${username} and ${user.username}`);
+        console.log(`Generated new room ${roomName} for match between ${username} (caller) and ${user.username} (from waiting queue)`);
         
         // Create match record
         const matchData = {
@@ -165,7 +160,7 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
           useDemo: useDemo || user.useDemo
         };
       } catch (e) {
-        console.error('Error processing waiting user data:', e);
+        console.error('Error processing user data from waiting queue:', e);
       }
     }
     

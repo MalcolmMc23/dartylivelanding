@@ -7,16 +7,20 @@ interface RoomAutoMatchRedirectorProps {
   username: string;
   roomName: string;
   otherParticipantLeft: boolean;
+  matchFound?: boolean; // New prop to indicate if a match was found by ActiveMatchPoller
 }
 
 /**
  * This component handles the auto-matching redirection when a user
  * is left alone in a room (other participant disconnected)
+ *
+ * It will NOT redirect if ActiveMatchPoller already found a match
  */
 export function RoomAutoMatchRedirector({
   username,
   roomName,
   otherParticipantLeft,
+  matchFound = false, // Default to false
 }: RoomAutoMatchRedirectorProps) {
   const router = useRouter();
   const actionInProgressRef = useRef(false);
@@ -37,49 +41,31 @@ export function RoomAutoMatchRedirector({
     );
 
     const timer = setTimeout(async () => {
-      try {
-        // Step 1: Notify the server that this user was left alone
-        // and should be placed in the general matchmaking queue.
-        // This call ensures the server cleans up the old room state for this user
-        // and makes them available for matching from the main /video-chat page.
-        console.log(
-          `RoomAutoMatchRedirector: Notifying server for ${username} being left in ${roomName}.`
-        );
-        const notifyResponse = await fetch("/api/user-disconnect", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            username,
-            roomName,
-            reason: "partner_left_nav_to_matchmaking", // A specific reason
-          }),
-        });
+      // First check if ActiveMatchPoller already found a match (from props or sessionStorage)
+      const matchFoundInSession =
+        typeof window !== "undefined" &&
+        window.sessionStorage.getItem("matchFound") === "true";
 
-        if (!notifyResponse.ok) {
-          console.warn(
-            `RoomAutoMatchRedirector: Server notification for ${username} failed: ${notifyResponse.status}`
-          );
-          // Proceed with navigation even if notification fails, to unblock the user.
-        } else {
-          const notifyData = await notifyResponse.json();
-          console.log(
-            `RoomAutoMatchRedirector: Server notification response for ${username}:`,
-            notifyData
-          );
-        }
-      } catch (apiError) {
-        console.error(
-          `RoomAutoMatchRedirector: API call to notify server for ${username} failed:`,
-          apiError
+      if (matchFound || matchFoundInSession) {
+        console.log(
+          `RoomAutoMatchRedirector: Match already found for ${username}, skipping redirection`
         );
-        // Proceed with navigation even if notification fails.
-      } finally {
+        actionInProgressRef.current = false;
+        return;
+      }
+
+      console.log(
+        `RoomAutoMatchRedirector: No match found in time window for ${username}, proceeding with fallback navigation`
+      );
+
+      try {
         // Step 2: ALWAYS navigate the user to the main matchmaking page.
         console.log(
           `RoomAutoMatchRedirector: Navigating ${username} to matchmaking page.`
         );
         const url = new URL("/video-chat", window.location.origin);
         url.searchParams.set("username", username);
+        url.searchParams.set("reset", "true"); // Ensure state is reset
         url.searchParams.set("autoMatch", "true"); // Ensure they start matching
         url.searchParams.set("fromRoom", roomName); // Contextual, optional
         url.searchParams.set("timestamp", Date.now().toString()); // Prevent caching
@@ -88,15 +74,18 @@ export function RoomAutoMatchRedirector({
         if (typeof window !== "undefined") {
           window.sessionStorage.removeItem("roomPageMounted");
           window.sessionStorage.removeItem("skipDisconnect");
-          // Potentially clear other room-specific states if necessary
+          window.sessionStorage.removeItem("matchFound"); // Clear match found flag
         }
 
         router.push(url.toString());
         // Note: actionInProgressRef will remain true for this instance.
         // If the component unmounts and remounts, it will get a new ref.
         // This is generally fine as navigation will occur.
+      } catch (error) {
+        console.error("Error navigating:", error);
+        actionInProgressRef.current = false;
       }
-    }, 1000); // 1-second delay to allow other cleanup or state updates
+    }, 5000); // Increased to 5 seconds to give ActiveMatchPoller more time
 
     return () => {
       clearTimeout(timer);
@@ -104,7 +93,7 @@ export function RoomAutoMatchRedirector({
       // though navigation usually makes this less critical.
       actionInProgressRef.current = false;
     };
-  }, [otherParticipantLeft, username, roomName, router]);
+  }, [otherParticipantLeft, username, roomName, router, matchFound]);
 
   // This component doesn't render anything
   return null;
