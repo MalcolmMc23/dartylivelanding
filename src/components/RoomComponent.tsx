@@ -40,6 +40,7 @@ export default function RoomComponent({
   const [otherParticipantLeft, setOtherParticipantLeft] = useState(false);
   const [wasLeftBehind, setWasLeftBehind] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [hasUnreadChat, setHasUnreadChat] = useState(false); // NEW STATE
 
   const {
     token,
@@ -72,6 +73,19 @@ export default function RoomComponent({
     },
     [router, username]
   );
+
+  const handleNewChatMessage = useCallback(() => {
+    if (!isChatOpen) {
+      setHasUnreadChat(true);
+    }
+  }, [isChatOpen]);
+
+  // Clear unread chat when dialog is opened
+  useEffect(() => {
+    if (isChatOpen) {
+      setHasUnreadChat(false);
+    }
+  }, [isChatOpen]);
 
   // We need a local state to track real-time participant count from LiveKit events
   const [liveParticipantCount, setLiveParticipantCount] = useState(
@@ -321,11 +335,12 @@ export default function RoomComponent({
               </div>
             </div>
 
-            <div className="flex justify-center mt-2">
+            <div className="flex justify-center">
               <CustomControlBar 
                 username={username} 
                 roomName={roomName} 
                 onChatClick={() => setIsChatOpen(true)}
+                hasUnreadChat={hasUnreadChat} // PASS TO CONTROL BAR
               />
             </div>
 
@@ -333,6 +348,7 @@ export default function RoomComponent({
               username={username}
               isOpen={isChatOpen}
               onClose={() => setIsChatOpen(false)}
+              onNewMessage={handleNewChatMessage} // PASS CALLBACK
             />
 
             <RoomAudioRenderer />
