@@ -1,8 +1,16 @@
-"use client";
-
 import { useState, useRef, useEffect } from "react";
 import { useRoomContext } from "@livekit/components-react";
 import { DataPacket_Kind, RemoteParticipant, RoomEvent } from "livekit-client";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 
 interface Message {
   id: string;
@@ -11,13 +19,14 @@ interface Message {
   isLocal: boolean;
 }
 
-interface ChatComponentProps {
+interface ChatDialogProps {
   username: string;
   roomName: string;
-  children?: React.ReactNode;
+  isOpen: boolean;
+  onClose: () => void;
 }
 
-export function ChatComponent({ username, roomName, children }: ChatComponentProps) {
+export function ChatDialog({ username, roomName, isOpen, onClose }: ChatDialogProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -69,13 +78,10 @@ export function ChatComponent({ username, roomName, children }: ChatComponentPro
     // Listen for data messages
     room.on(RoomEvent.DataReceived, handleDataReceived);
 
-    // Log room name for debugging
-    console.log(`Chat initialized in room: ${roomName}`);
-
     return () => {
       room.off(RoomEvent.DataReceived, handleDataReceived);
     };
-  }, [room, roomName]);
+  }, [room]);
 
   const handleSendMessage = () => {
     if (inputValue.trim() === "" || !room) return;
@@ -120,74 +126,105 @@ export function ChatComponent({ username, roomName, children }: ChatComponentPro
     }
   };
 
-  return (
-    <div className="flex flex-col h-full">
-      <div className="relative w-full flex flex-col bg-white/10 backdrop-blur-lg border border-[#3a1857] rounded-2xl shadow-2xl flex-grow-0"
-           style={{ maxHeight: '70vh' }}>
-        <div className="p-4 border-b border-[#3a1857] bg-gradient-to-r from-[#2a1857] to-[#3a1857] rounded-t-2xl">
-          <h2 className="text-xl font-bold text-white tracking-wide">Chat</h2>
-        </div>
+  if (!isOpen) return null;
 
-        <div className="flex-grow overflow-y-auto px-5 py-4 custom-scrollbar"
-             style={{ maxHeight: '50vh' }}>
+  return (
+    <Dialog open={isOpen} onOpenChange={open => !open ? onClose() : undefined}>
+      <DialogContent 
+        className="
+          max-w-lg 
+          p-0 
+          bg-[#18122B] 
+          rounded-2xl 
+          shadow-2xl 
+          border-4 
+          border-transparent 
+          [background:linear-gradient(#18122B,#18122B),linear-gradient(135deg,#a259ff,#6a1b9a,#231942)] 
+          [background-origin:border-box] 
+          [background-clip:padding-box,border-box]
+        "
+      >
+        <DialogHeader className="border-b border-[#2D1950] px-6 py-4 bg-[#A259FF]">
+          <DialogTitle className="text-lg font-semibold text-white tracking-wide">
+            Chat
+          </DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col px-6 py-4 gap-2 max-h-[60vh] overflow-y-auto custom-scrollbar bg-[#18122B]">
           {messages.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-[#b39ddb] text-center p-4">
-              <p>
-                No messages yet.
-                <br />
-                Start the conversation!
-              </p>
+            <div className="flex items-center justify-center h-40 text-[#B39DDB] text-center">
+              <p>No messages yet.<br />Start the conversation!</p>
             </div>
           ) : (
             messages.map((message) => (
               <div
                 key={message.id}
-                className={`mb-4 flex ${message.isLocal ? "justify-end" : "justify-start"}`}
+                className={`flex ${message.isLocal ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  className={`px-5 py-3 rounded-2xl max-w-[75%] break-words shadow-md transition-all
+                  className={`px-4 py-2 rounded-xl max-w-[75%] break-words shadow-sm
                     ${message.isLocal
-                      ? "bg-gradient-to-br from-[#a259ff] to-[#6a1b9a] text-white"
-                      : "bg-[#22153a]/80 text-[#e1bee7] border border-[#3a1857]"}`}
+                      ? "bg-gradient-to-br from-[#A259FF] to-[#6A1B9A] text-white"
+                      : "bg-[#231942] text-[#E0C3FC] border border-[#2D1950]"}`}
                 >
-                  <p className="text-xs font-semibold mb-1 opacity-80 tracking-wide">
+                  <p className="text-xs font-medium mb-1 opacity-70">
                     {message.isLocal ? "You" : message.sender}
                   </p>
-                  <p className="text-base leading-relaxed">{message.text}</p>
+                  <p className="text-sm">{message.text}</p>
                 </div>
               </div>
             ))
           )}
           <div ref={messagesEndRef} />
         </div>
-
-        <div className="p-4 border-t border-[#3a1857] bg-gradient-to-r from-[#2a1857] to-[#3a1857] rounded-b-2xl">
-          <div className="flex gap-2">
-            <textarea
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleInputKeyDown}
-              placeholder="Type a message..."
-              className="flex-grow p-3 rounded-xl bg-[#22153a]/70 text-white placeholder-[#b39ddb] focus:outline-none focus:ring-2 focus:ring-[#a259ff] resize-none min-h-[44px] max-h-[120px] font-medium transition-all overflow-hidden hide-scrollbar"
-              rows={1}
-              style={{ overflow: 'hidden' }}
-              onInput={e => {
-                const target = e.target as HTMLTextAreaElement;
-                target.style.height = "auto";
-                target.style.height = Math.min(target.scrollHeight, 120) + "px";
-              }}
-            />
-            <button
-              onClick={handleSendMessage}
+        <DialogFooter className="border-t border-[#2D1950] px-6 py-4 bg-[#1E1533]">
+          <form
+            className="flex w-full gap-2 items-end"
+            style={{ maxWidth: "100%" }}
+            onSubmit={e => {
+              e.preventDefault();
+              handleSendMessage();
+            }}
+          >
+            <div className="flex-1 min-w-0">
+              <Textarea
+                value={inputValue}
+                onChange={e => setInputValue(e.target.value)}
+                onKeyDown={handleInputKeyDown}
+                placeholder="Type a message..."
+                className="
+                  w-full 
+                  max-w-full 
+                  resize-y 
+                  min-h-[44px] 
+                  max-h-[120px] 
+                  font-medium 
+                  bg-[#231942] 
+                  text-white 
+                  placeholder-[#B39DDB] 
+                  border-none 
+                  focus:ring-2 
+                  focus:ring-[#A259FF]
+                  resize-vertical
+                "
+                rows={1}
+                style={{ overflow: 'hidden', resize: 'vertical' }}
+                onInput={e => {
+                  const target = e.target as HTMLTextAreaElement;
+                  target.style.height = "auto";
+                  target.style.height = Math.min(target.scrollHeight, 120) + "px";
+                }}
+              />
+            </div>
+            <Button
+              type="submit"
               disabled={inputValue.trim() === ""}
-              className="px-5 py-2 bg-gradient-to-br from-[#a259ff] to-[#6a1b9a] text-white rounded-xl font-bold shadow-lg hover:cursor-pointer hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="font-bold bg-gradient-to-br from-[#A259FF] to-[#6A1B9A] text-white hover:from-[#B983FF] hover:to-[#7C3AED] border-none shadow-lg"
             >
               Send
-            </button>
-          </div>
-        </div>
-      </div>
-      {children}
+            </Button>
+          </form>
+        </DialogFooter>
+      </DialogContent>
       <style jsx global>{`
         .custom-scrollbar::-webkit-scrollbar {
           width: 8px;
@@ -199,14 +236,7 @@ export function ChatComponent({ username, roomName, children }: ChatComponentPro
         .custom-scrollbar::-webkit-scrollbar-track {
           background: transparent;
         }
-        .hide-scrollbar::-webkit-scrollbar {
-          display: none;
-        }
-        .hide-scrollbar {
-          scrollbar-width: none;
-          -ms-overflow-style: none;
-        }
       `}</style>
-    </div>
+    </Dialog>
   );
 }

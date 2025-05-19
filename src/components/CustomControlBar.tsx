@@ -16,6 +16,7 @@ import {
   CameraOnIcon,
   CameraOffIcon,
 } from "./LiveKitIcons";
+import {LucideMessageSquareMore} from 'lucide-react'
 import {
   handleDisconnection,
   resetNavigationState,
@@ -24,11 +25,13 @@ import {
 interface CustomControlBarProps extends ControlBarProps {
   username: string;
   roomName: string;
+  onChatClick: () => void;
 }
 
 export function CustomControlBar({
   username,
   roomName,
+  onChatClick,
 }: CustomControlBarProps) {
   const room = useRoomContext();
   const router = useRouter();
@@ -212,6 +215,29 @@ export function CustomControlBar({
         ariaLabel={isCameraEnabled ? "Turn off camera" : "Turn on camera"}
         activeIcon={<CameraOnIcon />}
         inactiveIcon={<CameraOffIcon />}
+      />
+
+      {/* Chat Button */}
+      <ControlButton
+        onClick={onChatClick}
+        disabled={isRedirecting}
+        active={false}
+        variant="chat"
+        ariaLabel="Toggle chat"
+        activeIcon={
+          <LucideMessageSquareMore
+            color="white"
+            size={24}
+            className="text-white"
+          />
+        }
+        inactiveIcon={
+          <LucideMessageSquareMore
+            color="white"
+            size={24}
+            className="text-white"
+          />
+        }
       />
 
       {/* Leave Call Button */}
