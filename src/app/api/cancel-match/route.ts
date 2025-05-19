@@ -41,13 +41,14 @@ export async function POST(request: NextRequest) {
             
             // Add the other user back to the waiting queue
             if (otherUser) {
-              console.log(`Adding other user ${otherUser} back to waiting queue`);
+              console.log(`Adding other user ${otherUser} back to waiting queue (in-call) in room ${roomName}`);
               
               // Check if other user is already in a queue first
               const otherUserInQueue = await hybridMatchingService.getWaitingQueueStatus(otherUser);
               
               if (otherUserInQueue.status !== 'waiting' && otherUserInQueue.status !== 'in_call') {
-                await hybridMatchingService.addUserToQueue(otherUser, match.useDemo, true);
+                // Pass the existing roomName so the user stays in their current room
+                await hybridMatchingService.addUserToQueue(otherUser, match.useDemo, true, roomName);
               }
             }
           }

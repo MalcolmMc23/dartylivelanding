@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { useParticipants } from "@livekit/components-react";
 
@@ -21,42 +21,35 @@ export function RoomStatusIndicators({
 }: RoomStatusIndicatorsProps) {
   const [showDemoIndicator, setShowDemoIndicator] = useState(true);
   const participants = useParticipants();
+  const previousParticipantsRef = useRef<typeof participants>([]);
 
   // Track participants and detect when someone leaves
   useEffect(() => {
     if (!onParticipantLeft) return;
 
-    const participantIds = new Set(participants.map((p) => p.identity));
-    const handleParticipantChange = () => {
-      const currentParticipantIds = new Set(
-        participants.map((p) => p.identity)
-      );
+    const currentParticipantIdentities = new Set(
+      participants.map((p) => p.identity)
+    );
+    const previousParticipantIdentities = new Set(
+      previousParticipantsRef.current.map((p) => p.identity)
+    );
 
-      // Check if any participant has left
-      participantIds.forEach((id) => {
-        if (!currentParticipantIds.has(id)) {
-          console.log(`Participant ${id} has left the room`);
-          onParticipantLeft(id);
+    previousParticipantIdentities.forEach((prevId) => {
+      if (!currentParticipantIdentities.has(prevId)) {
+        // Check if the participants array actually reduced in size.
+        // This helps prevent false positives during initial connection
+        // or if the local user is the one disconnecting (useParticipants usually gives remote).
+        if (participants.length < previousParticipantsRef.current.length) {
+          console.log(
+            `Participant ${prevId} has left the room (detected by hook change)`
+          );
+          onParticipantLeft(prevId);
         }
-      });
+      }
+    });
 
-      // Update our tracking set
-      participantIds.clear();
-      currentParticipantIds.forEach((id) => participantIds.add(id));
-    };
-
-    // Initialize our tracking set
-    participants.forEach((p) => participantIds.add(p.identity));
-
-    // Create an observer to watch for participant changes
-    const observer = new MutationObserver(handleParticipantChange);
-
-    // Observe any DOM changes that might indicate participant changes
-    observer.observe(document.body, { childList: true, subtree: true });
-
-    return () => {
-      observer.disconnect();
-    };
+    // Update previous participants for the next render comparison
+    previousParticipantsRef.current = participants;
   }, [participants, onParticipantLeft]);
 
   // Hide the demo indicator after a few seconds
