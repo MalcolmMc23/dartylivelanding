@@ -15,19 +15,16 @@ export default function Waitlist() {
   const [targetDate, setTargetDate] = useState<Date | null>(null);
 
   useEffect(() => {
-    // Check localStorage for a stored start time
-    const storedStart = localStorage.getItem("waitlistCountdownStart");
-    let startDate: Date;
-    if (storedStart) {
-      startDate = new Date(storedStart);
-    } else {
-      startDate = new Date();
-      localStorage.setItem("waitlistCountdownStart", startDate.toISOString());
-    }
-    // Set target date to 3 days from start
-    const target = new Date(startDate);
-    target.setDate(target.getDate() + 3);
-    setTargetDate(target);
+    // Get next Wednesday at noon
+    const now = new Date();
+    const targetDay = 3; // Wednesday (0 = Sunday, 1 = Monday, etc.)
+    const daysUntilWednesday = (targetDay + 7 - now.getDay()) % 7;
+
+    const nextWednesday = new Date(now);
+    nextWednesday.setDate(now.getDate() + daysUntilWednesday);
+    nextWednesday.setHours(12, 0, 0, 0); // Set to noon
+
+    setTargetDate(nextWednesday);
   }, []);
 
   const handleTryVideoChat = async (e: React.MouseEvent) => {
