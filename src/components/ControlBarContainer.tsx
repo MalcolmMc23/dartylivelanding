@@ -11,7 +11,7 @@ export function ControlBarContainer({
 }: ControlBarContainerProps) {
   return (
     <div className="relative flex flex-col items-center w-full mt-15">
-      <div className="flex gap-4 p-4 bg-[#1A1A1A] rounded-full shadow-lg">
+      <div className="flex gap-4 p-4 bg-[#16222a] rounded-full shadow-lg">
         {controlButtons}
       </div>
     </div>
