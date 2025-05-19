@@ -96,7 +96,11 @@ export function VideoContainer({ otherParticipantLeft }: VideoContainerProps) {
 
   if (totalParticipants === 1) {
     return (
-      <div className="w-full h-full flex items-center justify-center">
+      <div className="w-full h-full flex flex-col items-center justify-center mt-8">
+        {/* Title above the single video */}
+        <div className="mb-2 text-xl font-bold text-white text-center">
+          University of Oregon
+        </div>
         <div
           className="aspect-[16/9] rounded-lg overflow-hidden border border-[#212121] shadow-md relative flex items-center justify-center"
           style={oneTileStyle}
@@ -122,21 +126,28 @@ export function VideoContainer({ otherParticipantLeft }: VideoContainerProps) {
   }
 
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center gap-4">
+    <div className="w-full h-full flex flex-col items-center justify-center gap-4 mt-8">
       {cameraTracks.slice(0, 2).map((track, idx) => (
-        <div
-          key={track.publication?.trackSid || `participant-${idx}`}
-          className="aspect-[16/9] rounded-lg overflow-hidden border border-[#212121] shadow-md relative flex items-center justify-center"
-          style={twoTileStyle}
-        >
-          <MirroredVideoTile trackRef={track} className="w-full h-full" />
+        <div key={track.publication?.trackSid || `participant-${idx}`} className="flex flex-col items-center w-full">
+          {/* Title above each video */}
+          <div className="mb-2 text-xl font-bold text-white text-center">
+            {idx === 0
+              ? "University of Oregon"
+              : "University of California, Santa Barbara"}
+          </div>
           <div
-            className="absolute bottom-6 left-6 bg-black bg-opacity-80 px-4 py-2 rounded-md text-white text-base font-medium z-40 shadow-md"
-            id={`custom-name-tag-${
-              track.participant?.isLocal ? "local" : track.participant?.identity
-            }`}
+            className="aspect-[16/9] rounded-lg overflow-hidden border border-[#212121] shadow-md relative flex items-center justify-center"
+            style={twoTileStyle}
           >
-            {track.participant?.isLocal ? "You" : track.participant?.identity || "Participant"}
+            <MirroredVideoTile trackRef={track} className="w-full h-full" />
+            <div
+              className="absolute bottom-6 left-6 bg-black bg-opacity-80 px-4 py-2 rounded-md text-white text-base font-medium z-40 shadow-md"
+              id={`custom-name-tag-${
+                track.participant?.isLocal ? "local" : track.participant?.identity
+              }`}
+            >
+              {track.participant?.isLocal ? "You" : track.participant?.identity || "Participant"}
+            </div>
           </div>
         </div>
       ))}
