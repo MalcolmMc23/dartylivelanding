@@ -203,6 +203,7 @@ export function CustomControlBar({
         ariaLabel={isMicEnabled ? "Mute microphone" : "Unmute microphone"}
         activeIcon={<MicrophoneOnIcon />}
         inactiveIcon={<MicrophoneOffIcon />}
+        className="w-20 h-14 md:w-24 md:h-16"
       />
 
       {/* Camera Toggle Button */}
@@ -213,6 +214,7 @@ export function CustomControlBar({
         ariaLabel={isCameraEnabled ? "Turn off camera" : "Turn on camera"}
         activeIcon={<CameraOnIcon />}
         inactiveIcon={<CameraOffIcon />}
+        className="w-20 h-14 md:w-24 md:h-16"
       />
 
       {/* Leave Call Button */}
@@ -220,10 +222,26 @@ export function CustomControlBar({
         onClick={handleLeaveCall}
         disabled={isRedirecting}
         active={false}
-        activeColor="bg-red-600 hover:bg-red-700"
-        inactiveColor="bg-red-600 hover:bg-red-700"
+        activeColor="bg-gradient-to-br from-red-600 via-red-500 to-red-700 shadow-lg hover:scale-110"
+        inactiveColor="bg-gradient-to-br from-red-600 via-red-500 to-red-700 shadow-lg hover:scale-110"
         ariaLabel="Leave call"
-        activeIcon={<LeaveCallIcon />}
+        activeIcon={
+          <span
+            className="font-extrabold text-xl md:text-2xl tracking-widest text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.25)]"
+            style={{ letterSpacing: '0.15em', fontFamily: 'Inter, sans-serif' }}
+          >
+            END
+          </span>
+        }
+        inactiveIcon={
+          <span
+            className="font-extrabold text-xl md:text-2xl tracking-widest text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.25)]"
+            style={{ letterSpacing: '0.15em', fontFamily: 'Inter, sans-serif' }}
+          >
+            END
+          </span>
+        }
+        className="w-20 h-14 md:w-24 md:h-16"
       />
     </>
   );

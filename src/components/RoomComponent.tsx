@@ -320,14 +320,15 @@ export default function RoomComponent({
                   mobileView === "video" ? "hidden" : "block"
                 } md:block`}
               >
-                <ChatComponent username={username} roomName={roomName} />
+                <ChatComponent username={username} roomName={roomName}>
+                  <div className="flex justify-center mt-2">
+                    <CustomControlBar username={username} roomName={roomName} />
+                  </div>
+                </ChatComponent>
               </div>
             </div>
 
             <RoomAudioRenderer />
-            <div className="fixed bottom-4 md:bottom-6 left-0 md:left-[30%] transform md:translate-x-[-50%] right-0 md:right-auto z-50">
-              <CustomControlBar username={username} roomName={roomName} />
-            </div>
           </div>
         </LiveKitRoom>
       )}
