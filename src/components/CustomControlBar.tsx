@@ -203,7 +203,6 @@ export function CustomControlBar({
         ariaLabel={isMicEnabled ? "Mute microphone" : "Unmute microphone"}
         activeIcon={<MicrophoneOnIcon />}
         inactiveIcon={<MicrophoneOffIcon />}
-        className="w-20 h-14 md:w-24 md:h-16"
       />
 
       {/* Camera Toggle Button */}
@@ -214,7 +213,6 @@ export function CustomControlBar({
         ariaLabel={isCameraEnabled ? "Turn off camera" : "Turn on camera"}
         activeIcon={<CameraOnIcon />}
         inactiveIcon={<CameraOffIcon />}
-        className="w-20 h-14 md:w-24 md:h-16"
       />
 
       {/* Leave Call Button */}
@@ -241,7 +239,6 @@ export function CustomControlBar({
             END
           </span>
         }
-        className="w-20 h-14 md:w-24 md:h-16"
       />
     </>
   );

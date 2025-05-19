@@ -121,7 +121,7 @@ export function ChatComponent({ username, roomName, children }: ChatComponentPro
   };
 
   return (
-    <div className="fixed top-20 right-1/4 z-50 pointer-events-none">
+    <div className="fixed top-20 right-1/4 z-50">
       <div className="relative w-full max-w-sm min-w-[320px] flex flex-col bg-white/10 backdrop-blur-lg border border-[#3a1857] rounded-2xl shadow-2xl pointer-events-auto"
            style={{ maxHeight: '70vh' }}>
         <div className="p-4 border-b border-[#3a1857] bg-gradient-to-r from-[#2a1857] to-[#3a1857] rounded-t-2xl">
