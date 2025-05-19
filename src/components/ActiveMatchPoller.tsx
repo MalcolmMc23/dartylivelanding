@@ -7,17 +7,20 @@ interface ActiveMatchPollerProps {
   username: string;
   isLeftBehind: boolean;
   useDemo: boolean;
+  onMatchSuccess?: () => void; // Add callback for successful match
 }
 
 export function ActiveMatchPoller({
   username,
   isLeftBehind,
   useDemo,
+  onMatchSuccess,
 }: ActiveMatchPollerProps) {
   const router = useRouter();
   const pollingInterval = useRef<NodeJS.Timeout | null>(null);
   const pollCountRef = useRef(0);
   const pollFrequency = 2000; // Increase polling interval to reduce server load
+  const hasNavigatedRef = useRef(false); // Track if we've already navigated
 
   useEffect(() => {
     // Only start polling if this user was left behind by another user
@@ -34,6 +37,11 @@ export function ActiveMatchPoller({
       // Function to check for matches
       const checkForMatch = async () => {
         try {
+          // Skip if we've already navigated (safe guard)
+          if (hasNavigatedRef.current) {
+            return;
+          }
+
           const response = await fetch("/api/match-user", {
             method: "POST",
             headers: {
@@ -59,6 +67,20 @@ export function ActiveMatchPoller({
             if (pollingInterval.current) {
               clearInterval(pollingInterval.current);
               pollingInterval.current = null;
+            }
+
+            // Set flag to prevent further navigations or polling
+            hasNavigatedRef.current = true;
+
+            // Call the match success callback if provided
+            if (onMatchSuccess) {
+              onMatchSuccess();
+            }
+
+            // Set a flag in sessionStorage to indicate we've found a match
+            // This helps other components (like RoomAutoMatchRedirector) know not to navigate
+            if (typeof window !== "undefined") {
+              window.sessionStorage.setItem("matchFound", "true");
             }
 
             // Navigate to the new room
@@ -96,7 +118,7 @@ export function ActiveMatchPoller({
         pollingInterval.current = null;
       }
     };
-  }, [username, isLeftBehind, useDemo, router]);
+  }, [username, isLeftBehind, useDemo, router, onMatchSuccess]);
 
   // This component doesn't render anything visible
   return null;

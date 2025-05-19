@@ -18,22 +18,18 @@ interface ConnectionStateLoggerProps {
   onOtherParticipantDisconnected: (otherUsername: string) => void;
 }
 
-// Import the helper function for cleaning up room tracking
-// We use fetch here since we can't directly import from API routes in components
-const cleanupRoomTracking = async (username: string, roomName: string) => {
-  try {
-    await handleDisconnection({
-      username,
-      roomName,
-      reason: "component_cleanup",
-    });
-    console.log(
-      `Sent cleanup request for user ${username} in room ${roomName}`
-    );
-  } catch (error) {
+// Move this function outside of the component to fix the "async Client Component" error
+function triggerCleanupRoomTracking(username: string, roomName: string) {
+  // Use a non-async wrapper that calls the async function
+  handleDisconnection({
+    username,
+    roomName,
+    reason: "component_cleanup",
+  }).catch((error) => {
     console.error("Failed to send cleanup request:", error);
-  }
-};
+  });
+  console.log(`Sent cleanup request for user ${username} in room ${roomName}`);
+}
 
 export function ConnectionStateLogger({
   onParticipantCountChange,
@@ -226,8 +222,8 @@ export function ConnectionStateLogger({
           // This is the other participant who left
           onOtherParticipantDisconnected(participant.identity);
 
-          // Clean up room tracking
-          cleanupRoomTracking(participant.identity, room.name);
+          // Clean up room tracking - use the non-async wrapper function
+          triggerCleanupRoomTracking(participant.identity, room.name);
         }, 3000); // Give 3 seconds for potential reconnection
 
         // Return cleanup function to clear the timeout if component unmounts
@@ -308,7 +304,7 @@ export function ConnectionStateLogger({
         console.log(
           `Cleaning up in ConnectionStateLogger after ${mountDuration}ms`
         );
-        cleanupRoomTracking(username, room.name);
+        triggerCleanupRoomTracking(username, room.name);
       }
     };
   }, [username, room?.name, maxParticipants]);

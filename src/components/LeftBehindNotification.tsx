@@ -1,6 +1,7 @@
 "use client";
 
 import { useLeftBehindStatus } from "./hooks/useLeftBehindStatus";
+import { useEffect, useRef } from "react";
 
 interface LeftBehindNotificationProps {
   username: string;
@@ -12,13 +13,23 @@ export function LeftBehindNotification({
   onJoinNewRoom,
 }: LeftBehindNotificationProps) {
   const { isMatched, matchRoom } = useLeftBehindStatus(username);
+  const hasRedirectedRef = useRef(false);
 
-  // If matched and have a match room, join it
-  if (isMatched && matchRoom) {
-    onJoinNewRoom(matchRoom);
-    return null;
-  }
+  // Use useEffect to handle the redirect instead of doing it during render
+  useEffect(() => {
+    // Only redirect if matched with room info and we haven't redirected yet
+    if (isMatched && matchRoom && !hasRedirectedRef.current) {
+      console.log(
+        `LeftBehindNotification: Redirecting to match room ${matchRoom}`
+      );
+      hasRedirectedRef.current = true;
+      // Set a short timeout to avoid state updates during render
+      setTimeout(() => {
+        onJoinNewRoom(matchRoom);
+      }, 0);
+    }
+  }, [isMatched, matchRoom, onJoinNewRoom]);
 
-  // Return null - don't show any notification UI
+  // Always return null - don't show any notification UI
   return null;
 }
