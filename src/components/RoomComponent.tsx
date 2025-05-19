@@ -8,13 +8,6 @@ import { useRoomConnection } from "./room/hooks/useRoomConnection";
 import { CustomControlBar } from "./CustomControlBar";
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import {
-  useParticipants,
-  useTracks,
-  TrackReferenceOrPlaceholder,
-} from "@livekit/components-react";
-import { Track } from "livekit-client";
-import { MirroredVideoTile } from "./room/MirroredVideoTile";
 import { ChatComponent } from "./ChatComponent";
 import { StableRoomConnector } from "./StableRoomConnector";
 import { RoomAutoMatchRedirector } from "./RoomAutoMatchRedirector";
@@ -22,6 +15,9 @@ import { ActiveMatchPoller } from "./ActiveMatchPoller";
 import { handleDisconnection } from "@/utils/disconnectionService";
 import { LeftBehindNotification } from "./LeftBehindNotification";
 import { ParticipantCounter } from "./ParticipantCounter";
+import { VideoContainer } from "./room/VideoContainer";
+import { WaitingOverlay } from "./room/WaitingOverlay";
+import { MobileViewToggle } from "./room/MobileViewToggle";
 
 // Max participants allowed in a room
 const MAX_PARTICIPANTS = 2;
@@ -302,195 +298,43 @@ export default function RoomComponent({
               maxParticipants={MAX_PARTICIPANTS}
             />
 
-            {/* Mobile view toggle - only visible on small screens */}
-            <div className="md:hidden flex justify-center p-2 bg-[#1A1A1A] border-b border-[#2A2A2A]">
-              <div className="inline-flex rounded-md shadow-sm" role="group">
-                <button
-                  onClick={() => setMobileView("video")}
-                  className={`px-4 py-2 text-sm font-medium rounded-l-lg ${
-                    mobileView === "video"
-                      ? "bg-[#A0FF00] text-black"
-                      : "bg-[#2A2A2A] text-white hover:bg-[#3A3A3A]"
-                  }`}
-                >
-                  Video
-                </button>
-                <button
-                  onClick={() => setMobileView("chat")}
-                  className={`px-4 py-2 text-sm font-medium rounded-r-lg ${
-                    mobileView === "chat"
-                      ? "bg-[#A0FF00] text-black"
-                      : "bg-[#2A2A2A] text-white hover:bg-[#3A3A3A]"
-                  }`}
-                >
-                  Chat
-                </button>
-              </div>
-            </div>
+            <MobileViewToggle
+              mobileView={mobileView}
+              setMobileView={setMobileView}
+            />
 
-            {/* Main content area with videos on left, chat on right */}
-            <div className="flex-grow flex h-full pb-16">
+            <div className="flex-grow flex h-full items-center">
               {/* Videos on the left */}
               <div
-                className={`w-full md:w-3/5 h-full overflow-y-auto flex items-center justify-center ${
+                className={`w-full md:w-2/3 h-full overflow-y-auto flex items-center justify-center pt-8 ${
                   mobileView === "chat" ? "hidden" : "block"
                 } md:block`}
               >
                 <VideoContainer otherParticipantLeft={otherParticipantLeft} />
 
-                {/* Overlay when waiting alone in a call */}
                 {liveParticipantCount === 1 && (
-                  <div className="absolute inset-0 md:w-3/5 flex items-center justify-center bg-black bg-opacity-50 pointer-events-none">
-                    <div className="bg-blue-900 bg-opacity-80 p-6 rounded-lg max-w-md text-center">
-                      <h2 className="text-xl font-bold text-white mb-4">
-                        {otherParticipantLeft
-                          ? "Finding you a new match..."
-                          : "Looking for a match..."}
-                      </h2>
-                      <p className="mb-4 text-white">
-                        {otherParticipantLeft
-                          ? "The other user left. You'll be automatically matched with someone new."
-                          : "You are in the matching queue. Someone will join you soon."}
-                      </p>
-                      <div className="flex justify-center">
-                        <div className="animate-bounce mx-1 h-3 w-3 bg-white rounded-full"></div>
-                        <div
-                          className="animate-bounce mx-1 h-3 w-3 bg-white rounded-full"
-                          style={{ animationDelay: "0.2s" }}
-                        ></div>
-                        <div
-                          className="animate-bounce mx-1 h-3 w-3 bg-white rounded-full"
-                          style={{ animationDelay: "0.4s" }}
-                        ></div>
-                      </div>
-                    </div>
-                  </div>
+                  <WaitingOverlay otherParticipantLeft={otherParticipantLeft} />
                 )}
               </div>
 
-              {/* Chat on the right */}
+              {/* Chat & Control Bar on the right */}
               <div
-                className={`w-full md:w-2/5 h-full ${
+                className={`w-full md:w-1/2 h-full flex-grow-0 items-center justify-center px-4 md:px-8 ${
                   mobileView === "video" ? "hidden" : "block"
                 } md:block`}
               >
-                <ChatComponent username={username} roomName={roomName} />
+                <ChatComponent username={username} roomName={roomName}>
+                  <div className="flex justify-center mt-2">
+                    <CustomControlBar username={username} roomName={roomName} />
+                  </div>
+                </ChatComponent>
               </div>
             </div>
 
             <RoomAudioRenderer />
-            <div className="fixed bottom-4 md:bottom-6 left-0 md:left-[30%] transform md:translate-x-[-50%] right-0 md:right-auto z-50">
-              <CustomControlBar username={username} roomName={roomName} />
-            </div>
           </div>
         </LiveKitRoom>
       )}
-    </div>
-  );
-}
-
-// VideoContainer component to replace the missing VideoLayout
-function VideoContainer({
-  otherParticipantLeft,
-}: {
-  otherParticipantLeft?: boolean;
-}) {
-  const participants = useParticipants();
-  const totalParticipants = participants.length + 1; // Including local participant
-
-  // Track render count to help debug infinite renders
-  const renderCount = useRef(0);
-  useEffect(() => {
-    renderCount.current += 1;
-    console.log(
-      `VideoContainer rendered: ${renderCount.current} times${
-        otherParticipantLeft ? " (other participant left)" : ""
-      }`
-    );
-  }, [otherParticipantLeft]);
-
-  // Get camera and screen share tracks with useMemo to prevent unnecessary processing
-  const trackSources = useMemo(
-    () => [
-      { source: Track.Source.Camera, withPlaceholder: true },
-      { source: Track.Source.ScreenShare, withPlaceholder: false },
-    ],
-    []
-  );
-
-  // Memoize the options object to prevent it from causing re-renders
-  const trackOptions = useMemo(
-    () => ({
-      updateOnlyOn: [],
-      onlySubscribed: false,
-    }),
-    []
-  );
-
-  const cameraTracks = useTracks(trackSources, trackOptions);
-
-  // Memoize the rendered tracks to prevent unnecessary re-renders
-  const renderedTracks = useMemo(() => {
-    console.log("Rendering tracks:", cameraTracks.length);
-    return cameraTracks.map(
-      (track: TrackReferenceOrPlaceholder, index: number) => {
-        // Get the participant's identity
-        const participantIdentity =
-          track.participant?.identity || (index === 0 ? "You" : "Participant");
-        const isLocalParticipant = track.participant?.isLocal || false;
-
-        return (
-          <div
-            key={track.publication?.trackSid || `participant-${index}`}
-            className="w-full max-w-lg h-auto rounded-xl overflow-hidden border-2 border-[#212121] shadow-lg transition-all relative"
-            style={{ aspectRatio: "16 / 9" }}
-          >
-            <MirroredVideoTile trackRef={track} className="h-full" />
-            {/* Custom participant name tag */}
-            <div
-              className="absolute bottom-6 left-6 bg-black bg-opacity-80 px-4 py-2 rounded-md text-white text-base font-medium z-20 shadow-md"
-              id={`custom-name-tag-${
-                isLocalParticipant ? "local" : track.participant?.identity
-              }`}
-            >
-              {isLocalParticipant ? "You" : participantIdentity}
-            </div>
-          </div>
-        );
-      }
-    );
-  }, [cameraTracks]); // Only depend on cameraTracks
-
-  if (totalParticipants === 1) {
-    // Only local participant - centered large tile with prompt
-    return (
-      <div className="flex flex-col items-center justify-center h-full w-full p-4">
-        <div className="w-full max-w-lg aspect-video rounded-xl overflow-hidden border-2 border-[#212121] shadow-lg relative">
-          {cameraTracks.length > 0 && (
-            <>
-              <MirroredVideoTile
-                trackRef={cameraTracks[0]}
-                className="h-full"
-                style={{ aspectRatio: "16 / 9" }}
-              />
-              {/* Custom participant name tag */}
-              <div
-                className="absolute bottom-6 left-6 bg-black bg-opacity-80 px-4 py-2 rounded-md text-white text-base font-medium z-20 shadow-md"
-                id="custom-name-tag-local"
-              >
-                You
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // Two participants - stacked vertically (one on top of the other)
-  return (
-    <div className="w-full p-2 md:p-4 flex flex-col items-center justify-center gap-3 md:gap-6">
-      {renderedTracks}
     </div>
   );
 }

@@ -220,10 +220,25 @@ export function CustomControlBar({
         onClick={handleLeaveCall}
         disabled={isRedirecting}
         active={false}
-        activeColor="bg-red-600 hover:bg-red-700"
-        inactiveColor="bg-red-600 hover:bg-red-700"
+        activeColor="bg-gradient-to-br from-red-600 via-red-500 to-red-700 shadow-lg hover:scale-110"
+        inactiveColor="bg-gradient-to-br from-red-600 via-red-500 to-red-700 shadow-lg hover:scale-110"
         ariaLabel="Leave call"
-        activeIcon={<LeaveCallIcon />}
+        activeIcon={
+          <span
+            className="font-extrabold text-xl md:text-2xl tracking-widest text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.25)]"
+            style={{ letterSpacing: '0.15em', fontFamily: 'Inter, sans-serif' }}
+          >
+            END
+          </span>
+        }
+        inactiveIcon={
+          <span
+            className="font-extrabold text-xl md:text-2xl tracking-widest text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.25)]"
+            style={{ letterSpacing: '0.15em', fontFamily: 'Inter, sans-serif' }}
+          >
+            END
+          </span>
+        }
       />
     </>
   );
