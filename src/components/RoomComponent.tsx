@@ -18,6 +18,7 @@ import { VideoContainer } from "./room/VideoContainer";
 import { WaitingOverlay } from "./room/WaitingOverlay";
 import { MobileViewToggle } from "./room/MobileViewToggle";
 import { ChatDialog } from "./ChatDialog";
+import { DesktopChat } from "./DesktopChat"; // <-- Add this import
 
 // Max participants allowed in a room
 const MAX_PARTICIPANTS = 2;
@@ -318,6 +319,11 @@ export default function RoomComponent({
               setMobileView={setMobileView}
             />
 
+            {/* Show WaitingOverlay above video container */}
+            {liveParticipantCount === 1 && (
+              <WaitingOverlay otherParticipantLeft={otherParticipantLeft} />
+            )}
+
             <div className="flex-grow flex h-full items-center justify-center">
               {/* Videos on the left */}
               <div
@@ -329,32 +335,42 @@ export default function RoomComponent({
                   <VideoContainer otherParticipantLeft={otherParticipantLeft} />
                 </div>
 
-                {liveParticipantCount === 1 && (
+                {/* REMOVE WaitingOverlay from here */}
+                {/* {liveParticipantCount === 1 && (
                   <WaitingOverlay otherParticipantLeft={otherParticipantLeft} />
-                )}
+                )} */}
               </div>
             </div>
-
-            {/* Remove the flex wrapper and absolutely position the control bar */}
-            {/* <div className="flex justify-center"> */}
-            {/*   <CustomControlBar ... /> */}
-            {/* </div> */}
+            
+            {/* CustomControlBar: hide chat button on large screens */}
             <CustomControlBar
               username={username}
               roomName={roomName}
               onChatClick={() => setIsChatOpen(true)}
               hasUnreadChat={hasUnreadChat}
-              // Position at the bottom center, above all content
               className="fixed bottom-0 left-1/2 -translate-x-1/2 z-50"
+              hideChatButtonOnDesktop={true} // <-- Add this prop
             />
 
-            <ChatDialog
-              username={username}
-              isOpen={isChatOpen}
-              onClose={() => setIsChatOpen(false)}
-              onNewMessage={handleNewChatMessage}
-            />
-
+            {/* ChatDialog: modal on mobile, DesktopChat on desktop */}
+            {/* Mobile: show as modal */}
+            <div className="block md:hidden">
+              <ChatDialog
+                username={username}
+                isOpen={isChatOpen}
+                onClose={() => setIsChatOpen(false)}
+                onNewMessage={handleNewChatMessage}
+              />
+            </div>
+            {/* Desktop: always open, sidebar */}
+            <div className="hidden md:block">
+              <div className="fixed right-8 top-1/2 -translate-y-1/2 z-40 w-[350px] max-w-[90vw]">
+                <DesktopChat
+                  username={username}
+                  onNewMessage={handleNewChatMessage}
+                />
+              </div>
+            </div>
             <RoomAudioRenderer />
           </div>
         </LiveKitRoom>

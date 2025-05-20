@@ -98,15 +98,6 @@ export function RoomStatusIndicators({
           </span>
         </div>
       </div>
-
-      {/* Waiting for match indicator */}
-      {participantCount === 1 && (
-        <div className="mt-3 bg-blue-600 text-white text-xs md:text-sm px-3 py-1 rounded-full animate-pulse">
-          {otherParticipantLeft
-            ? "Finding a new match..."
-            : "Looking for a match..."}
-        </div>
-      )}
     </div>
   );
 }

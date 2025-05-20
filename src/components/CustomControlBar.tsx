@@ -26,14 +26,18 @@ interface CustomControlBarProps extends ControlBarProps {
   username: string;
   roomName: string;
   onChatClick: () => void;
-  hasUnreadChat?: boolean; // NEW PROP
+  hasUnreadChat?: boolean;
+  className?: string;
+  hideChatButtonOnDesktop?: boolean; // <-- Add this prop
 }
 
 export function CustomControlBar({
   username,
   roomName,
   onChatClick,
-  hasUnreadChat = false, // DEFAULT
+  hasUnreadChat = false,
+  className,
+  hideChatButtonOnDesktop = false, // <-- Add this line
 }: CustomControlBarProps) {
   const room = useRoomContext();
   const router = useRouter();
@@ -219,8 +223,8 @@ export function CustomControlBar({
         inactiveIcon={<CameraOffIcon />}
       />
 
-      {/* Chat Button */}
-      <div className="relative">
+      {/* Chat Button: hide on desktop if requested */}
+      <div className={`${hideChatButtonOnDesktop ? "block md:hidden" : ""} relative`}>
         <ControlButton
           onClick={onChatClick}
           disabled={isRedirecting}
@@ -275,5 +279,5 @@ export function CustomControlBar({
     </>
   );
 
-  return <ControlBarContainer controlButtons={controlButtons} />;
+  return <ControlBarContainer controlButtons={controlButtons} className={className} />;
 }
