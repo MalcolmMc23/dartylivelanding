@@ -279,5 +279,5 @@ export function CustomControlBar({
     </>
   );
 
-  return <ControlBarContainer controlButtons={controlButtons} className={className} />;
+  return <ControlBarContainer controlButtons={controlButtons}/>;
 }

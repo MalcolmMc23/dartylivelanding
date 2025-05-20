@@ -264,7 +264,15 @@ export default function RoomComponent({
   console.log(`LiveKit URL being used: ${liveKitUrl}`);
 
   return (
-    <div className="relative h-full min-h-screen">
+    <div
+      className="
+        h-screen
+        md:h-full md:min-h-screen
+        pb-20 md:pb-0
+        relative
+        overflow-hidden
+      "
+    >
       {/* Add the ActiveMatchPoller when user is left behind */}
       {wasLeftBehind && (
         <ActiveMatchPoller
@@ -324,21 +332,16 @@ export default function RoomComponent({
               <WaitingOverlay otherParticipantLeft={otherParticipantLeft} />
             )}
 
-            <div className="flex-grow flex h-full items-center justify-center">
+            <div className="flex items-center justify-center">
               {/* Videos on the left */}
               <div
-                className={`w-[75vw] h-[75vh] max-w-[75vw] max-h-[75vh] flex items-center justify-center mx-auto my-8 ${
+                className={`w-[75vw] h-[75vh] max-w-[75vw] max-h-[75vh] flex items-center justify-center mx-auto lg:my-8 ${
                   mobileView === "chat" ? "hidden" : "block"
                 } md:block`}
               >
                 <div className="aspect-[16/9] w-full h-full max-w-full max-h-full flex items-center justify-center">
                   <VideoContainer otherParticipantLeft={otherParticipantLeft} />
                 </div>
-
-                {/* REMOVE WaitingOverlay from here */}
-                {/* {liveParticipantCount === 1 && (
-                  <WaitingOverlay otherParticipantLeft={otherParticipantLeft} />
-                )} */}
               </div>
             </div>
             
@@ -348,8 +351,8 @@ export default function RoomComponent({
               roomName={roomName}
               onChatClick={() => setIsChatOpen(true)}
               hasUnreadChat={hasUnreadChat}
-              className="fixed bottom-0 left-1/2 -translate-x-1/2 z-50"
-              hideChatButtonOnDesktop={false} // <-- Change this to false or remove the prop
+              className="fixed left-1/2 -translate-x-1/2 z-50 bottom-0 md:bottom-8"
+              hideChatButtonOnDesktop={false}
             />
 
             {/* ChatDialog: modal on mobile, DesktopChat on desktop */}
