@@ -16,12 +16,26 @@ interface DesktopChatProps {
   onNewMessage?: () => void;
 }
 
+function useIsNarrowChat() {
+  const [isNarrow, setIsNarrow] = useState(false);
+  useEffect(() => {
+    function handleResize() {
+      setIsNarrow(window.innerWidth < 1425);
+    }
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+  return isNarrow;
+}
+
 export function DesktopChat({ username, onNewMessage }: DesktopChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const room = useRoomContext();
   const textareaRef = useRef<HTMLTextAreaElement>(null); // Add this line
+  const isNarrow = useIsNarrowChat();
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -102,7 +116,20 @@ export function DesktopChat({ username, onNewMessage }: DesktopChatProps) {
   };
 
   return (
-    <div className="flex flex-col w-[350px] max-w-[90vw] h-[55vh] bg-[#18122B] rounded-2xl shadow-2xl border-4 border-transparent [background:linear-gradient(#18122B,#18122B),linear-gradient(135deg,#a259ff,#6a1b9a,#231942)] [background-origin:border-box] [background-clip:padding-box,border-box]">
+    <div
+      className={`
+        flex flex-col desktop-chat
+        ${isNarrow
+          ? "w-[270px] h-[40vh] right-2"
+          : "w-[350px] h-[55vh] right-8"}
+        max-w-[90vw]
+        bg-[#18122B] rounded-2xl shadow-2xl border-4 border-transparent
+        [background:linear-gradient(#18122B,#18122B),linear-gradient(135deg,#a259ff,#6a1b9a,#231942)]
+        [background-origin:border-box] [background-clip:padding-box,border-box]
+        fixed top-1/2 -translate-y-1/2 z-40
+      `}
+      style={{ ...(isNarrow ? { right: '0.5rem' } : { right: '2rem' }) }}
+    >
       <div className="border-b border-[#2D1950] px-6 py-4 bg-[#A259FF] rounded-t-2xl">
         <div className="text-lg font-semibold text-white tracking-wide">Chat</div>
       </div>
@@ -192,6 +219,8 @@ export function DesktopChat({ username, onNewMessage }: DesktopChatProps) {
         }
         .custom-scrollbar::-webkit-scrollbar-track {
           background: transparent;
+        }
+        
         }
       `}</style>
     </div>
