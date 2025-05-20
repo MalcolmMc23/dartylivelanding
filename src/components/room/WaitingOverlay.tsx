@@ -6,7 +6,7 @@ interface WaitingOverlayProps {
 
 export function WaitingOverlay({ otherParticipantLeft }: WaitingOverlayProps) {
   return (
-    <div className="absolute inset-0 md:w-3/5 flex items-center justify-center pointer-events-none z-30">
+    <div className="w-full flex items-center justify-center z-30 mt-8">
       <div
         className="backdrop-blur-lg bg-gradient-to-br from-[#2d0036cc] via-[#3a0066cc] to-[#1a0026cc] border border-[#7c3aed] shadow-2xl p-8 rounded-2xl max-w-lg w-full mx-4 text-center"
         style={{
@@ -39,4 +39,4 @@ export function WaitingOverlay({ otherParticipantLeft }: WaitingOverlayProps) {
       </div>
     </div>
   );
-} 
+}

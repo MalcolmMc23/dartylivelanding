@@ -18,6 +18,7 @@ import { VideoContainer } from "./room/VideoContainer";
 import { WaitingOverlay } from "./room/WaitingOverlay";
 import { MobileViewToggle } from "./room/MobileViewToggle";
 import { ChatDialog } from "./ChatDialog";
+import { DesktopChat } from "./DesktopChat"; // <-- Add this import
 
 // Max participants allowed in a room
 const MAX_PARTICIPANTS = 2;
@@ -263,7 +264,15 @@ export default function RoomComponent({
   console.log(`LiveKit URL being used: ${liveKitUrl}`);
 
   return (
-    <div className="relative h-full min-h-screen">
+    <div
+      className="
+        h-screen
+        md:h-full md:min-h-screen
+        pb-20 md:pb-0
+        relative
+        overflow-hidden
+      "
+    >
       {/* Add the ActiveMatchPoller when user is left behind */}
       {wasLeftBehind && (
         <ActiveMatchPoller
@@ -318,43 +327,53 @@ export default function RoomComponent({
               setMobileView={setMobileView}
             />
 
-            <div className="flex-grow flex h-full items-center justify-center">
+            {/* Show WaitingOverlay above video container */}
+            {liveParticipantCount === 1 && (
+              <WaitingOverlay otherParticipantLeft={otherParticipantLeft} />
+            )}
+
+            <div className="flex items-center justify-center">
               {/* Videos on the left */}
               <div
-                className={`w-[75vw] h-[75vh] max-w-[75vw] max-h-[75vh] flex items-center justify-center mx-auto my-8 ${
+                className={`w-[75vw] h-[75vh] max-w-[75vw] max-h-[75vh] flex items-center justify-center mx-auto lg:my-8 ${
                   mobileView === "chat" ? "hidden" : "block"
                 } md:block`}
               >
                 <div className="aspect-[16/9] w-full h-full max-w-full max-h-full flex items-center justify-center">
                   <VideoContainer otherParticipantLeft={otherParticipantLeft} />
                 </div>
-
-                {liveParticipantCount === 1 && (
-                  <WaitingOverlay otherParticipantLeft={otherParticipantLeft} />
-                )}
               </div>
             </div>
-
-            {/* Remove the flex wrapper and absolutely position the control bar */}
-            {/* <div className="flex justify-center"> */}
-            {/*   <CustomControlBar ... /> */}
-            {/* </div> */}
+            
+            {/* CustomControlBar: hide chat button on large screens */}
             <CustomControlBar
               username={username}
               roomName={roomName}
               onChatClick={() => setIsChatOpen(true)}
               hasUnreadChat={hasUnreadChat}
-              // Position at the bottom center, above all content
-              className="fixed bottom-0 left-1/2 -translate-x-1/2 z-50"
+              className="fixed left-1/2 -translate-x-1/2 z-50 bottom-0 md:bottom-8"
+              hideChatButtonOnDesktop={false}
             />
 
-            <ChatDialog
-              username={username}
-              isOpen={isChatOpen}
-              onClose={() => setIsChatOpen(false)}
-              onNewMessage={handleNewChatMessage}
-            />
-
+            {/* ChatDialog: modal on mobile, DesktopChat on desktop */}
+            {/* Show ChatDialog on screens smaller than lg */}
+            <div className="block lg:hidden">
+              <ChatDialog
+                username={username}
+                isOpen={isChatOpen}
+                onClose={() => setIsChatOpen(false)}
+                onNewMessage={handleNewChatMessage}
+              />
+            </div>
+            {/* Show DesktopChat only on lg and up */}
+            <div className="hidden lg:block">
+              <div className="fixed right-8 top-1/2 -translate-y-1/2 z-40 w-[350px] max-w-[90vw]">
+                <DesktopChat
+                  username={username}
+                  onNewMessage={handleNewChatMessage}
+                />
+              </div>
+            </div>
             <RoomAudioRenderer />
           </div>
         </LiveKitRoom>
