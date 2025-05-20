@@ -312,7 +312,7 @@ export default function RoomComponent({
             participantCount={liveParticipantCount}
             maxParticipants={MAX_PARTICIPANTS}
             onParticipantLeft={handleOtherParticipantLeftRoom}
-            otherParticipantLeft={otherParticipantLeft}
+            // otherParticipantLeft={otherParticipantLeft}
           />
 
           <div className="h-full flex flex-col relative">
@@ -351,8 +351,8 @@ export default function RoomComponent({
               roomName={roomName}
               onChatClick={() => setIsChatOpen(true)}
               hasUnreadChat={hasUnreadChat}
-              className="fixed left-1/2 -translate-x-1/2 z-50 bottom-0 md:bottom-8"
-              hideChatButtonOnDesktop={false}
+              // className="fixed left-1/2 -translate-x-1/2 z-50 bottom-0 md:bottom-8"
+              // hideChatButtonOnDesktop={false}
             />
 
             {/* ChatDialog: modal on mobile, DesktopChat on desktop */}

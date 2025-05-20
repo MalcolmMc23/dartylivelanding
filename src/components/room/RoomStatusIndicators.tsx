@@ -9,7 +9,7 @@ interface RoomStatusIndicatorsProps {
   participantCount: number;
   maxParticipants: number;
   onParticipantLeft?: (otherUsername: string) => void;
-  otherParticipantLeft?: boolean;
+  // otherParticipantLeft?: boolean; // Remove this line
 }
 
 export function RoomStatusIndicators({
@@ -17,7 +17,7 @@ export function RoomStatusIndicators({
   participantCount,
   maxParticipants,
   onParticipantLeft,
-  otherParticipantLeft = false,
+  // otherParticipantLeft = false, // Remove this line
 }: RoomStatusIndicatorsProps) {
   const [showDemoIndicator, setShowDemoIndicator] = useState(true);
   const participants = useParticipants();
