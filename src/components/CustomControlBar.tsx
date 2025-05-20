@@ -27,8 +27,8 @@ interface CustomControlBarProps extends ControlBarProps {
   roomName: string;
   onChatClick: () => void;
   hasUnreadChat?: boolean;
-  className?: string;
-  hideChatButtonOnDesktop?: boolean; // <-- Add this prop
+  // className?: string; // Remove this line
+  // hideChatButtonOnDesktop?: boolean; // Remove this line
 }
 
 export function CustomControlBar({
@@ -36,8 +36,8 @@ export function CustomControlBar({
   roomName,
   onChatClick,
   hasUnreadChat = false,
-  className,
-  hideChatButtonOnDesktop = false, // <-- Add this line
+  // className, // Remove this line
+  // hideChatButtonOnDesktop = false, // Remove this line
 }: CustomControlBarProps) {
   const room = useRoomContext();
   const router = useRouter();

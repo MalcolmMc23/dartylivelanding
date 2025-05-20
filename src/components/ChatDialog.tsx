@@ -85,7 +85,7 @@ export function ChatDialog({ username, isOpen, onClose, onNewMessage }: ChatDial
     return () => {
       room.off(RoomEvent.DataReceived, handleDataReceived);
     };
-  }, [room]);
+  }, [room, onNewMessage, username]);
 
   const handleSendMessage = () => {
     if (inputValue.trim() === "" || !room) return;
