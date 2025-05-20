@@ -349,12 +349,12 @@ export default function RoomComponent({
               onChatClick={() => setIsChatOpen(true)}
               hasUnreadChat={hasUnreadChat}
               className="fixed bottom-0 left-1/2 -translate-x-1/2 z-50"
-              hideChatButtonOnDesktop={true} // <-- Add this prop
+              hideChatButtonOnDesktop={false} // <-- Change this to false or remove the prop
             />
 
             {/* ChatDialog: modal on mobile, DesktopChat on desktop */}
-            {/* Mobile: show as modal */}
-            <div className="block md:hidden">
+            {/* Show ChatDialog on screens smaller than lg */}
+            <div className="block lg:hidden">
               <ChatDialog
                 username={username}
                 isOpen={isChatOpen}
@@ -362,8 +362,8 @@ export default function RoomComponent({
                 onNewMessage={handleNewChatMessage}
               />
             </div>
-            {/* Desktop: always open, sidebar */}
-            <div className="hidden md:block">
+            {/* Show DesktopChat only on lg and up */}
+            <div className="hidden lg:block">
               <div className="fixed right-8 top-1/2 -translate-y-1/2 z-40 w-[350px] max-w-[90vw]">
                 <DesktopChat
                   username={username}

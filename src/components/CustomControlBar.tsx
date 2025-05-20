@@ -224,7 +224,7 @@ export function CustomControlBar({
       />
 
       {/* Chat Button: hide on desktop if requested */}
-      <div className={`${hideChatButtonOnDesktop ? "block md:hidden" : ""} relative`}>
+      <div className="block lg:hidden relative">
         <ControlButton
           onClick={onChatClick}
           disabled={isRedirecting}
