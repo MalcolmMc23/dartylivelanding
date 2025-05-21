@@ -52,7 +52,7 @@ export function LoginDialog({ open, onOpenChange, onSuccess }: Props) {
         });
         if (onSuccess) onSuccess(); // <-- Call onSuccess after successful login
       }
-    } catch (err) {
+    } catch {
       setError("An error occurred. Please try again.");
       toast.error("Login failed", {
         description: "An unexpected error occurred",
@@ -110,7 +110,7 @@ export function LoginDialog({ open, onOpenChange, onSuccess }: Props) {
               {isLoading ? "Signing in..." : "Sign In"}
             </Button>
             <p className="text-sm text-center text-muted-foreground">
-              Don't have an account?{" "}
+              Don&apos;t have an account?{" "}
               <button
                 type="button"
                 className="text-primary underline-offset-4 hover:cursor-pointer hover:underline"

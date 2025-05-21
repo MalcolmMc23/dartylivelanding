@@ -27,10 +27,10 @@ export async function POST(request: Request) {
   
       return NextResponse.json({ message: 'User created successfully' }, { status: 201 });
   
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Registration error:', e); // <-- important
-      // Check for unique violation error code (Postgres: 23505)
-      if (e.code === '23505') {
+      // Type guard to check if e is an object with a 'code' property
+      if (typeof e === 'object' && e !== null && 'code' in e && (e as { code?: string }).code === '23505') {
         return NextResponse.json({ message: 'An account with this email already exists.' }, { status: 409 });
       }
       return NextResponse.json({ message: 'Registration failed' }, { status: 500 });
