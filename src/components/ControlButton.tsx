@@ -9,7 +9,7 @@ export interface ControlButtonProps {
   ariaLabel: string;
   activeIcon: React.ReactNode;
   inactiveIcon?: React.ReactNode;
-  variant?: 'default' | 'chat';
+  variant?: "default" | "chat";
 }
 
 export function ControlButton({
@@ -19,7 +19,7 @@ export function ControlButton({
   ariaLabel,
   activeIcon,
   inactiveIcon,
-  variant = 'default',
+  variant = "default",
 }: ControlButtonProps) {
   return (
     <div className="relative group">
@@ -32,12 +32,18 @@ export function ControlButton({
           rounded-full
           shadow-md
           transition-all
-          ${variant === 'chat' 
-            ? "bg-gradient-to-r from-[#ad5389] to-[#3c1053] text-white border border-[#3c1053] hover:brightness-110"
-            : active
+          ${
+            variant === "chat"
+              ? "bg-gradient-to-r from-[#ad5389] to-[#3c1053] text-white border border-[#3c1053] hover:brightness-110"
+              : active
               ? "bg-gradient-to-r from-[#ad5389] to-[#3c1053] text-white"
-              : "bg-gradient-to-r from-[#ad5389] to-[#3c1053] text-white border border-[#3c1053]"}
-          ${ariaLabel === "Leave call" ? "bg-gradient-to-br from-red-600 via-red-500 to-red-700 shadow-lg hover:scale-110" : ""}
+              : "bg-gradient-to-r from-[#ad5389] to-[#3c1053] text-white border border-[#3c1053]"
+          }
+          ${
+            ariaLabel === "Leave call"
+              ? "bg-gradient-to-br from-red-600 via-red-500 to-red-700 shadow-lg hover:scale-110"
+              : ""
+          }
           hover:scale-105
           disabled:opacity-50
           disabled:cursor-not-allowed
@@ -49,16 +55,14 @@ export function ControlButton({
         {active ? activeIcon : inactiveIcon}
       </button>
       {/* Tooltip */}
-      <span
-        className="absolute -top-10 left-1/2 -translate-x-1/2 px-3 py-2 rounded-lg bg-[#2a1857] text-white text-xs font-semibold opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg z-20 whitespace-nowrap"
-      >
+      <span className="absolute -top-10 left-1/2 -translate-x-1/2 px-3 py-2 rounded-lg bg-[#2a1857] text-white text-xs font-semibold opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg z-20 whitespace-nowrap">
         {ariaLabel === "Leave call"
-          ? "End Call"
+          ? "Skip"
           : ariaLabel.includes("camera")
-            ? "Toggle Camera"
-            : ariaLabel.includes("chat")
-              ? "Toggle Chat"
-              : "Toggle Microphone"}
+          ? "Toggle Camera"
+          : ariaLabel.includes("chat")
+          ? "Toggle Chat"
+          : "Toggle Microphone"}
       </span>
     </div>
   );

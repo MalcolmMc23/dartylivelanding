@@ -16,7 +16,7 @@ import {
   CameraOnIcon,
   CameraOffIcon,
 } from "./LiveKitIcons";
-import {LucideMessageSquareMore} from 'lucide-react'
+import { LucideMessageSquareMore } from "lucide-react";
 import {
   handleDisconnection,
   resetNavigationState,
@@ -36,9 +36,9 @@ export function CustomControlBar({
   roomName,
   onChatClick,
   hasUnreadChat = false,
-  // className, // Remove this line
-  // hideChatButtonOnDesktop = false, // Remove this line
-}: CustomControlBarProps) {
+}: // className, // Remove this line
+// hideChatButtonOnDesktop = false, // Remove this line
+CustomControlBarProps) {
   const room = useRoomContext();
   const router = useRouter();
   const [isRedirecting, setIsRedirecting] = useState(false);
@@ -262,22 +262,22 @@ export function CustomControlBar({
         activeIcon={
           <span
             className="font-extrabold text-xl md:text-2xl tracking-widest text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.25)]"
-            style={{ letterSpacing: '0.15em', fontFamily: 'Inter, sans-serif' }}
+            style={{ letterSpacing: "0.15em", fontFamily: "Inter, sans-serif" }}
           >
-            END
+            SKIP
           </span>
         }
         inactiveIcon={
           <span
             className="font-extrabold text-xl md:text-2xl tracking-widest text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.25)]"
-            style={{ letterSpacing: '0.15em', fontFamily: 'Inter, sans-serif' }}
+            style={{ letterSpacing: "0.15em", fontFamily: "Inter, sans-serif" }}
           >
-            END
+            SKIP
           </span>
         }
       />
     </>
   );
 
-  return <ControlBarContainer controlButtons={controlButtons}/>;
+  return <ControlBarContainer controlButtons={controlButtons} />;
 }
