@@ -29,6 +29,10 @@ export async function POST(request: Request) {
   
     } catch (e: any) {
       console.error('Registration error:', e); // <-- important
+      // Check for unique violation error code (Postgres: 23505)
+      if (e.code === '23505') {
+        return NextResponse.json({ message: 'An account with this email already exists.' }, { status: 409 });
+      }
       return NextResponse.json({ message: 'Registration failed' }, { status: 500 });
     }
   }

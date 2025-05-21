@@ -5,6 +5,8 @@ import WaitingRoomComponent from "@/components/WaitingRoomComponent";
 import { useSearchParams, useRouter } from "next/navigation";
 import NoSSR from "@/components/NoSSR";
 import { AdminDebugPanel } from "@/components/AdminDebugPanel";
+import { useSession } from "next-auth/react";
+import { LoginDialog } from "@/components/auth/LoginDialog";
 
 // Wrap the main content in a client-side only component
 export default function VideoChat() {
@@ -41,6 +43,19 @@ function VideoRoomManager() {
   const router = useRouter();
   const resetProcessedRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { data: session, status } = useSession();
+  const [showLoginDialog, setShowLoginDialog] = useState(false);
+  const findRandomChatRef = useRef<() => void>(() => {});
+
+  
+
+  const handleFindChatClick = () => {
+    if (!session) {
+      setShowLoginDialog(true);
+    } else {
+      findRandomChat();
+    }
+  };
 
   // Define findRandomChat with useCallback
   const findRandomChat = useCallback(
@@ -103,6 +118,11 @@ function VideoRoomManager() {
     },
     [usingDemoServer, username, searchParams, router]
   );
+
+  // Store the latest findRandomChat in a ref to avoid stale closure
+  useEffect(() => {
+    findRandomChatRef.current = () => findRandomChat();
+  }, [findRandomChat]);
 
   // Check if this is an auto-match redirect
   useEffect(() => {
@@ -323,16 +343,40 @@ function VideoRoomManager() {
 
           {error && (
             <div className="mb-4 flex items-center gap-3 p-4 rounded-lg bg-[#1a1a1a] border border-[#ff3b3b] shadow-sm">
-              <svg className="w-5 h-5 text-[#ff3b3b] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              <svg
+                className="w-5 h-5 text-[#ff3b3b] flex-shrink-0"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <line
+                  x1="18"
+                  y1="6"
+                  x2="6"
+                  y2="18"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+                <line
+                  x1="6"
+                  y1="6"
+                  x2="18"
+                  y2="18"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
               </svg>
               <span className="text-base font-bold text-white">{error}</span>
             </div>
           )}
 
           <div className="mb-8">
-            <label className="block text-sm font-medium mb-2 text-gray-300">Your Name</label>
+            <label className="block text-sm font-medium mb-2 text-gray-300">
+              Your Name
+            </label>
             <input
               type="text"
               value={username}
@@ -347,10 +391,10 @@ function VideoRoomManager() {
           <div className="flex flex-col gap-4 mb-8">
             <button
               onClick={() => {
-                findRandomChat();
+                handleFindChatClick();
               }}
               disabled={!username}
-              className="w-full bg-[#A855F7] text-white p-3.5 rounded-xl font-semibold disabled:bg-[#2A2A2A] disabled:text-[#666666] disabled:cursor-not-allowed enabled:hover:cursor-pointer enabled:hover:bg-[#9333EA] transition-all duration-200 shadow-lg shadow-[#A855F7]/20"
+              className="w-full bg-[#A855F7] text-white px-3.5 py-4 rounded-xl font-semibold disabled:bg-[#2A2A2A] disabled:text-[#666666] disabled:cursor-not-allowed enabled:hover:cursor-pointer enabled:hover:bg-[#9333EA] transition-all duration-200 shadow-lg shadow-[#A855F7]/20"
             >
               Find Random Chat
             </button>
@@ -431,6 +475,15 @@ function VideoRoomManager() {
           )}
         </div>
       )}
+      <LoginDialog
+        open={showLoginDialog}
+        onOpenChange={setShowLoginDialog}
+        onSuccess={() => {
+          setShowLoginDialog(false);
+          // Call findRandomChat after successful login
+          findRandomChatRef.current();
+        }}
+      />
     </div>
   );
 }
