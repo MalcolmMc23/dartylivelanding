@@ -139,12 +139,12 @@ function VideoRoomManager() {
           } else {
             throw new Error("Could not fetch username");
           }
-        } catch (err) {
+        } catch {
           setError("Failed to fetch your username. Please try again.");
           return;
         }
       }
-
+      
       if (!finalUsername) return;
 
       setError("");
