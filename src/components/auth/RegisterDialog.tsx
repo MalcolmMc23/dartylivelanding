@@ -23,6 +23,7 @@ interface Props {
 export function RegisterDialog({ open, onOpenChange, onShowLogin, onSuccess }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [username, setUsername] = useState(""); // <-- Add state for username
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -41,6 +42,12 @@ export function RegisterDialog({ open, onOpenChange, onShowLogin, onSuccess }: P
       return;
     }
 
+    // Username required check
+    if (!username.trim()) {
+      setError("Please enter your name.");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -52,6 +59,7 @@ export function RegisterDialog({ open, onOpenChange, onShowLogin, onSuccess }: P
         body: JSON.stringify({
           email,
           password,
+          username, // <-- Send username to backend
         }),
       });
 
@@ -103,6 +111,19 @@ export function RegisterDialog({ open, onOpenChange, onShowLogin, onSuccess }: P
         </DialogHeader>
         <form onSubmit={handleRegister} className="space-y-4">
           <div className="space-y-2">
+            <Label htmlFor="username" className="text-gray-300">Your Name</Label>
+            <Input
+              id="username"
+              type="text"
+              placeholder="Enter your name"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+              disabled={isLoading}
+              className="bg-[#2A2A2A] border border-[#3A3A3A] text-white focus:ring-[#A855F7] focus:border-[#A855F7] rounded-xl"
+            />
+          </div>
+          <div className="space-y-2">
             <Label htmlFor="email" className="text-gray-300">Email</Label>
             <Input
               id="email"
@@ -137,7 +158,7 @@ export function RegisterDialog({ open, onOpenChange, onShowLogin, onSuccess }: P
           <Button 
             type="submit" 
             className="w-full bg-[#A855F7] text-white font-semibold rounded-xl hover:bg-[#9333EA] transition-all duration-200 shadow-lg shadow-[#A855F7]/20 hover:cursor-pointer" 
-            disabled={isLoading || !email || !password}
+            disabled={isLoading || !email || !password || !username}
           >
             {isLoading ? "Creating Account..." : "Create Account"}
           </Button>

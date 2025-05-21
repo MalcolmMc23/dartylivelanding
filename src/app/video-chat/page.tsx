@@ -99,7 +99,7 @@ function Typewriter({
 
 function VideoRoomManager() {
   const [, setRoomName] = useState("");
-  const [username, setUsername] = useState("Placeholder");
+  const [username, setUsername] = useState(""); // Start with empty string
   const [usingDemoServer, setUsingDemoServer] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
   const [error, setError] = useState("");
@@ -124,9 +124,27 @@ function VideoRoomManager() {
   // Define findRandomChat with useCallback
   const findRandomChat = useCallback(
     async (usernameToUse?: string) => {
-      console.log("Inside findRandomChat function");
-      console.log(`Username: ${username}`);
-      const finalUsername = usernameToUse || username;
+      let finalUsername = usernameToUse || username;
+
+      // If username is not set, fetch it from the backend
+      if (!finalUsername) {
+        try {
+          const res = await fetch("/api/auth/get-username", {
+            credentials: "include",
+          });
+          if (res.ok) {
+            const data = await res.json();
+            finalUsername = data.username;
+            setUsername(finalUsername);
+          } else {
+            throw new Error("Could not fetch username");
+          }
+        } catch (err) {
+          setError("Failed to fetch your username. Please try again.");
+          return;
+        }
+      }
+
       if (!finalUsername) return;
 
       setError("");
@@ -142,7 +160,6 @@ function VideoRoomManager() {
           body: JSON.stringify({
             username: finalUsername,
             useDemo: usingDemoServer,
-            // Add a flag to indicate if this is a "rematch" after being left alone
             isRematching: searchParams.get("autoMatch") === "true",
           }),
         });
