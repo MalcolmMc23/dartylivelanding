@@ -99,7 +99,7 @@ function Typewriter({
 
 function VideoRoomManager() {
   const [, setRoomName] = useState("");
-  const [username, setUsername] = useState("");
+  const [username, setUsername] = useState("Placeholder");
   const [usingDemoServer, setUsingDemoServer] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
   const [error, setError] = useState("");
@@ -124,6 +124,8 @@ function VideoRoomManager() {
   // Define findRandomChat with useCallback
   const findRandomChat = useCallback(
     async (usernameToUse?: string) => {
+      console.log("Inside findRandomChat function");
+      console.log(`Username: ${username}`);
       const finalUsername = usernameToUse || username;
       if (!finalUsername) return;
 
