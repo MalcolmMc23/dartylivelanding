@@ -43,7 +43,7 @@ function VideoRoomManager() {
   const router = useRouter();
   const resetProcessedRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { data: session, status } = useSession();
+  const { data: session } = useSession();
   const [showLoginDialog, setShowLoginDialog] = useState(false);
   const findRandomChatRef = useRef<() => void>(() => {});
 
