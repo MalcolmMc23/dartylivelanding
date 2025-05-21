@@ -12,12 +12,14 @@ const AnimatedStars = () => {
       duration: number;
       floatDuration: number;
       floatDelay: number;
+      floatDistance: number;
+      floatDirection: number;
     }[]
   >([]);
 
   useEffect(() => {
     // Generate 100 stars with random positions, sizes, and animation properties
-    const newStars = Array.from({ length: 100 }, (_, i) => ({
+    const newStars = Array.from({ length: 150 }, (_, i) => ({
       id: i,
       x: Math.random() * 100,
       y: Math.random() * 100,
@@ -25,26 +27,39 @@ const AnimatedStars = () => {
       duration: Math.random() * 3 + 2,
       floatDuration: Math.random() * 4 + 4, // Random float duration between 4-8s
       floatDelay: Math.random() * 2, // Random delay between 0-2s
+      floatDistance: Math.random() * 30 + 10, // 10-40px float distance
+      floatDirection: Math.random() > 0.5 ? 1 : -1, // up or down
     }));
     setStars(newStars);
   }, []);
 
   return (
     <div className="fixed inset-0 overflow-hidden pointer-events-none">
+      {/* Add keyframes for floating animation */}
+      <style>
+        {`
+          @keyframes float {
+            0% { transform: translateY(0); }
+            50% { transform: translateY(var(--float-distance)); }
+            100% { transform: translateY(0); }
+          }
+        `}
+      </style>
       <div className="absolute inset-0 bg-gradient-to-b from-[#121212] via-[#0a0a0a] to-[#121212]" />
       {stars.map((star) => (
         <div
           key={star.id}
-          className="absolute rounded-full bg-[#A259FF] animate-twinkle animate-float"
+          className="absolute rounded-full bg-[#A259FF]"
           style={{
             left: `${star.x}%`,
             top: `${star.y}%`,
             width: `${star.size}px`,
             height: `${star.size}px`,
-            animationDuration: `${star.duration}s, ${star.floatDuration}s`,
-            animationDelay: `0s, ${star.floatDelay}s`,
+            animation: `float ${star.floatDuration}s ease-in-out ${star.floatDelay}s infinite, twinkle ${star.duration}s infinite`,
             opacity: Math.random() * 0.5 + 0.5,
             boxShadow: "0 0 4px #A259FF",
+            // Set custom property for float distance (positive or negative for up/down)
+            ["--float-distance" as any]: `${star.floatDirection * star.floatDistance}px`,
           }}
         />
       ))}
