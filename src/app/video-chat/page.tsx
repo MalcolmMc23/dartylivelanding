@@ -34,6 +34,9 @@ export default function VideoChat() {
 }
 
 // Create a separate client component to handle the search params
+// Move lines array outside the component to avoid re-creation on every render
+const TYPEWRITER_LINES = ["Welcome to", "DormParty", ".live"];
+
 function Typewriter({
   delay = 40,
   lineDelay = 600,
@@ -43,8 +46,8 @@ function Typewriter({
   lineDelay?: number;
   className?: string;
 }) {
-  // We'll animate "Welcome to" first, then "DormParty", then ".live"
-  const lines = ["Welcome to", "DormParty", ".live"];
+  // Use the static lines array
+  const lines = TYPEWRITER_LINES;
   const [displayed, setDisplayed] = useState([""]);
   const [lineIdx, setLineIdx] = useState(0);
   const [charIdx, setCharIdx] = useState(0);
@@ -83,10 +86,8 @@ function Typewriter({
       <div className="text-2xl md:text-3xl font-bold tracking-tight">
         <span className="text-white">
           {displayed[1]}
-          {/* Only show cursor if we're on this line and not yet on .live */}
           {lineIdx === 1 && <span className="animate-pulse">|</span>}
         </span>
-        {/* .live in purple, animates after DormParty */}
         <span className="text-[#A855F7]">
           {lineIdx > 1 ? displayed[2] : ""}
           {lineIdx === 2 && <span className="animate-pulse">|</span>}
@@ -347,25 +348,6 @@ function VideoRoomManager() {
     };
   }, [isWaiting, username, router]);
 
-  const joinRoom = () => {
-    if (roomName && username) {
-      // Sanitize room name before joining
-      const sanitizedRoom = roomName.replace(/[^a-zA-Z0-9-]/g, "");
-      if (sanitizedRoom.length > 0) {
-        if (sanitizedRoom !== roomName) {
-          setRoomName(sanitizedRoom);
-        }
-        setIsWaiting(true);
-        // Navigate to the canonical room route
-        router.push(
-          `/video-chat/room/${sanitizedRoom}?username=${encodeURIComponent(
-            username
-          )}`
-        );
-      }
-    }
-  };
-
   const cancelWaiting = async () => {
     if (username && isWaiting) {
       try {
@@ -388,10 +370,6 @@ function VideoRoomManager() {
       }
     }
     setIsWaiting(false);
-  };
-
-  const toggleDemoServer = () => {
-    setUsingDemoServer(!usingDemoServer);
   };
 
   return (
