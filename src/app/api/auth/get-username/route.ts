@@ -12,7 +12,6 @@ const pool = new Pool({
 
 export async function GET() {
   const session = await getServerSession(authOptions);
-  console.log("SECRET", process.env.NEXTAUTH_SECRET);
   console.log(`get-username returned session: ${session}`)
   if (!session || !session.user?.email) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
