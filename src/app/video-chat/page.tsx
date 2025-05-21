@@ -373,106 +373,16 @@ function VideoRoomManager() {
             </div>
           )}
 
-          <div className="mb-8">
-            <label className="block text-sm font-medium mb-2 text-gray-300">
-              Your Name
-            </label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full p-3 border rounded-xl bg-[#2A2A2A] border-[#3A3A3A] text-white focus:outline-none focus:ring-2 focus:ring-[#A855F7] focus:border-transparent transition-all"
-              placeholder="Enter your name"
-              autoComplete="off"
-              ref={inputRef}
-            />
-          </div>
-
-          <div className="flex flex-col gap-4 mb-8">
+          <div className="flex flex-col gap-4">
             <button
               onClick={() => {
                 handleFindChatClick();
               }}
-              disabled={!username}
-              className="w-full bg-[#A855F7] text-white px-3.5 py-4 rounded-xl font-semibold disabled:bg-[#2A2A2A] disabled:text-[#666666] disabled:cursor-not-allowed enabled:hover:cursor-pointer enabled:hover:bg-[#9333EA] transition-all duration-200 shadow-lg shadow-[#A855F7]/20"
+              className="w-full bg-[#A855F7] text-white px-3.5 py-4 rounded-xl font-semibold hover:cursor-pointer hover:bg-[#9333EA] transition-all duration-200 shadow-lg shadow-[#A855F7]/20"
             >
               Find Random Chat
             </button>
-
-            <div className="text-center">
-              <span className="text-gray-500">- or -</span>
-            </div>
-
-            <div className="relative">
-              <details className="w-full">
-                <summary className="cursor-pointer p-2 text-center text-sm text-gray-400 hover:text-white transition-colors">
-                  Join with room code (advanced)
-                </summary>
-                <div className="mt-4 p-6 bg-[#1E1E1E] rounded-xl border border-[#2A2A2A]">
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium mb-2 text-gray-300">
-                      Room Code
-                    </label>
-                    <div className="flex">
-                      <input
-                        type="text"
-                        value={roomName}
-                        onChange={(e) => setRoomName(e.target.value)}
-                        className="w-full p-3 border rounded-l-xl bg-[#2A2A2A] border-[#3A3A3A] text-white focus:outline-none focus:ring-2 focus:ring-[#A855F7] focus:border-transparent transition-all"
-                        placeholder="Enter room code"
-                      />
-                      <button
-                        onClick={() => {
-                          const newRoomCode = Math.random()
-                            .toString(36)
-                            .substring(2, 8)
-                            .toUpperCase();
-                          setRoomName(newRoomCode);
-                        }}
-                        className="bg-[#2A2A2A] text-white px-4 py-3 rounded-r-xl border-l-0 border border-[#3A3A3A] hover:bg-[#3A3A3A] transition-colors"
-                      >
-                        Generate
-                      </button>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      joinRoom();
-                    }}
-                    disabled={!roomName || !username}
-                    className="w-full bg-[#2A2A2A] text-white p-3 rounded-xl font-semibold hover:bg-[#3A3A3A] disabled:bg-[#1A1A1A] disabled:text-[#4A4A4A] transition-all duration-200"
-                  >
-                    Join Specific Room
-                  </button>
-                </div>
-              </details>
-            </div>
           </div>
-
-          <div className="flex items-center mb-2 text-sm text-gray-300">
-            <input
-              type="checkbox"
-              id="demoServer"
-              checked={usingDemoServer}
-              onChange={toggleDemoServer}
-              className="mr-2 accent-[#A855F7]"
-            />
-            <label htmlFor="demoServer">
-              Use LiveKit demo server (more reliable for testing)
-            </label>
-          </div>
-
-          {usingDemoServer && (
-            <div className="mt-4 p-4 bg-[#A855F7]/10 rounded-xl text-[#A855F7] text-xs border border-[#A855F7]/20">
-              <p className="font-semibold">Using LiveKit Demo Server</p>
-              <p className="mt-1 text-[#A855F7]/80">
-                This mode uses LiveKit&apos;s public demo server instead of your
-                configured server. It&apos;s useful for testing if you&apos;re
-                having connection issues.
-              </p>
-            </div>
-          )}
         </div>
       )}
       <LoginDialog
