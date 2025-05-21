@@ -97,13 +97,13 @@ export function RegisterDialog({ open, onOpenChange, onShowLogin, onSuccess }: P
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[425px] bg-[#1A1A1A] border border-[#2A2A2A] text-white rounded-2xl shadow-2xl">
         <DialogHeader>
-          <DialogTitle className="text-2xl font-bold text-center">Create Account</DialogTitle>
+          <DialogTitle className="text-2xl font-bold text-center text-white">Create Account</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleRegister} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email" className="text-gray-300">Email</Label>
             <Input
               id="email"
               type="email"
@@ -112,13 +112,14 @@ export function RegisterDialog({ open, onOpenChange, onShowLogin, onSuccess }: P
               onChange={(e) => setEmail(e.target.value)}
               required
               disabled={isLoading}
+              className="bg-[#2A2A2A] border border-[#3A3A3A] text-white focus:ring-[#A855F7] focus:border-[#A855F7] rounded-xl"
             />
-            <p className="text-xs text-muted-foreground">
-              You must use a <span className="font-semibold">.edu</span> email address to register.
+            <p className="text-xs text-gray-400">
+              You must use a <span className="font-semibold text-white">.edu</span> email address to register.
             </p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password" className="text-gray-300">Password</Label>
             <Input
               id="password"
               type="password"
@@ -127,23 +128,24 @@ export function RegisterDialog({ open, onOpenChange, onShowLogin, onSuccess }: P
               onChange={(e) => setPassword(e.target.value)}
               required
               disabled={isLoading}
+              className="bg-[#2A2A2A] border border-[#3A3A3A] text-white focus:ring-[#A855F7] focus:border-[#A855F7] rounded-xl"
             />
           </div>
           {error && (
-            <p className="text-sm text-red-500 text-center">{error}</p>
+            <p className="text-sm text-[#ff3b3b] text-center">{error}</p>
           )}
           <Button 
             type="submit" 
-            className="w-full hover:cursor-pointer" 
+            className="w-full bg-[#A855F7] text-white font-semibold rounded-xl hover:bg-[#9333EA] transition-all duration-200 shadow-lg shadow-[#A855F7]/20 hover:cursor-pointer" 
             disabled={isLoading || !email || !password}
           >
             {isLoading ? "Creating Account..." : "Create Account"}
           </Button>
-          <p className="text-sm text-center text-muted-foreground">
+          <p className="text-sm text-center text-gray-400">
             Already have an account?{" "}
             <button
               type="button"
-              className="text-primary underline-offset-4 hover:cursor-pointer hover:underline"
+              className="text-[#A855F7] underline-offset-4 hover:underline hover:cursor-pointer"
               onClick={handleSignInClick}
             >
               Sign in here

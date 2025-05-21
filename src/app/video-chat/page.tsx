@@ -7,6 +7,7 @@ import NoSSR from "@/components/NoSSR";
 import { AdminDebugPanel } from "@/components/AdminDebugPanel";
 import { useSession } from "next-auth/react";
 import { LoginDialog } from "@/components/auth/LoginDialog";
+import AnimatedStars from "@/components/AnimatedStars";
 
 // Wrap the main content in a client-side only component
 export default function VideoChat() {
@@ -33,6 +34,68 @@ export default function VideoChat() {
 }
 
 // Create a separate client component to handle the search params
+function Typewriter({
+  delay = 40,
+  lineDelay = 600,
+  className = "",
+}: {
+  delay?: number;
+  lineDelay?: number;
+  className?: string;
+}) {
+  // We'll animate "Welcome to" first, then "DormParty", then ".live"
+  const lines = ["Welcome to", "DormParty", ".live"];
+  const [displayed, setDisplayed] = useState([""]);
+  const [lineIdx, setLineIdx] = useState(0);
+  const [charIdx, setCharIdx] = useState(0);
+
+  useEffect(() => {
+    if (lineIdx < lines.length) {
+      if (charIdx < lines[lineIdx].length) {
+        const timeout = setTimeout(() => {
+          setDisplayed((prev) => {
+            const newLines = [...prev];
+            newLines[lineIdx] = (newLines[lineIdx] || "") + lines[lineIdx][charIdx];
+            return newLines;
+          });
+          setCharIdx((c) => c + 1);
+        }, delay);
+        return () => clearTimeout(timeout);
+      } else if (lineIdx + 1 < lines.length) {
+        const timeout = setTimeout(() => {
+          setDisplayed((prev) => [...prev, ""]);
+          setLineIdx((l) => l + 1);
+          setCharIdx(0);
+        }, lineDelay);
+        return () => clearTimeout(timeout);
+      }
+    }
+  }, [charIdx, lineIdx, lines, delay, lineDelay]);
+
+  return (
+    <div className={className}>
+      {/* Welcome to */}
+      <div className="text-lg md:text-xl font-medium mb-1">
+        {displayed[0]}
+        {lineIdx === 0 && <span className="animate-pulse">|</span>}
+      </div>
+      {/* DormParty.live */}
+      <div className="text-2xl md:text-3xl font-bold tracking-tight">
+        <span className="text-white">
+          {displayed[1]}
+          {/* Only show cursor if we're on this line and not yet on .live */}
+          {lineIdx === 1 && <span className="animate-pulse">|</span>}
+        </span>
+        {/* .live in purple, animates after DormParty */}
+        <span className="text-[#A855F7]">
+          {lineIdx > 1 ? displayed[2] : ""}
+          {lineIdx === 2 && <span className="animate-pulse">|</span>}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function VideoRoomManager() {
   const [roomName, setRoomName] = useState("");
   const [username, setUsername] = useState("");
@@ -332,14 +395,17 @@ function VideoRoomManager() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-[#121212] text-white p-4 md:p-8 font-[family-name:var(--font-geist-sans)]">
+    <div className="relative flex flex-col items-center justify-center min-h-screen bg-[#121212] text-white p-4 md:p-8 font-[family-name:var(--font-geist-sans)]">
+      {/* Animated stars background */}
+      <AnimatedStars />
+      {/* Main content above stars */}
       {isWaiting ? (
         <WaitingRoomComponent username={username} onCancel={cancelWaiting} />
       ) : (
-        <div className="w-full max-w-md p-8 bg-[#1A1A1A] rounded-2xl shadow-2xl backdrop-blur-sm border border-[#2A2A2A]">
-          <h1 className="text-3xl font-bold mb-8 text-center tracking-tight">
-            DormParty<span className="text-[#A855F7]">.live</span>
-          </h1>
+        <div className="relative z-10 w-full max-w-md p-8 bg-[#1A1A1A] rounded-2xl shadow-2xl backdrop-blur-sm border border-[#2A2A2A]">
+          {/* --- Animated Typewriter with color split for DormParty.live --- */}
+          <Typewriter className="mb-14 text-center" />
+          {/* --- End Typewriter --- */}
 
           {error && (
             <div className="mb-4 flex items-center gap-3 p-4 rounded-lg bg-[#1a1a1a] border border-[#ff3b3b] shadow-sm">
@@ -373,106 +439,16 @@ function VideoRoomManager() {
             </div>
           )}
 
-          <div className="mb-8">
-            <label className="block text-sm font-medium mb-2 text-gray-300">
-              Your Name
-            </label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full p-3 border rounded-xl bg-[#2A2A2A] border-[#3A3A3A] text-white focus:outline-none focus:ring-2 focus:ring-[#A855F7] focus:border-transparent transition-all"
-              placeholder="Enter your name"
-              autoComplete="off"
-              ref={inputRef}
-            />
-          </div>
-
-          <div className="flex flex-col gap-4 mb-8">
+          <div className="flex flex-col gap-4">
             <button
               onClick={() => {
                 handleFindChatClick();
               }}
-              disabled={!username}
-              className="w-full bg-[#A855F7] text-white px-3.5 py-4 rounded-xl font-semibold disabled:bg-[#2A2A2A] disabled:text-[#666666] disabled:cursor-not-allowed enabled:hover:cursor-pointer enabled:hover:bg-[#9333EA] transition-all duration-200 shadow-lg shadow-[#A855F7]/20"
+              className="w-full bg-[#A855F7] text-white px-3.5 py-4 rounded-xl font-semibold hover:cursor-pointer hover:bg-[#9333EA] transition-all duration-200 shadow-lg shadow-[#A855F7]/20"
             >
               Find Random Chat
             </button>
-
-            <div className="text-center">
-              <span className="text-gray-500">- or -</span>
-            </div>
-
-            <div className="relative">
-              <details className="w-full">
-                <summary className="cursor-pointer p-2 text-center text-sm text-gray-400 hover:text-white transition-colors">
-                  Join with room code (advanced)
-                </summary>
-                <div className="mt-4 p-6 bg-[#1E1E1E] rounded-xl border border-[#2A2A2A]">
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium mb-2 text-gray-300">
-                      Room Code
-                    </label>
-                    <div className="flex">
-                      <input
-                        type="text"
-                        value={roomName}
-                        onChange={(e) => setRoomName(e.target.value)}
-                        className="w-full p-3 border rounded-l-xl bg-[#2A2A2A] border-[#3A3A3A] text-white focus:outline-none focus:ring-2 focus:ring-[#A855F7] focus:border-transparent transition-all"
-                        placeholder="Enter room code"
-                      />
-                      <button
-                        onClick={() => {
-                          const newRoomCode = Math.random()
-                            .toString(36)
-                            .substring(2, 8)
-                            .toUpperCase();
-                          setRoomName(newRoomCode);
-                        }}
-                        className="bg-[#2A2A2A] text-white px-4 py-3 rounded-r-xl border-l-0 border border-[#3A3A3A] hover:bg-[#3A3A3A] transition-colors"
-                      >
-                        Generate
-                      </button>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      joinRoom();
-                    }}
-                    disabled={!roomName || !username}
-                    className="w-full bg-[#2A2A2A] text-white p-3 rounded-xl font-semibold hover:bg-[#3A3A3A] disabled:bg-[#1A1A1A] disabled:text-[#4A4A4A] transition-all duration-200"
-                  >
-                    Join Specific Room
-                  </button>
-                </div>
-              </details>
-            </div>
           </div>
-
-          <div className="flex items-center mb-2 text-sm text-gray-300">
-            <input
-              type="checkbox"
-              id="demoServer"
-              checked={usingDemoServer}
-              onChange={toggleDemoServer}
-              className="mr-2 accent-[#A855F7]"
-            />
-            <label htmlFor="demoServer">
-              Use LiveKit demo server (more reliable for testing)
-            </label>
-          </div>
-
-          {usingDemoServer && (
-            <div className="mt-4 p-4 bg-[#A855F7]/10 rounded-xl text-[#A855F7] text-xs border border-[#A855F7]/20">
-              <p className="font-semibold">Using LiveKit Demo Server</p>
-              <p className="mt-1 text-[#A855F7]/80">
-                This mode uses LiveKit&apos;s public demo server instead of your
-                configured server. It&apos;s useful for testing if you&apos;re
-                having connection issues.
-              </p>
-            </div>
-          )}
         </div>
       )}
       <LoginDialog
