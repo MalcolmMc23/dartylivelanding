@@ -12,10 +12,10 @@ const pool = new Pool({
 
 export async function POST(request: Request) {
     try {
-      const { email, password } = await request.json();
+      const { email, password, username } = await request.json(); // <-- Add username
 
-      if (!email || !password) {
-        return NextResponse.json({ message: 'Email and password required' }, { status: 400 });
+      if (!email || !password || !username) { // <-- Check username
+        return NextResponse.json({ message: 'Email, password, and username required' }, { status: 400 });
       }
 
       // Server-side .edu check
@@ -26,8 +26,8 @@ export async function POST(request: Request) {
       const hashedPassword = await hash(password, 10);
 
       await pool.query(
-        'INSERT INTO "user" (email, password) VALUES ($1, $2)',
-        [email, hashedPassword]
+        'INSERT INTO "user" (email, password, username) VALUES ($1, $2, $3)', // <-- Add username column
+        [email, hashedPassword, username] // <-- Add username value
       );
 
       return NextResponse.json({ message: 'User created successfully' }, { status: 201 });
