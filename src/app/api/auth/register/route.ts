@@ -13,20 +13,25 @@ const pool = new Pool({
 export async function POST(request: Request) {
     try {
       const { email, password } = await request.json();
-  
+
       if (!email || !password) {
         return NextResponse.json({ message: 'Email and password required' }, { status: 400 });
       }
-  
+
+      // Server-side .edu check
+      if (typeof email !== "string" || !email.trim().toLowerCase().endsWith(".edu")) {
+        return NextResponse.json({ message: 'You must use a .edu email address to register.' }, { status: 400 });
+      }
+
       const hashedPassword = await hash(password, 10);
-  
+
       await pool.query(
         'INSERT INTO "user" (email, password) VALUES ($1, $2)',
         [email, hashedPassword]
       );
-  
+
       return NextResponse.json({ message: 'User created successfully' }, { status: 201 });
-  
+
     } catch (e: unknown) {
       console.error('Registration error:', e); // <-- important
       // Type guard to check if e is an object with a 'code' property

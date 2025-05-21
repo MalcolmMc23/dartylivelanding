@@ -26,9 +26,21 @@ export function RegisterDialog({ open, onOpenChange, onShowLogin, onSuccess }: P
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
+  // Helper to check for .edu email
+  function isEduEmail(email: string) {
+    return email.trim().toLowerCase().endsWith(".edu");
+  }
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    // Client-side .edu check
+    if (!isEduEmail(email)) {
+      setError("You must use a .edu email address to register.");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -95,12 +107,15 @@ export function RegisterDialog({ open, onOpenChange, onShowLogin, onSuccess }: P
             <Input
               id="email"
               type="email"
-              placeholder="Enter your email"
+              placeholder="Enter your .edu email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
               disabled={isLoading}
             />
+            <p className="text-xs text-muted-foreground">
+              You must use a <span className="font-semibold">.edu</span> email address to register.
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
