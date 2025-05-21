@@ -46,23 +46,25 @@ const AnimatedStars = () => {
         `}
       </style>
       <div className="absolute inset-0 bg-gradient-to-b from-[#121212] via-[#0a0a0a] to-[#121212]" />
-      {stars.map((star) => (
-        <div
-          key={star.id}
-          className="absolute rounded-full bg-[#A259FF]"
-          style={{
-            left: `${star.x}%`,
-            top: `${star.y}%`,
-            width: `${star.size}px`,
-            height: `${star.size}px`,
-            animation: `float ${star.floatDuration}s ease-in-out ${star.floatDelay}s infinite, twinkle ${star.duration}s infinite`,
-            opacity: Math.random() * 0.5 + 0.5,
-            boxShadow: "0 0 4px #A259FF",
-            // Set custom property for float distance (positive or negative for up/down)
-            ["--float-distance" as any]: `${star.floatDirection * star.floatDistance}px`,
-          }}
-        />
-      ))}
+      {stars.map((star) => {
+        const style: React.CSSProperties & Record<string, string | number> = {
+          left: `${star.x}%`,
+          top: `${star.y}%`,
+          width: `${star.size}px`,
+          height: `${star.size}px`,
+          animation: `float ${star.floatDuration}s ease-in-out ${star.floatDelay}s infinite, twinkle ${star.duration}s infinite`,
+          opacity: Math.random() * 0.5 + 0.5,
+          boxShadow: "0 0 4px #A259FF",
+          "--float-distance": `${star.floatDirection * star.floatDistance}px`,
+        };
+        return (
+          <div
+            key={star.id}
+            className="absolute rounded-full bg-[#A259FF]"
+            style={style}
+          />
+        );
+      })}
     </div>
   );
 };
