@@ -98,7 +98,7 @@ function Typewriter({
 }
 
 function VideoRoomManager() {
-  const [roomName, setRoomName] = useState("");
+  const [, setRoomName] = useState("");
   const [username, setUsername] = useState("");
   const [usingDemoServer, setUsingDemoServer] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
