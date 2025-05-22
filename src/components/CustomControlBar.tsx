@@ -16,7 +16,7 @@ import {
   CameraOnIcon,
   CameraOffIcon,
 } from "./LiveKitIcons";
-import {LucideMessageSquareMore} from 'lucide-react'
+import { LucideMessageSquareMore } from "lucide-react";
 import {
   handleDisconnection,
   resetNavigationState,
@@ -36,9 +36,9 @@ export function CustomControlBar({
   roomName,
   onChatClick,
   hasUnreadChat = false,
-  // className, // Remove this line
-  // hideChatButtonOnDesktop = false, // Remove this line
-}: CustomControlBarProps) {
+}: // className, // Remove this line
+// hideChatButtonOnDesktop = false, // Remove this line
+CustomControlBarProps) {
   const room = useRoomContext();
   const router = useRouter();
   const [isRedirecting, setIsRedirecting] = useState(false);
@@ -135,6 +135,75 @@ export function CustomControlBar({
         console.error("Error initiating leave call:", e);
         // Still disconnect and redirect in case of error
         room.disconnect();
+        const url = new URL("/video-chat", window.location.origin);
+        url.searchParams.set("reset", "true");
+        url.searchParams.set("username", username);
+        router.push(url.toString());
+      }
+    }
+  }, [room, username, roomName, router, isRedirecting]);
+
+  // Handle ending the call completely and returning to the initial page
+  const handleEndCall = useCallback(async () => {
+    console.log("End call initiated, redirecting state:", isRedirecting);
+
+    if (isRedirecting || navigationOccurred.current) {
+      console.log(
+        "Already redirecting or navigation occurred, ignoring end call"
+      );
+      return;
+    }
+
+    setIsRedirecting(true);
+    navigationOccurred.current = true;
+
+    console.log(
+      "End call proceeding, returning to initial page with reset flag"
+    );
+
+    if (room) {
+      let otherParticipantIdentity: string | undefined;
+      if (room.remoteParticipants.size === 1) {
+        otherParticipantIdentity = Array.from(
+          room.remoteParticipants.values()
+        )[0].identity;
+      }
+
+      try {
+        // 1. Explicitly cancel any match/queue for this user
+        const cancelResponse = await fetch("/api/cancel-match", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username }),
+        });
+        if (!cancelResponse.ok) {
+          console.warn(
+            "Failed to cancel match, proceeding with disconnect anyway"
+          );
+        } else {
+          console.log("Successfully cancelled match/queue");
+        }
+
+        // 2. Disconnect from the LiveKit room
+        if (room.state !== "disconnected") {
+          room.disconnect();
+        }
+
+        // 3. Notify the backend and handle navigation via disconnectionService
+        await handleDisconnection({
+          username,
+          roomName,
+          otherUsername: otherParticipantIdentity,
+          reason: "user_left",
+          router,
+          preventAutoMatch: true,
+        });
+      } catch (e) {
+        console.error("Error ending call:", e);
+        // Fallback: attempt to disconnect and navigate manually if handleDisconnection fails
+        if (room && room.state !== "disconnected") {
+          room.disconnect();
+        }
         const url = new URL("/video-chat", window.location.origin);
         url.searchParams.set("reset", "true");
         url.searchParams.set("username", username);
@@ -251,7 +320,7 @@ export function CustomControlBar({
         )}
       </div>
 
-      {/* Leave Call Button */}
+      {/* Skip Button */}
       <ControlButton
         onClick={handleLeaveCall}
         disabled={isRedirecting}
@@ -262,7 +331,33 @@ export function CustomControlBar({
         activeIcon={
           <span
             className="font-extrabold text-xl md:text-2xl tracking-widest text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.25)]"
-            style={{ letterSpacing: '0.15em', fontFamily: 'Inter, sans-serif' }}
+            style={{ letterSpacing: "0.15em", fontFamily: "Inter, sans-serif" }}
+          >
+            SKIP
+          </span>
+        }
+        inactiveIcon={
+          <span
+            className="font-extrabold text-xl md:text-2xl tracking-widest text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.25)]"
+            style={{ letterSpacing: "0.15em", fontFamily: "Inter, sans-serif" }}
+          >
+            SKIP
+          </span>
+        }
+      />
+
+      {/* End Call Button */}
+      <ControlButton
+        onClick={handleEndCall}
+        disabled={isRedirecting}
+        active={false}
+        activeColor="bg-gradient-to-br from-gray-800 via-gray-700 to-gray-900 shadow-lg hover:scale-110"
+        inactiveColor="bg-gradient-to-br from-gray-800 via-gray-700 to-gray-900 shadow-lg hover:scale-110"
+        ariaLabel="End call"
+        activeIcon={
+          <span
+            className="font-extrabold text-xl md:text-2xl tracking-widest text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.25)]"
+            style={{ letterSpacing: "0.15em", fontFamily: "Inter, sans-serif" }}
           >
             END
           </span>
@@ -270,7 +365,7 @@ export function CustomControlBar({
         inactiveIcon={
           <span
             className="font-extrabold text-xl md:text-2xl tracking-widest text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.25)]"
-            style={{ letterSpacing: '0.15em', fontFamily: 'Inter, sans-serif' }}
+            style={{ letterSpacing: "0.15em", fontFamily: "Inter, sans-serif" }}
           >
             END
           </span>
@@ -279,5 +374,5 @@ export function CustomControlBar({
     </>
   );
 
-  return <ControlBarContainer controlButtons={controlButtons}/>;
+  return <ControlBarContainer controlButtons={controlButtons} />;
 }
