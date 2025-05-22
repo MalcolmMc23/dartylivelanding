@@ -75,7 +75,7 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
         
         // Skip if we recently matched with this user (5-min cooldown)
         if (user.lastMatch?.matchedWith === username && 
-            (Date.now() - user.lastMatch.timestamp < 5 * 60 * 1000)) {
+            (Date.now() - user.lastMatch.timestamp < 5 * 1000)) {
           console.log(`Skipping ${user.username} due to recent match cooldown`);
           continue;
         }
@@ -129,7 +129,7 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
         
         // Skip if we recently matched with this user
         if (user.lastMatch?.matchedWith === username &&
-            (Date.now() - user.lastMatch.timestamp < 5 * 60 * 1000)) continue;
+            (Date.now() - user.lastMatch.timestamp < 5 * 1000)) continue;
         
         // We found a match!
         await removeUserFromQueue(user.username);
