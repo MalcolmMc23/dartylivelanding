@@ -7,16 +7,16 @@ export default function CountdownDisplay() {
   const [targetDate, setTargetDate] = useState<Date | null>(null);
 
   useEffect(() => {
-    // Get next Wednesday at noon
+    // Get next Monday at noon
     const now = new Date();
-    const targetDay = 3; // Wednesday (0 = Sunday, 1 = Monday, etc.)
-    const daysUntilWednesday = (targetDay + 7 - now.getDay()) % 7;
+    const targetDay = 1; // Monday (0 = Sunday, 1 = Monday, etc.)
+    const daysUntilMonday = (targetDay + 7 - now.getDay()) % 7;
 
-    const nextWednesday = new Date(now);
-    nextWednesday.setDate(now.getDate() + daysUntilWednesday);
-    nextWednesday.setHours(12, 0, 0, 0); // Set to noon
+    const nextMonday = new Date(now);
+    nextMonday.setDate(now.getDate() + daysUntilMonday);
+    nextMonday.setHours(12, 0, 0, 0); // Set to noon
 
-    setTargetDate(nextWednesday);
+    setTargetDate(nextMonday);
   }, []);
 
   if (!targetDate) {
