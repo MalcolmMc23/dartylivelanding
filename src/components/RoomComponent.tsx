@@ -15,7 +15,6 @@ import { handleDisconnection } from "@/utils/disconnectionService";
 import { LeftBehindNotification } from "./LeftBehindNotification";
 import { ParticipantCounter } from "./ParticipantCounter";
 import { VideoContainer } from "./room/VideoContainer";
-import { WaitingOverlay } from "./room/WaitingOverlay";
 import { MobileViewToggle } from "./room/MobileViewToggle";
 import { ChatDialog } from "./ChatDialog";
 import { DesktopChat } from "./DesktopChat"; // <-- Add this import
@@ -316,7 +315,7 @@ export default function RoomComponent({
             // otherParticipantLeft={otherParticipantLeft}
           />
 
-          <div className="h-full flex flex-col relative">
+          <div className="h-full flex flex-col items-center relative justify-center">
             <RoomStatusIndicators
               usingDemoServer={usingDemoServer}
               participantCount={liveParticipantCount}
@@ -328,25 +327,32 @@ export default function RoomComponent({
               setMobileView={setMobileView}
             />
 
-            {/* Show WaitingOverlay above video container */}
-            {liveParticipantCount === 1 && (
-              <div className="flex justify-center items-center w-full">
-                <UniversityLogoScroll />
-              </div>
-            )}
-
-            <div className="flex items-center justify-center">
-              {/* Videos on the left */}
-              <div
-                className={`w-[75vw] h-[75vh] max-w-[75vw] max-h-[75vh] flex items-center justify-center mx-auto lg:my-8 ${
-                  mobileView === "chat" ? "hidden" : "block"
-                } md:block`}
-              >
-                <div className="aspect-[16/9] w-full h-full max-w-full max-h-full flex items-center justify-center">
-                  <VideoContainer otherParticipantLeft={otherParticipantLeft} />
+            {/* Stack UniversityLogoScroll and VideoContainer closer together */}
+            {liveParticipantCount === 1 ? (
+              <div className="flex flex-col items-center w-full gap-2 mt-2 mb-2">
+                <div className="flex justify-center w-full">
+                  <UniversityLogoScroll />
+                </div>
+                <div className="flex items-center justify-center w-full">
+                  <div className="aspect-[16/9] w-[60vw] h-[34vw] max-w-[600px] max-h-[340px] flex items-center justify-center">
+                    <VideoContainer otherParticipantLeft={otherParticipantLeft} />
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex items-center justify-center">
+                {/* Videos on the left */}
+                <div
+                  className={`w-[75vw] h-[75vh] max-w-[75vw] max-h-[75vh] flex items-center justify-center mx-auto lg:my-8 ${
+                    mobileView === "chat" ? "hidden" : "block"
+                  } md:block`}
+                >
+                  <div className="aspect-[16/9] w-full h-full max-w-full max-h-full flex items-center justify-center">
+                    <VideoContainer otherParticipantLeft={otherParticipantLeft} />
+                  </div>
+                </div>
+              </div>
+            )}
             
             {/* CustomControlBar: hide chat button on large screens */}
             <CustomControlBar
