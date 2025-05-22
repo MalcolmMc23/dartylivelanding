@@ -335,7 +335,9 @@ export default function RoomComponent({
                 </div>
                 <div className="flex items-center justify-center w-full">
                   <div className="aspect-[16/9] w-[60vw] h-[34vw] max-w-[600px] max-h-[340px] flex items-center justify-center">
-                    <VideoContainer otherParticipantLeft={otherParticipantLeft} />
+                    <VideoContainer
+                      otherParticipantLeft={otherParticipantLeft}
+                    />
                   </div>
                 </div>
               </div>
@@ -348,12 +350,14 @@ export default function RoomComponent({
                   } md:block`}
                 >
                   <div className="aspect-[16/9] w-full h-full max-w-full max-h-full flex items-center justify-center">
-                    <VideoContainer otherParticipantLeft={otherParticipantLeft} />
+                    <VideoContainer
+                      otherParticipantLeft={otherParticipantLeft}
+                    />
                   </div>
                 </div>
               </div>
             )}
-            
+
             {/* CustomControlBar: hide chat button on large screens */}
             <CustomControlBar
               username={username}

@@ -143,6 +143,85 @@ CustomControlBarProps) {
     }
   }, [room, username, roomName, router, isRedirecting]);
 
+  // Handle ending the call completely and returning to the initial page
+  const handleEndCall = useCallback(async () => {
+    console.log("End call initiated, redirecting state:", isRedirecting);
+
+    // If already redirecting or navigation occurred, do nothing
+    if (isRedirecting || navigationOccurred.current) {
+      console.log(
+        "Already redirecting or navigation occurred, ignoring end call"
+      );
+      return;
+    }
+
+    // Set the flags immediately to prevent multiple clicks
+    setIsRedirecting(true);
+    navigationOccurred.current = true;
+
+    console.log(
+      "End call proceeding, returning to initial page with reset flag"
+    );
+
+    // Disconnect from the current room
+    if (room) {
+      // Get the other participant's identity before leaving
+      let otherParticipantIdentity: string | undefined;
+      if (room.remoteParticipants.size === 1) {
+        // There should be only one remote participant in a 1:1 call
+        otherParticipantIdentity = Array.from(
+          room.remoteParticipants.values()
+        )[0].identity;
+        console.log(`Found other participant: ${otherParticipantIdentity}`);
+      }
+
+      try {
+        // First, explicitly cancel any match/queue for this user
+        const cancelResponse = await fetch("/api/cancel-match", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ username }),
+        });
+
+        if (!cancelResponse.ok) {
+          console.warn(
+            "Failed to cancel match, proceeding with disconnect anyway"
+          );
+        } else {
+          console.log("Successfully cancelled match/queue");
+        }
+
+        // Then use the disconnection service
+        await handleDisconnection({
+          username,
+          roomName,
+          otherUsername: otherParticipantIdentity,
+          reason: "user_left",
+          router,
+        });
+
+        // Disconnect from the current room
+        room.disconnect();
+
+        // Redirect to video-chat page without autoMatch
+        const url = new URL("/video-chat", window.location.origin);
+        url.searchParams.set("reset", "true");
+        url.searchParams.set("username", username);
+        router.push(url.toString());
+      } catch (e) {
+        console.error("Error ending call:", e);
+        // Still disconnect and redirect in case of error
+        room.disconnect();
+        const url = new URL("/video-chat", window.location.origin);
+        url.searchParams.set("reset", "true");
+        url.searchParams.set("username", username);
+        router.push(url.toString());
+      }
+    }
+  }, [room, username, roomName, router, isRedirecting]);
+
   // Use Effect to override the default disconnect button behavior
   useEffect(() => {
     // Keep track of added event listeners to avoid duplicates
@@ -251,7 +330,7 @@ CustomControlBarProps) {
         )}
       </div>
 
-      {/* Leave Call Button */}
+      {/* Skip Button */}
       <ControlButton
         onClick={handleLeaveCall}
         disabled={isRedirecting}
@@ -273,6 +352,32 @@ CustomControlBarProps) {
             style={{ letterSpacing: "0.15em", fontFamily: "Inter, sans-serif" }}
           >
             SKIP
+          </span>
+        }
+      />
+
+      {/* End Call Button */}
+      <ControlButton
+        onClick={handleEndCall}
+        disabled={isRedirecting}
+        active={false}
+        activeColor="bg-gradient-to-br from-gray-800 via-gray-700 to-gray-900 shadow-lg hover:scale-110"
+        inactiveColor="bg-gradient-to-br from-gray-800 via-gray-700 to-gray-900 shadow-lg hover:scale-110"
+        ariaLabel="End call"
+        activeIcon={
+          <span
+            className="font-extrabold text-xl md:text-2xl tracking-widest text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.25)]"
+            style={{ letterSpacing: "0.15em", fontFamily: "Inter, sans-serif" }}
+          >
+            END
+          </span>
+        }
+        inactiveIcon={
+          <span
+            className="font-extrabold text-xl md:text-2xl tracking-widest text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.25)]"
+            style={{ letterSpacing: "0.15em", fontFamily: "Inter, sans-serif" }}
+          >
+            END
           </span>
         }
       />

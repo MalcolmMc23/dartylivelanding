@@ -58,6 +58,8 @@ export function ControlButton({
       <span className="absolute -top-10 left-1/2 -translate-x-1/2 px-3 py-2 rounded-lg bg-[#2a1857] text-white text-xs font-semibold opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg z-20 whitespace-nowrap">
         {ariaLabel === "Leave call"
           ? "Skip"
+          : ariaLabel === "End call"
+          ? "End Call"
           : ariaLabel.includes("camera")
           ? "Toggle Camera"
           : ariaLabel.includes("chat")
