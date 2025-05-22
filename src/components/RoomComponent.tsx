@@ -19,6 +19,7 @@ import { WaitingOverlay } from "./room/WaitingOverlay";
 import { MobileViewToggle } from "./room/MobileViewToggle";
 import { ChatDialog } from "./ChatDialog";
 import { DesktopChat } from "./DesktopChat"; // <-- Add this import
+import UniversityLogoScroll from "./UniversityLogoScroll";
 
 // Max participants allowed in a room
 const MAX_PARTICIPANTS = 2;
@@ -329,7 +330,9 @@ export default function RoomComponent({
 
             {/* Show WaitingOverlay above video container */}
             {liveParticipantCount === 1 && (
-              <WaitingOverlay otherParticipantLeft={otherParticipantLeft} />
+              <div className="flex justify-center items-center w-full">
+                <UniversityLogoScroll />
+              </div>
             )}
 
             <div className="flex items-center justify-center">
