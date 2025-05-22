@@ -147,7 +147,6 @@ CustomControlBarProps) {
   const handleEndCall = useCallback(async () => {
     console.log("End call initiated, redirecting state:", isRedirecting);
 
-    // If already redirecting or navigation occurred, do nothing
     if (isRedirecting || navigationOccurred.current) {
       console.log(
         "Already redirecting or navigation occurred, ignoring end call"
@@ -155,7 +154,6 @@ CustomControlBarProps) {
       return;
     }
 
-    // Set the flags immediately to prevent multiple clicks
     setIsRedirecting(true);
     navigationOccurred.current = true;
 
@@ -163,28 +161,21 @@ CustomControlBarProps) {
       "End call proceeding, returning to initial page with reset flag"
     );
 
-    // Disconnect from the current room
     if (room) {
-      // Get the other participant's identity before leaving
       let otherParticipantIdentity: string | undefined;
       if (room.remoteParticipants.size === 1) {
-        // There should be only one remote participant in a 1:1 call
         otherParticipantIdentity = Array.from(
           room.remoteParticipants.values()
         )[0].identity;
-        console.log(`Found other participant: ${otherParticipantIdentity}`);
       }
 
       try {
-        // First, explicitly cancel any match/queue for this user
+        // 1. Explicitly cancel any match/queue for this user
         const cancelResponse = await fetch("/api/cancel-match", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ username }),
         });
-
         if (!cancelResponse.ok) {
           console.warn(
             "Failed to cancel match, proceeding with disconnect anyway"
@@ -193,27 +184,26 @@ CustomControlBarProps) {
           console.log("Successfully cancelled match/queue");
         }
 
-        // Then use the disconnection service
+        // 2. Disconnect from the LiveKit room
+        if (room.state !== "disconnected") {
+          room.disconnect();
+        }
+
+        // 3. Notify the backend and handle navigation via disconnectionService
         await handleDisconnection({
           username,
           roomName,
           otherUsername: otherParticipantIdentity,
           reason: "user_left",
           router,
+          preventAutoMatch: true,
         });
-
-        // Disconnect from the current room
-        room.disconnect();
-
-        // Redirect to video-chat page without autoMatch
-        const url = new URL("/video-chat", window.location.origin);
-        url.searchParams.set("reset", "true");
-        url.searchParams.set("username", username);
-        router.push(url.toString());
       } catch (e) {
         console.error("Error ending call:", e);
-        // Still disconnect and redirect in case of error
-        room.disconnect();
+        // Fallback: attempt to disconnect and navigate manually if handleDisconnection fails
+        if (room && room.state !== "disconnected") {
+          room.disconnect();
+        }
         const url = new URL("/video-chat", window.location.origin);
         url.searchParams.set("reset", "true");
         url.searchParams.set("username", username);

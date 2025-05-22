@@ -35,6 +35,7 @@ interface DisconnectionOptions {
   router?: { push: (url: string) => void }; // Next.js router if available
   onComplete?: (result: DisconnectionResult) => void;
   redirectToNewRoom?: boolean; // Flag to indicate whether to redirect to a new room
+  preventAutoMatch?: boolean; // New flag to prevent auto-matching
 }
 
 // Track if navigation is already in progress to prevent duplicate calls
@@ -62,6 +63,7 @@ export async function handleDisconnection({
   router,
   onComplete,
   redirectToNewRoom = false,
+  preventAutoMatch = false,
 }: DisconnectionOptions): Promise<DisconnectionResult> {
   // If navigation is already in progress, just return success
   if (isNavigationInProgress) {
@@ -113,8 +115,8 @@ export async function handleDisconnection({
           url.searchParams.set('reset', 'true');
           url.searchParams.set('username', username);
           
-          // Add auto-match parameter if requested
-          if (data.status === 'immediate_match' || reason === 'user_disconnected' || redirectToNewRoom) {
+          // Add auto-match parameter if requested AND not prevented
+          if (!preventAutoMatch && (data.status === 'immediate_match' || reason === 'user_disconnected' || redirectToNewRoom)) {
             url.searchParams.set('autoMatch', 'true');
           }
           
@@ -152,6 +154,14 @@ export async function handleDisconnection({
           const url = new URL('/video-chat', window.location.origin);
           url.searchParams.set('reset', 'true');
           url.searchParams.set('username', username);
+          // Explicitly DO NOT add autoMatch here in the error fallback for "End Call" style disconnects
+          // if preventAutoMatch was intended.
+          // However, for general errors, not setting autoMatch might be unexpected if it was otherwise implied.
+          // For now, we'll keep it simple: if preventAutoMatch is true, it won't add it.
+          // This part of the error handling might need further thought if other scenarios also use preventAutoMatch.
+          if (!preventAutoMatch && (reason === 'user_disconnected' || redirectToNewRoom )) { // Example conditions for error fallback autoMatch
+             // url.searchParams.set('autoMatch', 'true'); // Decided to not add autoMatch on error fallbacks for now to keep End Call clean
+          }
           router.push(url.toString());
         }
       }
