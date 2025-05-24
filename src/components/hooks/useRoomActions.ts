@@ -1,0 +1,156 @@
+import { useCallback, useState, useRef } from 'react';
+import { useRoomContext } from '@livekit/components-react';
+import { useRouter } from 'next/navigation';
+import { handleDisconnection, resetNavigationState } from '@/utils/disconnectionService';
+
+interface UseRoomActionsProps {
+  username: string;
+  roomName: string;
+}
+
+export function useRoomActions({ username, roomName }: UseRoomActionsProps) {
+  const room = useRoomContext();
+  const router = useRouter();
+  const [isRedirecting, setIsRedirecting] = useState(false);
+  const navigationOccurred = useRef(false);
+  
+  // Reset the redirecting state
+  const resetRedirectingState = useCallback(() => {
+    setIsRedirecting(false);
+    navigationOccurred.current = false;
+    resetNavigationState();
+  }, []);
+
+  // Handle leaving the call to return to the search screen
+  const handleLeaveCall = useCallback(async () => {
+    console.log("Leave call initiated, redirecting state:", isRedirecting);
+
+    // If already redirecting or navigation occurred, do nothing
+    if (isRedirecting || navigationOccurred.current) {
+      console.log(
+        "Already redirecting or navigation occurred, ignoring leave call"
+      );
+      return;
+    }
+
+    // Set the flags immediately to prevent multiple clicks
+    setIsRedirecting(true);
+    navigationOccurred.current = true;
+
+    console.log(
+      "Leave call proceeding, returning to search screen with reset flag"
+    );
+
+    // Disconnect from the current room
+    if (room) {
+      // Get the other participant's identity before leaving
+      let otherParticipantIdentity: string | undefined;
+      if (room.remoteParticipants.size === 1) {
+        // There should be only one remote participant in a 1:1 call
+        otherParticipantIdentity = Array.from(
+          room.remoteParticipants.values()
+        )[0].identity;
+        console.log(`Found other participant: ${otherParticipantIdentity}`);
+      }
+
+      // Use the disconnection service
+      try {
+        await handleDisconnection({
+          username,
+          roomName,
+          otherUsername: otherParticipantIdentity,
+          reason: "user_left",
+          router,
+        });
+
+        // Disconnect from the current room
+        room.disconnect();
+      } catch (e) {
+        console.error("Error initiating leave call:", e);
+        // Still disconnect and redirect in case of error
+        room.disconnect();
+        const url = new URL("/video-chat", window.location.origin);
+        url.searchParams.set("reset", "true");
+        url.searchParams.set("username", username);
+        router.push(url.toString());
+      }
+    }
+  }, [room, username, roomName, router, isRedirecting]);
+
+  // Handle ending the call completely and returning to the initial page
+  const handleEndCall = useCallback(async () => {
+    console.log("End call initiated, redirecting state:", isRedirecting);
+
+    if (isRedirecting || navigationOccurred.current) {
+      console.log(
+        "Already redirecting or navigation occurred, ignoring end call"
+      );
+      return;
+    }
+
+    setIsRedirecting(true);
+    navigationOccurred.current = true;
+
+    console.log(
+      "End call proceeding, returning to initial page with reset flag"
+    );
+
+    if (room) {
+      let otherParticipantIdentity: string | undefined;
+      if (room.remoteParticipants.size === 1) {
+        otherParticipantIdentity = Array.from(
+          room.remoteParticipants.values()
+        )[0].identity;
+      }
+
+      try {
+        // 1. Explicitly cancel any match/queue for this user
+        const cancelResponse = await fetch("/api/cancel-match", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username }),
+        });
+        if (!cancelResponse.ok) {
+          console.warn(
+            "Failed to cancel match, proceeding with disconnect anyway"
+          );
+        } else {
+          console.log("Successfully cancelled match/queue");
+        }
+
+        // 2. Disconnect from the LiveKit room
+        if (room.state !== "disconnected") {
+          room.disconnect();
+        }
+
+        // 3. Notify the backend and handle navigation via disconnectionService
+        await handleDisconnection({
+          username,
+          roomName,
+          otherUsername: otherParticipantIdentity,
+          reason: "user_left",
+          router,
+          preventAutoMatch: true,
+        });
+      } catch (e) {
+        console.error("Error ending call:", e);
+        // Fallback: attempt to disconnect and navigate manually if handleDisconnection fails
+        if (room && room.state !== "disconnected") {
+          room.disconnect();
+        }
+        const url = new URL("/video-chat", window.location.origin);
+        url.searchParams.set("reset", "true");
+        url.searchParams.set("username", username);
+        router.push(url.toString());
+      }
+    }
+  }, [room, username, roomName, router, isRedirecting]);
+
+  return {
+    isRedirecting,
+    resetRedirectingState,
+    handleLeaveCall,
+    handleEndCall,
+    room
+  };
+} 
