@@ -1,6 +1,7 @@
 import redis from '../../lib/redis';
 import { MATCHING_QUEUE, ACTIVE_MATCHES, WAITING_QUEUE, IN_CALL_QUEUE } from './constants';
 import { UserQueueState, UserDataInQueue, calculateQueueScore } from './types';
+import { getUserSkipStats } from './skipStatsManager';
 
 export async function addUserToQueue(
   username: string,
@@ -12,10 +13,10 @@ export async function addUserToQueue(
   const now = Date.now();
   
   // Check if user is already in queue with the same state to prevent thrashing
-  const existingUserData = await scanQueueForUser(MATCHING_QUEUE, username);
-  if (existingUserData) {
+  const existingUserDataString = await scanQueueForUser(MATCHING_QUEUE, username);
+  if (existingUserDataString) {
     try {
-      const existingUser = JSON.parse(existingUserData) as UserDataInQueue;
+      const existingUser = JSON.parse(existingUserDataString) as UserDataInQueue;
       if (existingUser.state === state && existingUser.roomName === roomName) {
         console.log(`User ${username} already in queue with state '${state}' and room ${roomName || 'none'}, skipping add`);
         return { username, added: false, state, reason: 'already_in_queue' };
@@ -23,6 +24,18 @@ export async function addUserToQueue(
     } catch (e) {
       console.error('Error parsing existing user data:', e);
     }
+  }
+  
+  // Fetch user's skip stats
+  let averageSkipTime: number | undefined = undefined;
+  let skipCount: number | undefined = undefined;
+  const userStats = await getUserSkipStats(username);
+  if (userStats) {
+    averageSkipTime = userStats.averageSkipTime;
+    skipCount = userStats.totalSkipsInvolved;
+    console.log(`Fetched skip stats for ${username}: avgSkipTime=${averageSkipTime}, skipCount=${skipCount}`);
+  } else {
+    console.log(`No skip stats found for ${username}, will use defaults.`);
   }
   
   // Construct user data using the new structure
@@ -35,11 +48,13 @@ export async function addUserToQueue(
     lastMatch: lastMatch ? {
       matchedWith: lastMatch.matchedWith,
       timestamp: now
-    } : undefined
+    } : undefined,
+    averageSkipTime,
+    skipCount,
   };
 
-  // Calculate score for priority (in_call users get higher priority)
-  const score = calculateQueueScore(state, now);
+  // Calculate score for priority, now passing skip stats
+  const score = calculateQueueScore(state, now, averageSkipTime, skipCount);
   
   // Remove user from any queue they might be in (both new and legacy queues)
   const wasRemoved = await removeUserFromQueue(username);
@@ -51,7 +66,7 @@ export async function addUserToQueue(
   const userDataString = JSON.stringify(userData);
   await redis.zadd(MATCHING_QUEUE, score, userDataString);
   
-  console.log(`Added ${username} to matching queue with state '${state}' and priority score ${score}`);
+  console.log(`Added ${username} to matching queue with state '${state}', avgSkipTime: ${averageSkipTime}, skipCount: ${skipCount}, and priority score ${score}`);
   
   return { username, added: true, state };
 }
@@ -128,27 +143,34 @@ export async function getWaitingQueueStatus(username: string) {
     try {
       const userInfo = JSON.parse(userData) as UserDataInQueue;
       
-      // Calculate position (approximate) if needed
+      // Calculate position based on score-based ordering
       let position = 0;
       let queueSize = 0;
       
-      if (userInfo.state === 'waiting') {
-        const waitingUsers = await redis.zrange(MATCHING_QUEUE, 0, -1, 'WITHSCORES');
-        // Find users with similar state and get position
-        const waitingUserItems = [];
-        for (let i = 0; i < waitingUsers.length; i += 2) {
-          try {
-            const user = JSON.parse(waitingUsers[i]);
-            if (user.state === 'waiting') {
-              waitingUserItems.push(user);
-            }
-          } catch {
-            // Skip invalid entries
+      // Get all users in the queue with their scores (ordered by priority)
+      const allUsersWithScores = await redis.zrange(MATCHING_QUEUE, 0, -1, 'WITHSCORES');
+      
+      // Parse users and filter by state to get accurate position
+      const usersInSameState = [];
+      for (let i = 0; i < allUsersWithScores.length; i += 2) {
+        try {
+          const userDataString = allUsersWithScores[i];
+          const user = JSON.parse(userDataString);
+          
+          // Only include users in the same state for position calculation
+          if (user.state === userInfo.state) {
+            usersInSameState.push(user);
           }
+        } catch {
+          // Skip invalid entries
         }
-        position = waitingUserItems.findIndex(u => u.username === username) + 1;
-        queueSize = waitingUserItems.length;
       }
+      
+      // Find this user's position in the filtered list (already in priority order)
+      position = usersInSameState.findIndex(u => u.username === username) + 1;
+      queueSize = usersInSameState.length;
+      
+      console.log(`User ${username} position in ${userInfo.state} queue: ${position}/${queueSize} (score-based priority)`);
       
       return {
         status: userInfo.state,
@@ -156,7 +178,9 @@ export async function getWaitingQueueStatus(username: string) {
         useDemo: userInfo.useDemo,
         joinedAt: userInfo.joinedAt,
         position: position > 0 ? position : undefined,
-        queueSize: queueSize > 0 ? queueSize : undefined
+        queueSize: queueSize > 0 ? queueSize : undefined,
+        averageSkipTime: userInfo.averageSkipTime,
+        skipCount: userInfo.skipCount
       };
     } catch {
       console.error('Error parsing user data from queue');

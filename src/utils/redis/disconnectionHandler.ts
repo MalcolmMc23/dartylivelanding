@@ -4,19 +4,21 @@ import { generateUniqueRoomName } from './roomManager';
 import { addUserToQueue, removeUserFromQueue } from './queueManager';
 import { findMatchForUser } from './matchingService';
 import { clearCooldown } from './rematchCooldown';
+import { ActiveMatch } from './types';
+import { updateUserSkipStats, getUserSkipStats } from './skipStatsManager';
 
 // Handle user disconnection
 export async function handleUserDisconnection(username: string, roomName: string, otherUsername?: string) {
   // Get match data
-  const matchData = await redis.hget(ACTIVE_MATCHES, roomName);
+  const matchDataString = await redis.hget(ACTIVE_MATCHES, roomName);
   
-  if (!matchData) {
+  if (!matchDataString) {
     console.log(`No active match found for room ${roomName}`);
     return { status: 'no_match_found' };
   }
   
   try {
-    const match = JSON.parse(matchData as string);
+    const match = JSON.parse(matchDataString as string) as ActiveMatch;
     
     // Determine who was left behind
     let leftBehindUser = otherUsername;
@@ -25,6 +27,60 @@ export async function handleUserDisconnection(username: string, roomName: string
     }
     
     console.log(`User ${username} disconnected from ${roomName}. Left-behind user: ${leftBehindUser}`);
+    
+    // Calculate call duration
+    const callEndTime = Date.now();
+    const callDurationMs = callEndTime - match.matchedAt;
+
+    // Get current skip stats for both users before updating
+    const [disconnectingUserStats, leftBehindUserStats] = await Promise.all([
+      getUserSkipStats(username),
+      getUserSkipStats(leftBehindUser)
+    ]);
+
+    // Log current skip ratings
+    console.log('=== Skip Ratings Before Update ===');
+    console.log(`User ${username}:`, {
+      averageSkipTime: disconnectingUserStats?.averageSkipTime || 0,
+      totalSkips: disconnectingUserStats?.totalSkipsInvolved || 0,
+      totalInteractionTime: disconnectingUserStats?.totalInteractionTimeWithSkips || 0
+    });
+    console.log(`User ${leftBehindUser}:`, {
+      averageSkipTime: leftBehindUserStats?.averageSkipTime || 0,
+      totalSkips: leftBehindUserStats?.totalSkipsInvolved || 0,
+      totalInteractionTime: leftBehindUserStats?.totalInteractionTimeWithSkips || 0
+    });
+
+    // Update skip stats for both users involved if duration is valid
+    if (callDurationMs >= 0) {
+      if (username) {
+        await updateUserSkipStats(username, callDurationMs);
+      }
+      if (leftBehindUser) {
+        await updateUserSkipStats(leftBehindUser, callDurationMs);
+      }
+
+      // Get updated stats after the update
+      const [updatedDisconnectingUserStats, updatedLeftBehindUserStats] = await Promise.all([
+        getUserSkipStats(username),
+        getUserSkipStats(leftBehindUser)
+      ]);
+
+      // Log updated skip ratings
+      console.log('=== Skip Ratings After Update ===');
+      console.log(`User ${username}:`, {
+        averageSkipTime: updatedDisconnectingUserStats?.averageSkipTime || 0,
+        totalSkips: updatedDisconnectingUserStats?.totalSkipsInvolved || 0,
+        totalInteractionTime: updatedDisconnectingUserStats?.totalInteractionTimeWithSkips || 0
+      });
+      console.log(`User ${leftBehindUser}:`, {
+        averageSkipTime: updatedLeftBehindUserStats?.averageSkipTime || 0,
+        totalSkips: updatedLeftBehindUserStats?.totalSkipsInvolved || 0,
+        totalInteractionTime: updatedLeftBehindUserStats?.totalInteractionTimeWithSkips || 0
+      });
+    } else {
+      console.warn(`Negative or invalid call duration (${callDurationMs}ms) for room ${roomName}. Stats not updated.`);
+    }
     
     // Remove match from active matches
     await redis.hdel(ACTIVE_MATCHES, roomName);

@@ -52,11 +52,12 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
       return existingMatch;
     }
     
-    // Get all users from the unified queue
+    // Get all users from the unified queue ordered by score (priority)
+    // Lower scores = higher priority, so we get them in the correct order
     const allQueuedUsersRaw = await redis.zrange(MATCHING_QUEUE, 0, -1);
     console.log(`Looking for match for ${username}. Found ${allQueuedUsersRaw.length} users in queue`);
     
-    // Parse all users into UserDataInQueue objects
+    // Parse all users into UserDataInQueue objects, preserving score-based order
     const allQueuedUsers: UserDataInQueue[] = [];
     for (const userData of allQueuedUsersRaw) {
       try {
@@ -70,16 +71,15 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
       }
     }
     
-    // Separate in-call and waiting users
-    const inCallUsers = allQueuedUsers.filter(u => u.state === 'in_call')
-      .sort((a, b) => a.joinedAt - b.joinedAt); // Sort oldest first
-    
-    const waitingUsers = allQueuedUsers.filter(u => u.state === 'waiting')
-      .sort((a, b) => a.joinedAt - b.joinedAt); // Sort oldest first
+    // Separate in-call and waiting users but preserve the score-based ordering
+    // In-call users already have higher priority (lower scores) so they'll naturally come first
+    const inCallUsers = allQueuedUsers.filter(u => u.state === 'in_call');
+    const waitingUsers = allQueuedUsers.filter(u => u.state === 'waiting');
     
     console.log(`Queue breakdown: ${inCallUsers.length} in-call users, ${waitingUsers.length} waiting users`);
+    console.log(`Processing in priority order based on scores (lower score = higher priority)`);
     
-    // First try to match with someone already in a call (priority)
+    // First try to match with someone already in a call (they have inherently higher priority)
     for (const user of inCallUsers) {
       try {
         // Skip if this is the user we just left
@@ -98,6 +98,8 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
           console.log(`Skipping ${user.username} due to active cooldown (${traditionalCooldown ? 'traditional' : 'new system'})`);
           continue;
         }
+        
+        console.log(`Matching ${username} with ${user.username} (in-call user with avgSkipTime: ${user.averageSkipTime}, skipCount: ${user.skipCount})`);
         
         // We found a match!
         await removeUserFromQueue(user.username);
@@ -140,7 +142,7 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
       }
     }
     
-    // If no in-call matches, try regular waiting users
+    // If no in-call matches, try regular waiting users (also in priority order)
     for (const user of waitingUsers) {
       try {
         // Skip if this is the user we just left
@@ -159,6 +161,8 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
           console.log(`Skipping ${user.username} due to active cooldown (${traditionalCooldown ? 'traditional' : 'new system'})`);
           continue;
         }
+        
+        console.log(`Matching ${username} with ${user.username} (waiting user with avgSkipTime: ${user.averageSkipTime}, skipCount: ${user.skipCount})`);
         
         // We found a match!
         await removeUserFromQueue(user.username);
