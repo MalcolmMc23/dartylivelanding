@@ -20,11 +20,12 @@ export default function MatchingInterface({
   const { findRandomChat, findRandomChatRef } = actions;
 
   const handleFindChatClick = () => {
-    if (!session) {
-      setShowLoginDialog(true);
-    } else {
-      findRandomChat();
-    }
+    // if (!session) {
+    //   setShowLoginDialog(true);
+    // } else {
+    //   findRandomChat();
+    // }
+    setShowLoginDialog(true);
   };
 
   return (

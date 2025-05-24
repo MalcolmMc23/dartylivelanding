@@ -30,6 +30,13 @@ export async function POST(request: Request) {
         [email, hashedPassword, username] // <-- Add username value
       );
 
+      // Send welcome email using a relative path
+      await fetch('http://localhost:3000/api/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, firstName: username })
+      });
+
       return NextResponse.json({ message: 'User created successfully' }, { status: 201 });
 
     } catch (e: unknown) {
