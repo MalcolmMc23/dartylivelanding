@@ -69,6 +69,16 @@ export async function handleUserDisconnection(username: string, roomName: string
   return await redisMatchingService.handleUserDisconnection(username, roomName, otherUsername);
 }
 
+// Handle user skip (SKIP button) - one user leaves, other stays for re-matching
+export async function handleUserSkip(username: string, roomName: string, otherUsername?: string) {
+  return await redisMatchingService.handleUserSkip(username, roomName, otherUsername);
+}
+
+// Handle session end (END CALL button) - both users leave completely
+export async function handleSessionEnd(username: string, roomName: string, otherUsername?: string) {
+  return await redisMatchingService.handleSessionEnd(username, roomName, otherUsername);
+}
+
 // Get information about a room and its users
 export async function getRoomInfo(roomName: string) {
   return await redisMatchingService.getRoomInfo(roomName);

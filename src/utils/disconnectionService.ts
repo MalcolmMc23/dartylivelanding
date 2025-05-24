@@ -11,7 +11,8 @@ type DisconnectionReason =
   | 'browser_closed' 
   | 'component_cleanup' 
   | 'error' 
-  | 'timeout';
+  | 'timeout'
+  | 'session_end'; // Added for end call scenarios
 
 type DisconnectionResult = {
   success: boolean;

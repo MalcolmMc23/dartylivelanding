@@ -218,8 +218,38 @@ export function ConnectionStateLogger({
         );
 
         // Add a short delay to allow for potential reconnection
-        const disconnectionTimeout = setTimeout(() => {
-          // This is the other participant who left
+        const disconnectionTimeout = setTimeout(async () => {
+          // Check if this might be a skip scenario by calling the backend
+          try {
+            const response = await fetch("/api/notify-partner-left", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                remainingUser: username,
+                roomName: room.name,
+                disconnectedUser: participant.identity,
+              }),
+            });
+
+            const data = await response.json();
+
+            if (data.status === "partner_left") {
+              console.log(
+                `Partner ${participant.identity} left - remaining in room for new match`
+              );
+              // Don't trigger the normal disconnect flow
+              // Instead, show a "waiting for new match" state
+              // The queue processor should handle finding a new match
+              return;
+            }
+          } catch (error) {
+            console.log(
+              "Could not determine disconnect type, using default handling:",
+              error
+            );
+          }
+
+          // Default behavior: This is the other participant who left
           onOtherParticipantDisconnected(participant.identity);
 
           // Clean up room tracking - use the non-async wrapper function
