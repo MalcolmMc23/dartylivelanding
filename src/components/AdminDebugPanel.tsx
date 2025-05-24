@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 
 // Define a type for the debug data structure
 interface DebugData {
@@ -12,12 +12,31 @@ interface DebugData {
   activeMatches?: Record<string, unknown>;
 }
 
+interface ProcessorStatus {
+  isRunning: boolean;
+  message: string;
+  timestamp: number;
+}
+
+interface ProcessingResult {
+  matchesCreated: number;
+  usersProcessed: number;
+  errors: string[];
+}
+
 export function AdminDebugPanel() {
   const [apiKey, setApiKey] = useState("");
   const [showPanel, setShowPanel] = useState(false);
   const [debugData, setDebugData] = useState<DebugData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Queue processor state
+  const [processorStatus, setProcessorStatus] =
+    useState<ProcessorStatus | null>(null);
+  const [lastProcessingResult, setLastProcessingResult] =
+    useState<ProcessingResult | null>(null);
+  const [isTriggering, setIsTriggering] = useState(false);
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -35,12 +54,50 @@ export function AdminDebugPanel() {
     }
   }, []);
 
+  const checkProcessorStatus = useCallback(async () => {
+    try {
+      const response = await fetch("/api/trigger-queue-processing");
+      const data = await response.json();
+      setProcessorStatus(data);
+    } catch (error) {
+      console.error("Failed to check processor status:", error);
+    }
+  }, []);
+
+  const triggerQueueProcessing = useCallback(async () => {
+    if (isTriggering) return;
+
+    setIsTriggering(true);
+    try {
+      const response = await fetch("/api/trigger-queue-processing", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setLastProcessingResult(data.result);
+        setError(null);
+      } else {
+        setError(data.error || "Unknown error");
+      }
+    } catch (error) {
+      setError(`Failed to trigger processing: ${error}`);
+    } finally {
+      setIsTriggering(false);
+    }
+  }, [isTriggering]);
+
   const togglePanel = useCallback(() => {
     setShowPanel(!showPanel);
     if (!showPanel) {
       refreshStatus();
+      checkProcessorStatus();
     }
-  }, [showPanel, refreshStatus]);
+  }, [showPanel, refreshStatus, checkProcessorStatus]);
 
   const resetAllMatches = useCallback(async () => {
     try {
@@ -71,6 +128,15 @@ export function AdminDebugPanel() {
     }
   }, [apiKey, refreshStatus]);
 
+  // Auto-refresh processor status when panel is open
+  useEffect(() => {
+    if (showPanel) {
+      checkProcessorStatus();
+      const interval = setInterval(checkProcessorStatus, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [showPanel, checkProcessorStatus]);
+
   if (!showPanel) {
     return (
       <button
@@ -95,6 +161,49 @@ export function AdminDebugPanel() {
       </div>
 
       <div className="space-y-4">
+        {/* Queue Processor Status */}
+        <div className="bg-gray-800 p-3 rounded">
+          <div className="font-semibold mb-2 text-gray-300">
+            Queue Processor
+          </div>
+          {processorStatus && (
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <div
+                  className={`w-2 h-2 rounded-full ${
+                    processorStatus.isRunning ? "bg-green-500" : "bg-red-500"
+                  }`}
+                />
+                <span className="text-sm">
+                  {processorStatus.isRunning ? "Running" : "Stopped"}
+                </span>
+              </div>
+              <button
+                onClick={triggerQueueProcessing}
+                disabled={isTriggering}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white px-2 py-1 rounded text-xs"
+              >
+                {isTriggering ? "Processing..." : "Trigger"}
+              </button>
+            </div>
+          )}
+
+          {lastProcessingResult && (
+            <div className="text-xs bg-gray-700 p-2 rounded">
+              <div>
+                Last Processing: {lastProcessingResult.matchesCreated} matches
+                created
+              </div>
+              <div>Users processed: {lastProcessingResult.usersProcessed}</div>
+              {lastProcessingResult.errors.length > 0 && (
+                <div className="text-red-400">
+                  Errors: {lastProcessingResult.errors.length}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <div className="flex gap-2">
           <input
             type="password"

@@ -87,6 +87,16 @@ export async function POST(request: NextRequest) {
         body.lastMatch
       );
       
+      // Trigger additional queue processing for rematching users
+      setTimeout(async () => {
+        try {
+          console.log(`Triggering extra queue processing for rematching user ${username}`);
+          await hybridMatchingService.triggerImmediateProcessing();
+        } catch (error) {
+          console.error('Error triggering extra queue processing for rematch:', error);
+        }
+      }, 500); // Wait 500ms then trigger processing
+      
       return NextResponse.json({
         status: 'waiting',
         message: 'Added to priority waiting queue',
@@ -115,6 +125,16 @@ export async function POST(request: NextRequest) {
     await hybridMatchingService.addUserToQueue(username, useDemo, 'waiting');
     
     console.log(`Added ${username} to waiting queue`);
+    
+    // For regular users who don't find immediate matches, also trigger queue processing
+    setTimeout(async () => {
+      try {
+        console.log(`Triggering queue processing for new user ${username} who didn't find immediate match`);
+        await hybridMatchingService.triggerImmediateProcessing();
+      } catch (error) {
+        console.error('Error triggering queue processing for new user:', error);
+      }
+    }, 1000); // Wait 1 second then trigger processing to give other users time to join
     
     return NextResponse.json({
       status: 'waiting',
