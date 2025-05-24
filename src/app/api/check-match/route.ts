@@ -80,17 +80,18 @@ export async function POST(request: Request) {
       const matchResult = await hybridMatchingService.findMatchForUser(username, false);
       
       if (matchResult.status === 'matched') {
-        debugLog(`MATCH FOUND on aggressive try: ${username} matched with ${matchResult.matchedWith} in room ${matchResult.roomName}`);
+        const matched = matchResult as typeof matchResult & { matchedWith: string; roomName: string; useDemo?: boolean };
+        debugLog(`MATCH FOUND on aggressive try: ${username} matched with ${matched.matchedWith} in room ${matched.roomName}`);
         
         return NextResponse.json({ 
           match: true, 
-          roomName: matchResult.roomName,
-          matchedWith: matchResult.matchedWith,
-          useDemo: matchResult.useDemo || false,
+          roomName: matched.roomName,
+          matchedWith: matched.matchedWith,
+          useDemo: matched.useDemo || false,
           routeType: 'room', // Add a route type to help the client
           debug: {
-            matchedWith: matchResult.matchedWith,
-            useDemo: matchResult.useDemo || false,
+            matchedWith: matched.matchedWith,
+            useDemo: matched.useDemo || false,
             matchType: "aggressive"
           }
         });
