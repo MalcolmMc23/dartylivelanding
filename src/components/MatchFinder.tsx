@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { StateRecovery } from "./StateRecovery";
 
 interface MatchFinderProps {
   username: string;
@@ -246,6 +247,18 @@ export function MatchFinder({ username }: MatchFinderProps) {
               {forceReset ? "Resetting..." : "Reset My Status"}
             </button>
           </div>
+        )}
+
+        {/* State recovery component - show after waiting for a while */}
+        {waitTime > 30 && (
+          <StateRecovery
+            username={username}
+            onRecoveryComplete={() => {
+              setError(null);
+              setWaitTime(0);
+              setCheckCount(0);
+            }}
+          />
         )}
 
         {/* Debug info toggle */}

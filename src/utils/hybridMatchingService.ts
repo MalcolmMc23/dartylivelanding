@@ -1,17 +1,24 @@
 import * as redisMatchingService from './redisMatchingService';
+import { UserQueueState } from './redis/types';
 
-// Add user to waiting queue
+// Add user to queue
 export async function addUserToQueue(
   username: string, 
   useDemo: boolean, 
-  inCall = false, 
+  stateOrInCall: UserQueueState | boolean = 'waiting', 
   roomName?: string, 
   lastMatch?: { matchedWith: string }
 ) {
+  // Handle backward compatibility where inCall was a boolean
+  const state: UserQueueState = 
+    typeof stateOrInCall === 'boolean' 
+      ? (stateOrInCall ? 'in_call' : 'waiting') 
+      : stateOrInCall;
+      
   return await redisMatchingService.addUserToQueue(
     username,
     useDemo,
-    inCall || false,
+    state,
     roomName,
     lastMatch
   );
@@ -58,4 +65,4 @@ export async function confirmUserRematch(username: string, matchRoom: string, ma
 }
 
 // Add a console log to show we're using Redis implementation
-console.log('Using Redis-based matching service for improved performance and reliability.'); 
+console.log('Using Redis-based matching service with improved queue system.'); 

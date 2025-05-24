@@ -3,6 +3,7 @@ import { ACTIVE_MATCHES, LEFT_BEHIND_PREFIX } from './constants';
 import { generateUniqueRoomName } from './roomManager';
 import { addUserToQueue, removeUserFromQueue } from './queueManager';
 import { findMatchForUser } from './matchingService';
+import { clearCooldown } from './rematchCooldown';
 
 // Handle user disconnection
 export async function handleUserDisconnection(username: string, roomName: string, otherUsername?: string) {
@@ -25,37 +26,11 @@ export async function handleUserDisconnection(username: string, roomName: string
     
     console.log(`User ${username} disconnected from ${roomName}. Left-behind user: ${leftBehindUser}`);
     
-    // Check if we already have a left-behind record for this user
-    if (leftBehindUser) {
-      const leftBehindKey = `${LEFT_BEHIND_PREFIX}${leftBehindUser}`;
-      const existingLeftBehindData = await redis.get(leftBehindKey);
-      
-      // If the user is already marked as left-behind in this room, prevent double processing
-      if (existingLeftBehindData) {
-        try {
-          const leftBehindState = JSON.parse(existingLeftBehindData);
-          
-          // If this is the same room and the user being disconnected is actually the one who was 
-          // previously left behind (might happen if the client fires disconnection events incorrectly)
-          if (leftBehindState.previousRoom === roomName && username === leftBehindUser) {
-            console.log(`WARNING: User ${username} appears to be the left-behind user that was already processed. Skipping duplicate disconnection.`);
-            return {
-              status: 'already_processed',
-              leftBehindUser,
-              users: [match.user1, match.user2]
-            };
-          }
-        } catch (e) {
-          console.error('Error parsing left-behind data:', e);
-        }
-      }
-    }
-    
     // Remove match from active matches
     await redis.hdel(ACTIVE_MATCHES, roomName);
     
     if (leftBehindUser) {
-      // Handle the left-behind user with our dedicated function
+      // Handle the left-behind user with simplified logic
       const result = await handleLeftBehindUser(
         leftBehindUser,
         roomName,
@@ -83,7 +58,7 @@ export async function handleUserDisconnection(username: string, roomName: string
   }
 }
 
-// Handle left-behind user state and matching
+// Simplified left-behind user handling
 export async function handleLeftBehindUser(
   leftBehindUser: string, 
   previousRoomName: string, 
@@ -100,25 +75,17 @@ export async function handleLeftBehindUser(
 }> {
   console.log(`Handling left-behind user ${leftBehindUser} after ${disconnectedUser} disconnected`);
   
-  // 1. Ensure the user is removed from any existing queue
+  // 1. Clear any cooldown between these users to allow immediate rematch
+  await clearCooldown(leftBehindUser, disconnectedUser);
+  
+  // 2. Remove user from any existing queue to start fresh
   await removeUserFromQueue(leftBehindUser);
   
-  // 2. Generate a brand new room name
+  // 3. Generate a new room name for potential matches
   const newRoomName = await generateUniqueRoomName();
   
-  // 3. Store the user's state in a temporary record to ensure consistency
-  const leftBehindState: {
-    username: string;
-    previousRoom: string;
-    disconnectedFrom: string;
-    newRoomName: string;
-    timestamp: number;
-    processed: boolean;
-    matchedWith?: string;
-    matchRoom?: string;
-    inQueue?: boolean;
-    queueTime?: number;
-  } = {
+  // 4. Store simplified left-behind state (short expiry, minimal data)
+  const leftBehindState = {
     username: leftBehindUser,
     previousRoom: previousRoomName,
     disconnectedFrom: disconnectedUser,
@@ -127,15 +94,14 @@ export async function handleLeftBehindUser(
     processed: false
   };
   
-  // Use a unique and consistent key pattern
   await redis.set(
     `${LEFT_BEHIND_PREFIX}${leftBehindUser}`, 
     JSON.stringify(leftBehindState),
     'EX', 
-    300 // 5 minute expiry
+    120 // 2 minute expiry (reduced from 5 minutes)
   );
   
-  // 4. Try to find an immediate match with much simpler logic
+  // 5. Try to find an immediate match (simplified attempt)
   try {
     const matchResult = await findMatchForUser(
       leftBehindUser,
@@ -143,18 +109,18 @@ export async function handleLeftBehindUser(
       disconnectedUser // Don't match with the user who just left
     );
     
-    if (matchResult.status === 'matched') {
+    if (matchResult.status === 'matched' && 
+        'roomName' in matchResult && 
+        'matchedWith' in matchResult) {
       console.log(`Found immediate match for left-behind user ${leftBehindUser} with ${matchResult.matchedWith}`);
       
-      // If matched, update the state to record this
+      // Update state to record the match
       leftBehindState.processed = true;
-      leftBehindState.matchedWith = matchResult.matchedWith;
-      leftBehindState.matchRoom = matchResult.roomName;
       await redis.set(
         `${LEFT_BEHIND_PREFIX}${leftBehindUser}`, 
         JSON.stringify(leftBehindState),
         'EX', 
-        300
+        60 // 1 minute expiry for processed state
       );
       
       return {
@@ -167,27 +133,15 @@ export async function handleLeftBehindUser(
     console.error(`Error finding immediate match for ${leftBehindUser}:`, error);
   }
   
-  // 5. If no immediate match, add to queue with special priority
+  // 6. If no immediate match, add to queue with high priority
   try {
-    console.log(`No immediate match found for ${leftBehindUser}, adding to in-call queue with room ${newRoomName}`);
+    console.log(`No immediate match found for ${leftBehindUser}, adding to high-priority queue in room ${newRoomName}`);
     
-    // Update state to show they're in queue
-    leftBehindState.inQueue = true;
-    leftBehindState.queueTime = Date.now();
-    await redis.set(
-      `${LEFT_BEHIND_PREFIX}${leftBehindUser}`, 
-      JSON.stringify(leftBehindState),
-      'EX', 
-      300
-    );
-    
-    // Add to the in-call queue with high priority
     await addUserToQueue(
       leftBehindUser,
       useDemo,
-      true, // in-call flag
-      newRoomName,
-      { matchedWith: disconnectedUser }
+      'in_call', // High priority state
+      newRoomName
     );
     
     return {
@@ -200,23 +154,22 @@ export async function handleLeftBehindUser(
   }
 }
 
-// Confirm user rematch
+// Simplified rematch confirmation
 export async function confirmUserRematch(username: string, matchRoom: string, matchedWith: string) {
   const key = `${LEFT_BEHIND_PREFIX}${username}`;
   try {
     const existingData = await redis.get(key);
     if (existingData) {
+      // Simply mark as processed and set short expiry
       const leftBehindState = JSON.parse(existingData);
       leftBehindState.processed = true;
       leftBehindState.matchRoom = matchRoom;
       leftBehindState.matchedWith = matchedWith;
       leftBehindState.timestamp = Date.now();
-      // Update the key with the new state, defaulting to 5 min expiry like in handleLeftBehindUser
-      await redis.set(key, JSON.stringify(leftBehindState), 'EX', 300);
+      
+      await redis.set(key, JSON.stringify(leftBehindState), 'EX', 60); // 1 minute expiry
       console.log(`Confirmed rematch for ${username} in ${matchRoom}, updated left_behind state.`);
     } else {
-      // If no existing left_behind key, maybe it expired or was never set for this rematch flow.
-      // This is fine, nothing to update at this point. Could be logged if becomes an issue.
       console.log(`No existing left_behind state found for ${username} upon confirming rematch. This might be okay if key expired or was cleared.`);
     }
   } catch (error) {

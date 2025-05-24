@@ -53,13 +53,13 @@ export function useRoomActions({ username, roomName }: UseRoomActionsProps) {
         console.log(`Found other participant: ${otherParticipantIdentity}`);
       }
 
-      // Use the disconnection service
+      // Use the disconnection service with skip scenario optimizations
       try {
         await handleDisconnection({
           username,
           roomName,
           otherUsername: otherParticipantIdentity,
-          reason: "user_left",
+          reason: "user_left", // This indicates a skip scenario
           router,
         });
 
@@ -72,6 +72,7 @@ export function useRoomActions({ username, roomName }: UseRoomActionsProps) {
         const url = new URL("/video-chat", window.location.origin);
         url.searchParams.set("reset", "true");
         url.searchParams.set("username", username);
+        url.searchParams.set("autoMatch", "true"); // Auto-match after skip
         router.push(url.toString());
       }
     }
