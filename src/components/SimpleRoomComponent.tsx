@@ -227,15 +227,11 @@ export function SimpleRoomComponent({
         setIsLoading(true);
         setError("");
 
-        const response = await fetch("/api/get-participant-token", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            room: roomName,
-            username,
-            useDemo,
-          }),
-        });
+        const response = await fetch(
+          `/api/get-livekit-token?room=${encodeURIComponent(
+            roomName
+          )}&username=${encodeURIComponent(username)}&useDemo=${useDemo}`
+        );
 
         if (!response.ok) {
           throw new Error(`Failed to get token: ${response.status}`);

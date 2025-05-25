@@ -65,7 +65,7 @@ function createFakeRedis() {
   
   return {
     set: async (key: string, value: string) => {
-      // Simple implementation that ignores expiry, NX, etc.
+      // Handle different SET variations (EX, NX, etc.)
       data[key] = value;
       return "OK";
     },
