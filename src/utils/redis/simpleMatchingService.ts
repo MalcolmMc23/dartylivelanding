@@ -297,6 +297,36 @@ export async function cancelUser(username: string): Promise<{ status: string }> 
   }
 }
 
+/**
+ * Get queue statistics
+ */
+export async function getQueueStats(): Promise<{ waitingCount: number; matchedCount: number; totalUsers: number }> {
+  try {
+    // Count users in waiting queue
+    const waitingCount = await redis.zcard(SIMPLE_QUEUE);
+    
+    // Count active matches (each match has 2 users)
+    const matchCount = await redis.hlen(SIMPLE_MATCHES);
+    const matchedCount = matchCount * 2;
+    
+    // Total users = waiting + matched
+    const totalUsers = waitingCount + matchedCount;
+    
+    return {
+      waitingCount,
+      matchedCount,
+      totalUsers
+    };
+  } catch (error) {
+    console.error('Error getting queue stats:', error);
+    return {
+      waitingCount: 0,
+      matchedCount: 0,
+      totalUsers: 0
+    };
+  }
+}
+
 // Helper functions
 
 async function checkExistingMatch(username: string): Promise<SimpleMatchResult | null> {
