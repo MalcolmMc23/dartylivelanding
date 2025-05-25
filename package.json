@@ -6,7 +6,9 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "production-health": "node scripts/production-startup.js",
+    "deploy-check": "pnpm build && pnpm production-health"
   },
   "dependencies": {
     "@livekit/components-react": "^2.9.3",

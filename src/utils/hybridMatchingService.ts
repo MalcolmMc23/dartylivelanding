@@ -8,19 +8,88 @@ import {
   MatchProcessorResult
 } from './redis/queueProcessor';
 
-// Start the queue processor automatically when this module is imported
-// This ensures background matching is always running
-if (typeof window === 'undefined') { // Server-side only
-  // Start with a small delay to ensure Redis connection is ready
-  setTimeout(() => {
-    if (!isQueueProcessorRunning()) {
-      startQueueProcessor();
-      console.log('Hybrid matching service: Started background queue processor');
+// Production-ready startup with better error handling
+let isInitialized = false;
+let initializationPromise: Promise<void> | null = null;
+
+// Initialize the matching service for production
+async function initializeMatchingService() {
+  if (isInitialized) {
+    return;
+  }
+
+  if (initializationPromise) {
+    return initializationPromise;
+  }
+
+  initializationPromise = (async () => {
+    try {
+      console.log('Hybrid matching service: Initializing for production...');
+      
+      // Wait a moment for Redis to be fully ready
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Check if queue processor is already running
+      if (!isQueueProcessorRunning()) {
+        console.log('Hybrid matching service: Starting background queue processor...');
+        startQueueProcessor();
+        
+        // Verify it started
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        if (isQueueProcessorRunning()) {
+          console.log('Hybrid matching service: Background queue processor started successfully');
+        } else {
+          console.error('Hybrid matching service: Failed to start background queue processor');
+          // Try one more time
+          setTimeout(() => {
+            if (!isQueueProcessorRunning()) {
+              console.log('Hybrid matching service: Retrying queue processor start...');
+              startQueueProcessor();
+            }
+          }, 5000);
+        }
+      } else {
+        console.log('Hybrid matching service: Background queue processor already running');
+      }
+      
+      isInitialized = true;
+      console.log('Hybrid matching service: Initialization complete');
+      
+    } catch (error) {
+      console.error('Hybrid matching service: Initialization failed:', error);
+      // Reset initialization state so it can be retried
+      isInitialized = false;
+      initializationPromise = null;
+      throw error;
     }
-  }, 1000);
+  })();
+
+  return initializationPromise;
 }
 
-// Add user to queue
+// Start the queue processor automatically when this module is imported (server-side only)
+if (typeof window === 'undefined') {
+  // Use setImmediate for better async handling in production
+  setImmediate(async () => {
+    try {
+      await initializeMatchingService();
+    } catch (error) {
+      console.error('Hybrid matching service: Auto-initialization failed:', error);
+      
+      // Set up retry mechanism
+      setTimeout(async () => {
+        try {
+          await initializeMatchingService();
+        } catch (retryError) {
+          console.error('Hybrid matching service: Retry initialization failed:', retryError);
+        }
+      }, 10000); // Retry after 10 seconds
+    }
+  });
+}
+
+// Enhanced add user to queue with initialization check
 export async function addUserToQueue(
   username: string, 
   useDemo: boolean, 
@@ -28,6 +97,13 @@ export async function addUserToQueue(
   roomName?: string, 
   lastMatch?: { matchedWith: string }
 ) {
+  // Ensure service is initialized
+  try {
+    await initializeMatchingService();
+  } catch (error) {
+    console.error('Failed to initialize matching service, continuing anyway:', error);
+  }
+
   // Handle backward compatibility where inCall was a boolean
   const state: UserQueueState = 
     typeof stateOrInCall === 'boolean' 
@@ -42,14 +118,31 @@ export async function addUserToQueue(
     lastMatch
   );
   
-  // Trigger queue processing after adding a user to immediately check for matches
+  // Enhanced trigger mechanism with error handling
   setTimeout(async () => {
     try {
+      // Double-check that queue processor is running before triggering
+      if (!isQueueProcessorRunning()) {
+        console.warn('Queue processor not running, attempting to start...');
+        startQueueProcessor();
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
       await triggerQueueProcessing();
     } catch (error) {
       console.error('Error triggering queue processing after user add:', error);
+      
+      // Try to restart queue processor if triggering fails
+      try {
+        console.log('Attempting to restart queue processor...');
+        stopQueueProcessor();
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        startQueueProcessor();
+      } catch (restartError) {
+        console.error('Failed to restart queue processor:', restartError);
+      }
     }
-  }, 100); // Small delay to ensure the user is fully added to the queue
+  }, 100);
   
   return result;
 }
