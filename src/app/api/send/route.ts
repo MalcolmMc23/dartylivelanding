@@ -8,7 +8,7 @@ export async function POST(request: Request) {
     const { email, firstName } = await request.json(); // <-- Accept dynamic data
 
     const { data, error } = await resend.emails.send({
-      from: 'DormParty <dormroomsocial1@gmail.com>', // <-- Your sender
+      from: 'DormParty <fredrickf@dormparty.live>', // <-- Your sender
       to: [email], // <-- Send to user's email
       subject: 'Welcome to DormParty!',
       react: EmailTemplate({ firstName }) as React.ReactElement
