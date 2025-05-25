@@ -94,6 +94,11 @@ export async function cleanupOldMatches() {
   return await redisMatchingService.cleanupOldMatches();
 }
 
+// Cleanup a specific room
+export async function cleanupRoom(roomName: string) {
+  return await redisMatchingService.cleanupRoom(roomName);
+}
+
 // Get waiting queue status
 export async function getWaitingQueueStatus(username: string) {
   return await redisMatchingService.getWaitingQueueStatus(username);

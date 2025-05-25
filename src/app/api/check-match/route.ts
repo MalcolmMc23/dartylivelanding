@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import * as hybridMatchingService from '@/utils/hybridMatchingService';
 import redis from '@/lib/redis';
+import { ROOM_PARTICIPANTS, ROOM_STATES } from '@/utils/redis/constants';
+import { isSyncServiceRunning } from '@/utils/redis/syncService';
 
 // Debug log with timestamps
 function debugLog(...messages: unknown[]): void {
@@ -162,11 +164,18 @@ export async function GET() {
     const waitingQueueData = await redis.zrange('matching:waiting', 0, -1);
     const inCallQueueData = await redis.zrange('matching:in_call', 0, -1);
     const activeMatchesData = await redis.hgetall('matching:active');
+    
+    // Get room sync data
+    const roomParticipantsData = await redis.hgetall(ROOM_PARTICIPANTS);
+    const roomStatesData = await redis.hgetall(ROOM_STATES);
 
     return NextResponse.json({
       waitingQueueSize: waitingQueueData.length,
       inCallQueueSize: inCallQueueData.length,
       activeMatchesCount: Object.keys(activeMatchesData || {}).length,
+      roomParticipantsCount: Object.keys(roomParticipantsData || {}).length,
+      roomStatesCount: Object.keys(roomStatesData || {}).length,
+      syncServiceRunning: isSyncServiceRunning(),
       waitingQueue: waitingQueueData.map(d => {
         try { return JSON.parse(d); } 
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -178,6 +187,26 @@ export async function GET() {
         catch (_) { return d; }
       }),
       activeMatches: Object.entries(activeMatchesData || {}).reduce((acc, [key, value]) => {
+        try {
+          acc[key] = JSON.parse(value as string);
+        } 
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        catch (_) {
+          acc[key] = value;
+        }
+        return acc;
+      }, {} as Record<string, unknown>),
+      roomParticipants: Object.entries(roomParticipantsData || {}).reduce((acc, [key, value]) => {
+        try {
+          acc[key] = JSON.parse(value as string);
+        } 
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        catch (_) {
+          acc[key] = value;
+        }
+        return acc;
+      }, {} as Record<string, unknown>),
+      roomStates: Object.entries(roomStatesData || {}).reduce((acc, [key, value]) => {
         try {
           acc[key] = JSON.parse(value as string);
         } 

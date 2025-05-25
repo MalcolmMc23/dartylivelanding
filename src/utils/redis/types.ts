@@ -44,4 +44,34 @@ export interface ErrorResult {
   error: string;
 }
 
+// New types for LiveKit synchronization
+export interface RoomParticipant {
+  identity: string;
+  joinedAt: number;
+  metadata?: string;
+}
+
+export interface RoomState {
+  roomName: string;
+  participants: RoomParticipant[];
+  createdAt: number;
+  lastUpdated: number;
+  maxParticipants: number;
+  isActive: boolean;
+}
+
+export interface LiveKitWebhookEvent {
+  event: 'participant_joined' | 'participant_left' | 'room_started' | 'room_finished';
+  room: {
+    name: string;
+    sid: string;
+  };
+  participant?: {
+    identity: string;
+    sid: string;
+    metadata?: string;
+  };
+  createdAt: number;
+}
+
  

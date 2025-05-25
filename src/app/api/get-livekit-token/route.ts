@@ -2,40 +2,16 @@ import { AccessToken } from 'livekit-server-sdk';
 import { NextRequest, NextResponse } from 'next/server';
 import { RoomServiceClient } from 'livekit-server-sdk';
 import * as hybridMatchingService from '@/utils/hybridMatchingService';
+import { getRoomParticipants, roomHasCapacity, syncRoomFromLiveKit } from '@/utils/redis/roomSyncManager';
 
-// Track room participant counts in memory (for development)
-// In production, this should use a database or Redis
-const roomParticipants: Record<string, string[]> = {};
-
-// Helper to remove a user from room participants tracking
-function removeUserFromRoomTracking(username: string, roomName?: string) {
-  if (roomName && roomParticipants[roomName]) {
-    roomParticipants[roomName] = roomParticipants[roomName].filter(u => u !== username);
-    console.log(`Removed ${username} from room tracking for ${roomName}, now has ${roomParticipants[roomName].length} participants`);
-    
-    // Clean up empty rooms
-    if (roomParticipants[roomName].length === 0) {
-      delete roomParticipants[roomName];
-      console.log(`Removed empty room ${roomName} from tracking`);
-    }
+// Helper to remove a user from room participants tracking (now uses Redis)
+async function removeUserFromRoomTracking(username: string, roomName?: string) {
+  // This is now handled by the room sync manager
+  // We'll sync the room state from LiveKit to ensure accuracy
+  if (roomName) {
+    console.log(`Syncing room ${roomName} after user ${username} removal`);
+    await syncRoomFromLiveKit(roomName);
     return true;
-  } else if (!roomName) {
-    // If no room specified, search all rooms
-    let removed = false;
-    Object.keys(roomParticipants).forEach(room => {
-      if (roomParticipants[room].includes(username)) {
-        roomParticipants[room] = roomParticipants[room].filter(u => u !== username);
-        console.log(`Removed ${username} from room tracking for ${room}, now has ${roomParticipants[room].length} participants`);
-        removed = true;
-        
-        // Clean up empty rooms
-        if (roomParticipants[room].length === 0) {
-          delete roomParticipants[room];
-          console.log(`Removed empty room ${room} from tracking`);
-        }
-      }
-    });
-    return removed;
   }
   return false;
 }
@@ -142,13 +118,9 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Initialize room participants tracking if needed
-    if (!roomParticipants[room]) {
-      roomParticipants[room] = [];
-    }
-
-    let currentParticipants = roomParticipants[room];
-    let participantCount = 0;
+    // Get current participants from Redis and sync with LiveKit
+    let currentParticipants = await getRoomParticipants(room);
+    let participantCount = currentParticipants.length;
 
     // Check participant count if host is available
     if (livekitHost) {
@@ -163,9 +135,9 @@ export async function GET(request: NextRequest) {
         const participants = await roomService.listParticipants(room);
         participantCount = participants.length;
         
-        // Update our local tracking with actual data from LiveKit
-        roomParticipants[room] = participants.map(p => p.identity);
-        currentParticipants = roomParticipants[room];
+        // Update Redis with actual data from LiveKit
+        await syncRoomFromLiveKit(room, useDemo);
+        currentParticipants = await getRoomParticipants(room);
         
         console.log(`Current participants in room ${room}: ${participantCount}`);
         console.log('Participant identities:', currentParticipants);
@@ -240,11 +212,12 @@ export async function GET(request: NextRequest) {
     const token = await at.toJwt();
     console.log('Token generated (first 20 chars):', token.substring(0, 20) + '...');
 
-    // Add user to our local tracking if they're not already there
-    if (!currentParticipants.includes(username)) {
-      roomParticipants[room].push(username);
-      console.log(`Added ${username} to room ${room}, now has ${roomParticipants[room].length} participants`);
-    }
+    // The user tracking is now handled by the room sync manager
+    // LiveKit webhooks will automatically update Redis when users join/leave
+    console.log(`Token generated for ${username} in room ${room} with ${currentParticipants.length} participants`);
+    
+    // Sync room state after token generation to ensure Redis is up to date
+    await syncRoomFromLiveKit(room, useDemo);
 
     // Return the token as a plain string value
     return NextResponse.json({ 

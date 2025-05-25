@@ -46,4 +46,23 @@ export async function cleanupOldMatches() {
   }
   
   return { removedCount };
+}
+
+export async function cleanupRoom(roomName: string) {
+  console.log(`Cleaning up room: ${roomName}`);
+  
+  try {
+    // Remove from active matches
+    await redis.hdel(ACTIVE_MATCHES, roomName);
+    
+    // Remove from room states and participants (if using room sync)
+    await redis.hdel('rooms:states', roomName);
+    await redis.hdel('rooms:participants', roomName);
+    
+    console.log(`Successfully cleaned up room: ${roomName}`);
+    return { status: 'cleaned' };
+  } catch (error) {
+    console.error(`Error cleaning up room ${roomName}:`, error);
+    return { status: 'error', error: String(error) };
+  }
 } 

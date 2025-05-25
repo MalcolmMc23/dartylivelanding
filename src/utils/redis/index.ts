@@ -5,4 +5,6 @@ export * from './lockManager';
 export * from './queueManager';
 export * from './matchingService';
 export * from './disconnectionHandler';
-export * from './cleanupManager'; 
+export * from './cleanupManager';
+export * from './roomSyncManager';
+export * from './syncService'; 
