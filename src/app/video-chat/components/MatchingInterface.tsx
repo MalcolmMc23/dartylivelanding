@@ -25,7 +25,7 @@ export default function MatchingInterface({
      } else {
        findRandomChat();
      }
-    setShowLoginDialog(true);
+    
   };
 
   return (
