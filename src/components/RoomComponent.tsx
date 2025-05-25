@@ -19,6 +19,7 @@ import { MobileViewToggle } from "./room/MobileViewToggle";
 import { ChatDialog } from "./ChatDialog";
 import { DesktopChat } from "./DesktopChat";
 import UniversityLogoScroll from "./UniversityLogoScroll";
+import { LiveKitSyncManager } from "./room/LiveKitSyncManager";
 
 // Max participants allowed in a room
 const MAX_PARTICIPANTS = 2;
@@ -300,6 +301,9 @@ export default function RoomComponent({
           data-lk-theme="default"
           className="h-full lk-video-conference"
         >
+          {/* LiveKit-Redis synchronization manager */}
+          <LiveKitSyncManager username={username} roomName={roomName} />
+
           <LeftBehindNotification
             username={username}
             onJoinNewRoom={handleJoinNewRoom}

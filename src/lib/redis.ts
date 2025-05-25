@@ -107,6 +107,17 @@ async function cleanupOnStartup() {
     }
     
     console.log(`Startup cleanup: removed ${removedUsers} stale users, ${removedMatches} stale matches, and cleared locks`);
+    
+    // Start LiveKit-Redis synchronization
+    if (process.env.NODE_ENV === 'production' || process.env.ENABLE_LIVEKIT_SYNC === 'true') {
+      try {
+        const { startPeriodicSync } = await import('@/utils/livekit-sync/roomSyncService');
+        startPeriodicSync(30000); // Sync every 30 seconds
+        console.log('Started LiveKit-Redis periodic synchronization');
+      } catch (syncError) {
+        console.error('Error starting LiveKit-Redis sync:', syncError);
+      }
+    }
   } catch (error) {
     console.error('Error during startup cleanup:', error);
     // Don't throw - we want the app to continue even if cleanup fails

@@ -27,6 +27,14 @@ export interface ActiveMatch {
   matchedAt: number;
 }
 
+export interface PendingMatch {
+  user1: string;
+  user2: string;
+  roomName: string;
+  useDemo: boolean;
+  createdAt?: number;
+}
+
 // Match result types for API responses
 export type MatchResult = MatchedResult | WaitingResult | ErrorResult;
 

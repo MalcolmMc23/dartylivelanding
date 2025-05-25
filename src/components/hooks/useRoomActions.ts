@@ -44,12 +44,26 @@ export function useRoomActions({ username, roomName }: UseRoomActionsProps) {
     if (room) {
       // Get the other participant's identity before leaving
       let otherParticipantIdentity: string | undefined;
-      if (room.remoteParticipants.size === 1) {
-        // There should be only one remote participant in a 1:1 call
+      const remoteParticipantCount = room.remoteParticipants.size;
+      
+      console.log(`Remote participants count: ${remoteParticipantCount}`);
+      
+      if (remoteParticipantCount === 1) {
+        // There is exactly one remote participant in a 1:1 call
         otherParticipantIdentity = Array.from(
           room.remoteParticipants.values()
         )[0].identity;
         console.log(`Found other participant: ${otherParticipantIdentity}`);
+      } else if (remoteParticipantCount === 0) {
+        // User is alone in the call
+        console.log("User is alone in the call - no other participants");
+        otherParticipantIdentity = undefined;
+      } else {
+        // More than 1 remote participant (shouldn't happen in 1:1 calls)
+        console.warn(`Unexpected participant count: ${remoteParticipantCount}`);
+        otherParticipantIdentity = Array.from(
+          room.remoteParticipants.values()
+        )[0].identity;
       }
 
       try {
@@ -98,7 +112,23 @@ export function useRoomActions({ username, roomName }: UseRoomActionsProps) {
 
     if (room) {
       let otherParticipantIdentity: string | undefined;
-      if (room.remoteParticipants.size === 1) {
+      const remoteParticipantCount = room.remoteParticipants.size;
+      
+      console.log(`Remote participants count: ${remoteParticipantCount}`);
+      
+      if (remoteParticipantCount === 1) {
+        // There is exactly one remote participant
+        otherParticipantIdentity = Array.from(
+          room.remoteParticipants.values()
+        )[0].identity;
+        console.log(`Found other participant: ${otherParticipantIdentity}`);
+      } else if (remoteParticipantCount === 0) {
+        // User is alone in the call
+        console.log("User is alone in the call - no other participants");
+        otherParticipantIdentity = undefined;
+      } else {
+        // More than 1 remote participant (shouldn't happen in 1:1 calls)
+        console.warn(`Unexpected participant count: ${remoteParticipantCount}`);
         otherParticipantIdentity = Array.from(
           room.remoteParticipants.values()
         )[0].identity;

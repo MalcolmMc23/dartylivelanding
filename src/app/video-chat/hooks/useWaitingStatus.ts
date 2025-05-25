@@ -24,11 +24,40 @@ export function useWaitingStatus({
   useEffect(() => {
     let intervalId: NodeJS.Timeout;
     let queueProcessingTriggered = false;
+    const waitStartTime = Date.now();
+    let consecutiveAloneChecks = 0;
 
     if (isWaiting && username) {
       // Initial check immediately when entering waiting state
       const checkStatus = async () => {
         try {
+          // First check for pending matches using the check-match API
+          const checkMatchResponse = await fetch('/api/check-match', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username })
+          });
+          
+          if (checkMatchResponse.ok) {
+            const checkMatchData = await checkMatchResponse.json();
+            
+            if (checkMatchData.match) {
+              // User has been matched (either active or pending)!
+              console.log(
+                `Matched with ${checkMatchData.matchedWith} in room ${checkMatchData.roomName} (type: ${checkMatchData.debug?.matchType || 'unknown'})`
+              );
+              setIsWaiting(false);
+              setUsingDemoServer(checkMatchData.useDemo);
+              router.push(
+                `/video-chat/room/${checkMatchData.roomName}?username=${encodeURIComponent(
+                  username
+                )}`
+              );
+              return;
+            }
+          }
+
+          // If no match found via check-match, fall back to the original polling logic
           const response = await fetch(
             `/api/match-user?username=${encodeURIComponent(username)}`
           );
@@ -53,6 +82,42 @@ export function useWaitingStatus({
             console.log("User no longer in waiting queue, cancelling wait");
             setIsWaiting(false);
             setError("Lost your place in the queue. Please try again.");
+          } else if (data.status === "waiting") {
+            // Check if user has been waiting alone for too long
+            const waitTime = Date.now() - waitStartTime;
+            
+            // Get queue status to see if there are other users
+            try {
+              const queueResponse = await fetch('/api/production-health?action=status&detailed=true');
+              const queueData = await queueResponse.json();
+              
+              // If queue count is 1 or less (just this user or empty), increment alone counter
+              if (queueData.queueCount <= 1) {
+                consecutiveAloneChecks++;
+                console.log(`User ${username} appears to be alone in queue (check ${consecutiveAloneChecks})`);
+                
+                // If user has been alone for 5 consecutive checks (10 seconds) and waited more than 15 seconds total
+                if (consecutiveAloneChecks >= 5 && waitTime > 15000) {
+                  console.log(`User ${username} has been waiting alone for too long, stopping wait`);
+                  setIsWaiting(false);
+                  setError("No other users are currently looking for a match. Please try again later.");
+                  return;
+                }
+              } else {
+                // Reset counter if there are other users
+                consecutiveAloneChecks = 0;
+              }
+            } catch (queueError) {
+              console.error("Error checking queue status:", queueError);
+            }
+            
+            // Also check for very long wait times regardless of queue status
+            if (waitTime > 60000) { // 1 minute
+              console.log(`User ${username} has been waiting for over 1 minute, stopping wait`);
+              setIsWaiting(false);
+              setError("Unable to find a match. Please try again later.");
+              return;
+            }
           }
         } catch (error) {
           console.error("Error polling status:", error);
@@ -100,7 +165,7 @@ export function useWaitingStatus({
         if (now % 6000 < 2000) { // Rough approximation for every 3rd poll
           triggerQueueProcessing();
         }
-      }, 2000); // Increased frequency from 2000ms to be more responsive
+      }, 2000); // Check every 2 seconds
     }
 
     return () => {

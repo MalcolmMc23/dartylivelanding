@@ -1,14 +1,15 @@
 import redis from '../../lib/redis';
 import { MATCHING_QUEUE, ACTIVE_MATCHES } from './constants';
 import { UserDataInQueue, ActiveMatch } from './types';
-import { removeUserFromQueue } from './queueManager';
+import { removeUserFromQueue, addUserToQueue } from './queueManager';
 import { generateUniqueRoomName } from './roomManager';
 import { canRematch, recordRecentMatch } from './rematchCooldown';
 import { acquireMatchLock, releaseMatchLock } from './lockManager';
+import { createMatchNotification } from './matchNotificationService';
 
 // Background queue processor settings
 const PROCESSOR_INTERVAL = 3000; // Check every 3 seconds
-const MAX_PROCESSING_TIME = 2000; // Max time to spend processing per cycle
+const MAX_PROCESSING_TIME = 8000; // 8 seconds max processing time
 let isProcessorRunning = false;
 let processorInterval: NodeJS.Timeout | null = null;
 
@@ -19,6 +20,85 @@ export interface MatchProcessorResult {
   matchesCreated: number;
   usersProcessed: number;
   errors: string[];
+}
+
+/**
+ * Clean up orphaned in-call users who don't have active matches
+ */
+export async function cleanupOrphanedInCallUsers(): Promise<{ cleanedUp: number; errors: string[] }> {
+  const result: { cleanedUp: number; errors: string[] } = { cleanedUp: 0, errors: [] };
+  
+  try {
+    console.log('Starting cleanup of orphaned in-call users');
+    
+    // Get all users from the queue
+    const allQueuedUsersRaw = await redis.zrange(MATCHING_QUEUE, 0, -1);
+    
+    // Filter for in-call users
+    const inCallUsers: UserDataInQueue[] = [];
+    for (const userData of allQueuedUsersRaw) {
+      try {
+        const user = JSON.parse(userData) as UserDataInQueue;
+        if (user.state === 'in_call') {
+          inCallUsers.push(user);
+        }
+      } catch (e) {
+        result.errors.push(`Error parsing user data: ${String(e)}`);
+      }
+    }
+    
+    console.log(`Found ${inCallUsers.length} in-call users to check`);
+    
+    // Check each in-call user to see if they have an active match
+    for (const user of inCallUsers) {
+      try {
+        // Get all active matches
+        const allMatches = await redis.hgetall(ACTIVE_MATCHES);
+        let hasActiveMatch = false;
+        
+        // Check if this user is in any active match
+        for (const [roomName, matchDataString] of Object.entries(allMatches)) {
+          try {
+            const match = JSON.parse(matchDataString) as ActiveMatch;
+            if (match.user1 === user.username || match.user2 === user.username) {
+              hasActiveMatch = true;
+              break;
+            }
+          } catch (e) {
+            console.warn(`Error parsing match data for room ${roomName}:`, e);
+          }
+        }
+        
+        if (!hasActiveMatch) {
+          console.log(`Found orphaned in-call user: ${user.username}, moving to waiting queue`);
+          
+          // Remove from current position and re-add as waiting
+          await removeUserFromQueue(user.username);
+          await addUserToQueue(
+            user.username,
+            user.useDemo,
+            'waiting', // Change to waiting state
+            undefined // Remove room assignment
+          );
+          
+          result.cleanedUp++;
+        }
+      } catch (e) {
+        result.errors.push(`Error checking user ${user.username}: ${String(e)}`);
+      }
+    }
+    
+    if (result.cleanedUp > 0) {
+      console.log(`Cleaned up ${result.cleanedUp} orphaned in-call users`);
+    }
+    
+  } catch (error) {
+    const errorMsg = `Error in orphaned user cleanup: ${String(error)}`;
+    result.errors.push(errorMsg);
+    console.error(errorMsg);
+  }
+  
+  return result;
 }
 
 /**
@@ -52,6 +132,12 @@ export async function processQueueMatches(): Promise<MatchProcessorResult> {
 
     console.log('Queue processor: Starting queue processing cycle');
 
+    // First, clean up orphaned in-call users
+    const cleanupResult = await cleanupOrphanedInCallUsers();
+    if (cleanupResult.errors.length > 0) {
+      result.errors.push(...cleanupResult.errors);
+    }
+
     // Get all users from the queue
     const allQueuedUsersRaw = await redis.zrange(MATCHING_QUEUE, 0, -1);
     
@@ -68,7 +154,7 @@ export async function processQueueMatches(): Promise<MatchProcessorResult> {
         allQueuedUsers.push(user);
         result.usersProcessed++;
       } catch (e) {
-        result.errors.push(`Error parsing user data: ${e}`);
+        result.errors.push(`Error parsing user data: ${String(e)}`);
       }
     }
 
@@ -102,7 +188,7 @@ export async function processQueueMatches(): Promise<MatchProcessorResult> {
     console.log(`Queue processor: Created ${result.matchesCreated} matches in ${Date.now() - startTime}ms`);
 
   } catch (error) {
-    const errorMsg = `Queue processor error: ${error}`;
+    const errorMsg = `Queue processor error: ${String(error)}`;
     result.errors.push(errorMsg);
     console.error(errorMsg);
   } finally {
@@ -241,6 +327,14 @@ async function attemptMatch(
     };
 
     await redis.hset(ACTIVE_MATCHES, roomName, JSON.stringify(matchData));
+    
+    // Create match notifications for both users
+    await createMatchNotification(
+      user1.username,
+      user2.username,
+      roomName,
+      user1.useDemo || user2.useDemo
+    );
     
     // Record match for cooldown system
     const isSkipScenario = user1.state === 'in_call' || user2.state === 'in_call';
