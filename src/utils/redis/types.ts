@@ -10,7 +10,6 @@ export interface UserDataInQueue {
   state: UserQueueState; // 'waiting' or 'in_call'
   roomName?: string;   // Relevant if state is 'in_call'
   joinedAt: number;     // Timestamp for joining the queue (actual time)
-  score?: number;       // Score used for Redis sorted set (can include priority)
   lastMatch?: {
     matchedWith: string;
     timestamp: number; // Timestamp of when this last match occurred
@@ -45,10 +44,4 @@ export interface ErrorResult {
   error: string;
 }
 
-// Helper function to calculate queue score
-// Lower scores = higher priority (processed first)
-export function calculateQueueScore(state: UserQueueState, joinedAt: number): number {
-  // In-call users get higher priority (lower score)
-  const priorityOffset = state === 'in_call' ? 0 : 1000000000;
-  return joinedAt + priorityOffset;
-} 
+ 

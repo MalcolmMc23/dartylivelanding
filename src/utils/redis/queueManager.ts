@@ -1,6 +1,6 @@
 import redis from '../../lib/redis';
 import { MATCHING_QUEUE, ACTIVE_MATCHES, WAITING_QUEUE, IN_CALL_QUEUE } from './constants';
-import { UserQueueState, UserDataInQueue, calculateQueueScore } from './types';
+import { UserQueueState, UserDataInQueue } from './types';
 
 export async function addUserToQueue(
   username: string,
@@ -38,20 +38,17 @@ export async function addUserToQueue(
     } : undefined
   };
 
-  // Calculate score for priority (in_call users get higher priority)
-  const score = calculateQueueScore(state, now);
-  
   // Remove user from any queue they might be in (both new and legacy queues)
   const wasRemoved = await removeUserFromQueue(username);
   if (wasRemoved) {
     console.log(`Removed ${username} from existing queue before re-adding with new state`);
   }
 
-  // Add to the new unified queue with priority score
+  // Add to the new unified queue using timestamp as score (FIFO ordering)
   const userDataString = JSON.stringify(userData);
-  await redis.zadd(MATCHING_QUEUE, score, userDataString);
+  await redis.zadd(MATCHING_QUEUE, now, userDataString);
   
-  console.log(`Added ${username} to matching queue with state '${state}' and priority score ${score}`);
+  console.log(`Added ${username} to matching queue with state '${state}' at timestamp ${now}`);
   
   return { username, added: true, state };
 }
@@ -133,12 +130,12 @@ export async function getWaitingQueueStatus(username: string) {
       let queueSize = 0;
       
       if (userInfo.state === 'waiting') {
-        const waitingUsers = await redis.zrange(MATCHING_QUEUE, 0, -1, 'WITHSCORES');
+        const allUsers = await redis.zrange(MATCHING_QUEUE, 0, -1);
         // Find users with similar state and get position
         const waitingUserItems = [];
-        for (let i = 0; i < waitingUsers.length; i += 2) {
+        for (const userData of allUsers) {
           try {
-            const user = JSON.parse(waitingUsers[i]);
+            const user = JSON.parse(userData);
             if (user.state === 'waiting') {
               waitingUserItems.push(user);
             }

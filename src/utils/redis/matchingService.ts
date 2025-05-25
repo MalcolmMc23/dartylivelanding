@@ -70,17 +70,13 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
       }
     }
     
-    // Separate in-call and waiting users
-    const inCallUsers = allQueuedUsers.filter(u => u.state === 'in_call')
-      .sort((a, b) => a.joinedAt - b.joinedAt); // Sort oldest first
+    // Sort all users by joinedAt timestamp (FIFO - no priority based on state)
+    const sortedUsers = allQueuedUsers.sort((a, b) => a.joinedAt - b.joinedAt);
     
-    const waitingUsers = allQueuedUsers.filter(u => u.state === 'waiting')
-      .sort((a, b) => a.joinedAt - b.joinedAt); // Sort oldest first
+    console.log(`Queue breakdown: ${sortedUsers.length} users total (FIFO order)`);
     
-    console.log(`Queue breakdown: ${inCallUsers.length} in-call users, ${waitingUsers.length} waiting users`);
-    
-    // First try to match with someone already in a call (priority)
-    for (const user of inCallUsers) {
+    // Try to match with any available user in FIFO order
+    for (const user of sortedUsers) {
       try {
         // Skip if this is the user we just left
         if (lastMatchedWith && user.username === lastMatchedWith) {
@@ -92,7 +88,7 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
         const traditionalCooldown = user.lastMatch?.matchedWith === username && 
             (Date.now() - user.lastMatch.timestamp < 2 * 1000); // Reduced from 5 to 2 seconds
             
-        const canRematchResult = await canRematch(username, user.username, true); // Enable left-behind bypass
+        const canRematchResult = await canRematch(username, user.username, false); // No bypass - treat all users equally
         
         if (traditionalCooldown || !canRematchResult) {
           console.log(`Skipping ${user.username} due to active cooldown (${traditionalCooldown ? 'traditional' : 'new system'})`);
@@ -102,7 +98,7 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
         // We found a match!
         await removeUserFromQueue(user.username);
         
-        // For in-call users, use their room if they have one
+        // Use existing room if available, otherwise create new
         let roomName = user.roomName;
         if (!roomName) {
           roomName = await generateUniqueRoomName();
@@ -123,9 +119,8 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
         // Make sure both users are removed from all queues
         await removeUserFromQueue(username);
         
-        // Record the match in the new cooldown system with skip scenario flag
-        const isSkipScenario = user.state === 'in_call'; // In-call users are typically from skip scenarios
-        await recordRecentMatch(username, user.username, 2, isSkipScenario);
+        // Record the match in the new cooldown system (no special skip scenario handling)
+        await recordRecentMatch(username, user.username, 2, false);
         
         const result: MatchedResult = {
           status: 'matched',
@@ -136,65 +131,7 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
         
         return result;
       } catch (e) {
-        console.error('Error processing potential match from in-call queue:', e);
-      }
-    }
-    
-    // If no in-call matches, try regular waiting users
-    for (const user of waitingUsers) {
-      try {
-        // Skip if this is the user we just left
-        if (lastMatchedWith && user.username === lastMatchedWith) {
-          console.log(`Skipping recent match ${user.username} for user ${username}`);
-          continue;
-        }
-        
-        // Skip if cooldown is active using both traditional and new methods
-        const traditionalCooldown = user.lastMatch?.matchedWith === username && 
-            (Date.now() - user.lastMatch.timestamp < 2 * 1000); // Reduced from 5 to 2 seconds
-            
-        const canRematchResult = await canRematch(username, user.username, false); // No left-behind bypass for waiting users
-        
-        if (traditionalCooldown || !canRematchResult) {
-          console.log(`Skipping ${user.username} due to active cooldown (${traditionalCooldown ? 'traditional' : 'new system'})`);
-          continue;
-        }
-        
-        // We found a match!
-        await removeUserFromQueue(user.username);
-        
-        // Generate new room name
-        const roomName = await generateUniqueRoomName();
-        console.log(`Generated new room ${roomName} for match between ${username} (caller) and ${user.username} (from waiting queue)`);
-        
-        // Create match record
-        const matchData: ActiveMatch = {
-          user1: username,
-          user2: user.username,
-          roomName,
-          useDemo: useDemo || user.useDemo,
-          matchedAt: Date.now()
-        };
-        
-        await redis.hset(ACTIVE_MATCHES, matchData.roomName, JSON.stringify(matchData));
-        console.log(`Created match: ${username} with ${user.username} in room ${roomName}`);
-        
-        // Make sure both users are removed from all queues
-        await removeUserFromQueue(username);
-        
-        // Record the match in the new cooldown system
-        await recordRecentMatch(username, user.username, 2, false); // Normal scenario, reduced cooldown
-        
-        const result: MatchedResult = {
-          status: 'matched',
-          roomName: matchData.roomName,
-          matchedWith: user.username,
-          useDemo: useDemo || user.useDemo
-        };
-        
-        return result;
-      } catch (e) {
-        console.error('Error processing potential match from waiting queue:', e);
+        console.error('Error processing potential match from queue:', e);
       }
     }
     

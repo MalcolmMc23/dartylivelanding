@@ -74,30 +74,16 @@ export async function processQueueMatches(): Promise<MatchProcessorResult> {
 
     console.log(`Queue processor: Found ${allQueuedUsers.length} users to process`);
 
-    // Separate users by priority (in_call users get priority)
-    const inCallUsers = allQueuedUsers.filter(u => u.state === 'in_call')
-      .sort((a, b) => a.joinedAt - b.joinedAt);
-    
-    const waitingUsers = allQueuedUsers.filter(u => u.state === 'waiting')
-      .sort((a, b) => a.joinedAt - b.joinedAt);
+    // Sort all users by joinedAt timestamp (FIFO - first in, first out)
+    const sortedUsers = allQueuedUsers.sort((a, b) => a.joinedAt - b.joinedAt);
 
-    console.log(`Queue processor: ${inCallUsers.length} in-call users, ${waitingUsers.length} waiting users`);
+    console.log(`Queue processor: Processing ${sortedUsers.length} users in FIFO order`);
 
     // Process matches with time limit
     const timeLimit = startTime + MAX_PROCESSING_TIME;
 
-    // First, try to match in-call users with waiting users
-    await processInCallToWaitingMatches(inCallUsers, waitingUsers, result, timeLimit);
-
-    // Then try to match in-call users with each other
-    if (Date.now() < timeLimit && inCallUsers.length >= 2) {
-      await processInCallToInCallMatches(inCallUsers, result, timeLimit);
-    }
-
-    // Finally, match waiting users with each other
-    if (Date.now() < timeLimit && waitingUsers.length >= 2) {
-      await processWaitingToWaitingMatches(waitingUsers, result, timeLimit);
-    }
+    // Match users in FIFO order - no priority based on state
+    await processUsersInFIFOOrder(sortedUsers, result, timeLimit);
 
     console.log(`Queue processor: Created ${result.matchesCreated} matches in ${Date.now() - startTime}ms`);
 
@@ -115,78 +101,36 @@ export async function processQueueMatches(): Promise<MatchProcessorResult> {
 }
 
 /**
- * Match in-call users (high priority) with waiting users
+ * Process users in FIFO order - match users based on arrival time, not state
  */
-async function processInCallToWaitingMatches(
-  inCallUsers: UserDataInQueue[], 
-  waitingUsers: UserDataInQueue[], 
+async function processUsersInFIFOOrder(
+  sortedUsers: UserDataInQueue[], 
   result: MatchProcessorResult, 
   timeLimit: number
 ) {
-  for (let i = 0; i < inCallUsers.length && Date.now() < timeLimit; i++) {
-    const inCallUser = inCallUsers[i];
+  // Keep track of matched users to avoid double-matching
+  const matchedUsers = new Set<string>();
+  
+  // Process users in pairs, matching the first available user with the next available user
+  for (let i = 0; i < sortedUsers.length - 1 && Date.now() < timeLimit; i++) {
+    const user1 = sortedUsers[i];
     
-    for (let j = 0; j < waitingUsers.length && Date.now() < timeLimit; j++) {
-      const waitingUser = waitingUsers[j];
+    // Skip if this user has already been matched
+    if (matchedUsers.has(user1.username)) continue;
+    
+    for (let j = i + 1; j < sortedUsers.length && Date.now() < timeLimit; j++) {
+      const user2 = sortedUsers[j];
+      
+      // Skip if this user has already been matched
+      if (matchedUsers.has(user2.username)) continue;
       
       // Try to create a match
-      const matchCreated = await attemptMatch(inCallUser, waitingUser, result);
-      if (matchCreated) {
-        // Remove matched users from our local arrays to avoid double-matching
-        inCallUsers.splice(i, 1);
-        waitingUsers.splice(j, 1);
-        i--; // Adjust index since we removed an element
-        break; // Break inner loop to move to next in-call user
-      }
-    }
-  }
-}
-
-/**
- * Match in-call users with each other
- */
-async function processInCallToInCallMatches(
-  inCallUsers: UserDataInQueue[], 
-  result: MatchProcessorResult, 
-  timeLimit: number
-) {
-  for (let i = 0; i < inCallUsers.length - 1 && Date.now() < timeLimit; i++) {
-    for (let j = i + 1; j < inCallUsers.length && Date.now() < timeLimit; j++) {
-      const user1 = inCallUsers[i];
-      const user2 = inCallUsers[j];
-      
       const matchCreated = await attemptMatch(user1, user2, result);
       if (matchCreated) {
-        // Remove both users from array
-        inCallUsers.splice(j, 1); // Remove higher index first
-        inCallUsers.splice(i, 1);
-        i--; // Adjust index since we removed elements
-        break; // Break inner loop
-      }
-    }
-  }
-}
-
-/**
- * Match waiting users with each other
- */
-async function processWaitingToWaitingMatches(
-  waitingUsers: UserDataInQueue[], 
-  result: MatchProcessorResult, 
-  timeLimit: number
-) {
-  for (let i = 0; i < waitingUsers.length - 1 && Date.now() < timeLimit; i++) {
-    for (let j = i + 1; j < waitingUsers.length && Date.now() < timeLimit; j++) {
-      const user1 = waitingUsers[i];
-      const user2 = waitingUsers[j];
-      
-      const matchCreated = await attemptMatch(user1, user2, result);
-      if (matchCreated) {
-        // Remove both users from array
-        waitingUsers.splice(j, 1); // Remove higher index first
-        waitingUsers.splice(i, 1);
-        i--; // Adjust index since we removed elements
-        break; // Break inner loop
+        // Mark both users as matched
+        matchedUsers.add(user1.username);
+        matchedUsers.add(user2.username);
+        break; // Break inner loop to move to next user1
       }
     }
   }
@@ -212,9 +156,8 @@ async function attemptMatch(
       return false;
     }
 
-    // Check new cooldown system (enable left-behind bypass for in-call users)
-    const enableBypass = user1.state === 'in_call' || user2.state === 'in_call';
-    const canRematchResult = await canRematch(user1.username, user2.username, enableBypass);
+    // Check new cooldown system (no bypass - treat all users equally)
+    const canRematchResult = await canRematch(user1.username, user2.username, false);
     
     if (!canRematchResult) {
       console.log(`Queue processor: Skipping ${user1.username} + ${user2.username} due to new cooldown system`);
@@ -225,7 +168,7 @@ async function attemptMatch(
     await removeUserFromQueue(user1.username);
     await removeUserFromQueue(user2.username);
 
-    // Determine room name (prefer existing room from in-call user)
+    // Determine room name (use existing room if available, otherwise create new)
     let roomName = user1.roomName || user2.roomName;
     if (!roomName) {
       roomName = await generateUniqueRoomName();
@@ -242,9 +185,8 @@ async function attemptMatch(
 
     await redis.hset(ACTIVE_MATCHES, roomName, JSON.stringify(matchData));
     
-    // Record match for cooldown system
-    const isSkipScenario = user1.state === 'in_call' || user2.state === 'in_call';
-    await recordRecentMatch(user1.username, user2.username, 2, isSkipScenario);
+    // Record match for cooldown system (no special skip scenario handling)
+    await recordRecentMatch(user1.username, user2.username, 2, false);
 
     console.log(`Queue processor: Successfully matched ${user1.username} (${user1.state}) with ${user2.username} (${user2.state}) in room ${roomName}`);
     
