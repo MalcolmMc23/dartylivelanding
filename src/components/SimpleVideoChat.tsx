@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Users, Clock } from "lucide-react";
+import { QueuePositionIndicator } from "./QueuePositionIndicator";
 
 interface SimpleVideoChatProps {
   defaultUsername?: string;
@@ -280,6 +281,9 @@ export function SimpleVideoChat({ defaultUsername }: SimpleVideoChatProps) {
               )}
             </div>
           )}
+
+          {/* Queue Position Indicator */}
+          {isSearching && <QueuePositionIndicator username={username} />}
 
           {/* Action buttons */}
           <div className="space-y-3">

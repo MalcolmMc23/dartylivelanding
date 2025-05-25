@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Users, Clock, Zap } from "lucide-react";
+import { QueuePositionIndicator } from "./QueuePositionIndicator";
 
 interface UnifiedUserState {
   username: string;
@@ -341,6 +342,11 @@ export function SimpleQueueManager({
           </div>
         </CardContent>
       </Card>
+
+      {/* Queue Position Indicator */}
+      {(isWaiting || userState?.status === "in-call") && (
+        <QueuePositionIndicator username={username} />
+      )}
 
       {/* Queue Stats */}
       {queueStats && (

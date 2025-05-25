@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { QueuePositionIndicator } from "./QueuePositionIndicator";
 
 interface WaitingRoomComponentProps {
   username: string;
@@ -61,6 +62,11 @@ export default function WaitingRoomComponent({
         <p className="text-xs text-gray-400 tracking-wide">
           Wait time: {formatTime(waitTime)}
         </p>
+      </div>
+
+      {/* Queue Position Indicator */}
+      <div className="mb-6">
+        <QueuePositionIndicator username={username} />
       </div>
 
       <button
