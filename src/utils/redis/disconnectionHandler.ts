@@ -3,7 +3,7 @@ import { ACTIVE_MATCHES, LEFT_BEHIND_PREFIX } from './constants';
 import { generateUniqueRoomName } from './roomManager';
 import { addUserToQueue, removeUserFromQueue } from './queueManager';
 import { findMatchForUser } from './matchingService';
-import { clearCooldown } from './rematchCooldown';
+import { clearCooldown, recordSkip } from './rematchCooldown';
 
 // Handle user disconnection
 export async function handleUserDisconnection(username: string, roomName: string, otherUsername?: string) {
@@ -209,10 +209,9 @@ export async function handleUserSkip(username: string, roomName: string, otherUs
       await removeUserFromQueue(otherUser);
     }
     
-    // Clear any cooldown between these users to allow them to potentially match again
+    // Record a skip cooldown between these users to prevent immediate re-matching
     if (otherUser) {
-      await clearCooldown(username, otherUser);
-      await clearCooldown(otherUser, username);
+      await recordSkip(username, otherUser, 5); // 5 minute cooldown
     }
     
     // Add both users back to the queue with normal priority
