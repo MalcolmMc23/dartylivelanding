@@ -1,6 +1,6 @@
 import redis from '../../lib/redis';
 import { RoomServiceClient } from 'livekit-server-sdk';
-import { ROOM_PARTICIPANTS, ROOM_STATES, LIVEKIT_SYNC_LOCK, ACTIVE_MATCHES } from './constants';
+import { ROOM_PARTICIPANTS, ROOM_STATES, ACTIVE_MATCHES } from './constants';
 import { RoomState, RoomParticipant } from './types';
 import { acquireMatchLock, releaseMatchLock } from './lockManager';
 

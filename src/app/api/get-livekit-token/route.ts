@@ -2,7 +2,7 @@ import { AccessToken } from 'livekit-server-sdk';
 import { NextRequest, NextResponse } from 'next/server';
 import { RoomServiceClient } from 'livekit-server-sdk';
 import * as hybridMatchingService from '@/utils/hybridMatchingService';
-import { getRoomParticipants, roomHasCapacity, syncRoomFromLiveKit } from '@/utils/redis/roomSyncManager';
+import { getRoomParticipants, syncRoomFromLiveKit } from '@/utils/redis/roomSyncManager';
 
 // Helper to remove a user from room participants tracking (now uses Redis)
 async function removeUserFromRoomTracking(username: string, roomName?: string) {
