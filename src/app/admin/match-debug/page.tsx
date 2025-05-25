@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { RoomStateSyncMonitor } from "@/components/RoomStateSyncMonitor";
+import { QueueHealthMonitor } from "@/components/QueueHealthMonitor";
 
 interface MatchUser {
   username: string;
@@ -226,6 +228,63 @@ export default function MatchDebugPage() {
               </div>
             </div>
           )}
+
+        {/* Room State Sync Monitor */}
+        <div className="mb-6">
+          <RoomStateSyncMonitor />
+        </div>
+
+        {/* Queue Health Monitor */}
+        <div className="mb-6">
+          <QueueHealthMonitor />
+        </div>
+
+        {/* Queue Cleanup Section */}
+        <div className="bg-white rounded-lg shadow p-4 mb-6">
+          <h2 className="text-xl font-semibold mb-3">Queue Cleanup</h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Clean up duplicate queue entries that can cause self-matching
+            issues.
+          </p>
+
+          <div className="flex gap-2">
+            <button
+              onClick={async () => {
+                try {
+                  const response = await fetch(
+                    "/api/cleanup-queue-duplicates",
+                    { method: "POST" }
+                  );
+                  const data = await response.json();
+                  alert(`Cleanup completed: ${data.message}`);
+                  fetchMatchData(); // Refresh the data
+                } catch (error) {
+                  alert(`Error: ${error}`);
+                }
+              }}
+              className="bg-orange-500 text-white px-4 py-2 rounded text-sm hover:bg-orange-600"
+            >
+              Clean Queue Duplicates
+            </button>
+
+            <button
+              onClick={async () => {
+                try {
+                  const response = await fetch("/api/cleanup-queue-duplicates");
+                  const data = await response.json();
+                  alert(
+                    `Analysis: ${data.totalEntries} total entries, ${data.uniqueUsers} unique users, ${data.duplicateUsers.length} users with duplicates, ${data.invalidEntries} invalid entries`
+                  );
+                } catch (error) {
+                  alert(`Error: ${error}`);
+                }
+              }}
+              className="bg-blue-500 text-white px-4 py-2 rounded text-sm hover:bg-blue-600"
+            >
+              Analyze Queue
+            </button>
+          </div>
+        </div>
 
         {/* Reset System Section */}
         <div className="bg-white rounded-lg shadow p-4 mb-6">

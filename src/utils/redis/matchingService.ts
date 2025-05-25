@@ -4,7 +4,33 @@ import { acquireMatchLock, releaseMatchLock } from './lockManager';
 import { addUserToQueue, removeUserFromQueue } from './queueManager';
 import { generateUniqueRoomName } from './roomManager';
 import { UserDataInQueue, ActiveMatch, MatchResult, MatchedResult, WaitingResult, ErrorResult } from './types';
-import { canRematch, recordRecentMatch } from './rematchCooldown';
+import { canRematch, recordCooldown } from './rematchCooldown';
+
+// Helper function to get user's current queue status
+async function getUserQueueStatus(username: string): Promise<{ status: string; roomName?: string } | null> {
+  try {
+    const allQueuedUsersRaw = await redis.zrange(MATCHING_QUEUE, 0, -1);
+    
+    for (const userData of allQueuedUsersRaw) {
+      try {
+        const user = JSON.parse(userData) as UserDataInQueue;
+        if (user.username === username) {
+          return {
+            status: user.state,
+            roomName: user.roomName
+          };
+        }
+      } catch (e) {
+        console.error('Error parsing user data:', e);
+      }
+    }
+    
+    return { status: 'not_in_queue' };
+  } catch (error) {
+    console.error(`Error getting queue status for ${username}:`, error);
+    return null;
+  }
+}
 
 // Helper function to check if user is already in a match
 export async function checkExistingMatch(username: string): Promise<MatchedResult | null> {
@@ -84,14 +110,11 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
           continue;
         }
         
-        // Skip if cooldown is active using both traditional and new methods
-        const traditionalCooldown = user.lastMatch?.matchedWith === username && 
-            (Date.now() - user.lastMatch.timestamp < 2 * 1000); // Reduced from 5 to 2 seconds
-            
-        const canRematchResult = await canRematch(username, user.username, false); // No bypass - treat all users equally
+        // Check cooldown system
+        const canRematchResult = await canRematch(username, user.username);
         
-        if (traditionalCooldown || !canRematchResult) {
-          console.log(`Skipping ${user.username} due to active cooldown (${traditionalCooldown ? 'traditional' : 'new system'})`);
+        if (!canRematchResult) {
+          console.log(`Skipping ${user.username} due to cooldown`);
           continue;
         }
         
@@ -119,8 +142,8 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
         // Make sure both users are removed from all queues
         await removeUserFromQueue(username);
         
-        // Record the match in the new cooldown system (no special skip scenario handling)
-        await recordRecentMatch(username, user.username, 2, false);
+        // Record cooldown for normal match
+        await recordCooldown(username, user.username, 'normal');
         
         const result: MatchedResult = {
           status: 'matched',
@@ -135,8 +158,14 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
       }
     }
     
-    // No match found, make sure the user is in the queue
-    await addUserToQueue(username, useDemo, 'waiting');
+    // No match found, make sure the user is in the queue (only if not already there)
+    const currentStatus = await getUserQueueStatus(username);
+    if (!currentStatus || currentStatus.status === 'not_in_queue') {
+      await addUserToQueue(username, useDemo, 'waiting');
+      console.log(`Added ${username} to queue as no match was found`);
+    } else {
+      console.log(`User ${username} already in queue with status ${currentStatus.status}, not adding again`);
+    }
     
     const waitingResult: WaitingResult = { status: 'waiting' };
     return waitingResult;

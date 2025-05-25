@@ -1,14 +1,15 @@
 import redis from '../../lib/redis';
 import { MATCHING_QUEUE, ACTIVE_MATCHES } from './constants';
 import { UserDataInQueue, ActiveMatch } from './types';
-import { removeUserFromQueue } from './queueManager';
+import { removeUserFromQueue, addUserToQueue } from './queueManager';
 import { generateUniqueRoomName } from './roomManager';
-import { canRematch, recordRecentMatch } from './rematchCooldown';
+import { canRematch, recordCooldown } from './rematchCooldown';
 import { acquireMatchLock, releaseMatchLock } from './lockManager';
+import { syncRoomAndQueueStates } from './roomStateManager';
+import { stopTrackingUserAlone } from './aloneUserManager';
 
 // Background queue processor settings
 const PROCESSOR_INTERVAL = 3000; // Check every 3 seconds
-const MAX_PROCESSING_TIME = 2000; // Max time to spend processing per cycle
 let isProcessorRunning = false;
 let processorInterval: NodeJS.Timeout | null = null;
 
@@ -52,38 +53,50 @@ export async function processQueueMatches(): Promise<MatchProcessorResult> {
 
     console.log('Queue processor: Starting queue processing cycle');
 
-    // Get all users from the queue
-    const allQueuedUsersRaw = await redis.zrange(MATCHING_QUEUE, 0, -1);
-    
-    if (allQueuedUsersRaw.length < 2) {
-      console.log(`Queue processor: Not enough users in queue (${allQueuedUsersRaw.length})`);
-      return result;
-    }
+    // 1. SYNC ROOM AND QUEUE STATES
+    const syncResult = await syncRoomAndQueueStates();
+    console.log('Queue processor: Room sync result:', syncResult);
 
-    // Parse users into structured data
+    // 2. CLEANUP ORPHANED IN-CALL USERS
+    await cleanupOrphanedInCallUsers(result);
+
+    // 3. GET ALL QUEUED USERS AND REMOVE DUPLICATES
+    const allQueuedUsersRaw = await redis.zrange(MATCHING_QUEUE, 0, -1);
     const allQueuedUsers: UserDataInQueue[] = [];
+    const seenUsers = new Set<string>();
+    const duplicatesToRemove: string[] = [];
+    
     for (const userData of allQueuedUsersRaw) {
       try {
         const user = JSON.parse(userData) as UserDataInQueue;
-        allQueuedUsers.push(user);
-        result.usersProcessed++;
-      } catch (e) {
-        result.errors.push(`Error parsing user data: ${e}`);
+        
+        if (seenUsers.has(user.username)) {
+          console.log(`Queue processor: Found duplicate entry for ${user.username}, marking for removal`);
+          duplicatesToRemove.push(userData);
+        } else {
+          seenUsers.add(user.username);
+          allQueuedUsers.push(user);
+        }
+      } catch {
+        // Skip invalid entries and mark for removal
+        duplicatesToRemove.push(userData);
       }
     }
+    
+    // Remove duplicates and invalid entries
+    for (const duplicate of duplicatesToRemove) {
+      await redis.zrem(MATCHING_QUEUE, duplicate);
+    }
+    
+    if (duplicatesToRemove.length > 0) {
+      console.log(`Queue processor: Removed ${duplicatesToRemove.length} duplicate/invalid entries`);
+    }
 
-    console.log(`Queue processor: Found ${allQueuedUsers.length} users to process`);
-
-    // Sort all users by joinedAt timestamp (FIFO - first in, first out)
+    // 4. SORT USERS BY JOIN TIME (FIFO)
     const sortedUsers = allQueuedUsers.sort((a, b) => a.joinedAt - b.joinedAt);
-
-    console.log(`Queue processor: Processing ${sortedUsers.length} users in FIFO order`);
-
-    // Process matches with time limit
-    const timeLimit = startTime + MAX_PROCESSING_TIME;
-
-    // Match users in FIFO order - no priority based on state
-    await processUsersInFIFOOrder(sortedUsers, result, timeLimit);
+    
+    // 5. PROCESS USERS IN FIFO ORDER
+    await processUsersInFIFOOrder(sortedUsers, result, startTime + 5000); // 5 second time limit
 
     console.log(`Queue processor: Created ${result.matchesCreated} matches in ${Date.now() - startTime}ms`);
 
@@ -145,28 +158,27 @@ async function attemptMatch(
   result: MatchProcessorResult
 ): Promise<boolean> {
   try {
-    // Check if they can be matched (cooldown, etc.)
-    const traditionalCooldown1 = user1.lastMatch?.matchedWith === user2.username && 
-        (Date.now() - user1.lastMatch.timestamp < 2000);
-    const traditionalCooldown2 = user2.lastMatch?.matchedWith === user1.username && 
-        (Date.now() - user2.lastMatch.timestamp < 2000);
-    
-    if (traditionalCooldown1 || traditionalCooldown2) {
-      console.log(`Queue processor: Skipping ${user1.username} + ${user2.username} due to traditional cooldown`);
+    // CRITICAL: Prevent self-matching
+    if (user1.username === user2.username) {
+      console.log(`Queue processor: Preventing self-match for ${user1.username}`);
       return false;
     }
-
-    // Check new cooldown system (no bypass - treat all users equally)
-    const canRematchResult = await canRematch(user1.username, user2.username, false);
+    
+    // Check cooldown system - single source of truth
+    const canRematchResult = await canRematch(user1.username, user2.username);
     
     if (!canRematchResult) {
-      console.log(`Queue processor: Skipping ${user1.username} + ${user2.username} due to new cooldown system`);
+      console.log(`Queue processor: Skipping ${user1.username} + ${user2.username} due to cooldown`);
       return false;
     }
 
     // Remove both users from queue
     await removeUserFromQueue(user1.username);
     await removeUserFromQueue(user2.username);
+    
+    // Stop tracking both users as alone since they're being matched
+    await stopTrackingUserAlone(user1.username);
+    await stopTrackingUserAlone(user2.username);
 
     // Determine room name (use existing room if available, otherwise create new)
     let roomName = user1.roomName || user2.roomName;
@@ -185,8 +197,8 @@ async function attemptMatch(
 
     await redis.hset(ACTIVE_MATCHES, roomName, JSON.stringify(matchData));
     
-    // Record match for cooldown system (no special skip scenario handling)
-    await recordRecentMatch(user1.username, user2.username, 2, false);
+    // Record cooldown for normal match
+    await recordCooldown(user1.username, user2.username, 'normal');
 
     console.log(`Queue processor: Successfully matched ${user1.username} (${user1.state}) with ${user2.username} (${user2.state}) in room ${roomName}`);
     
@@ -251,4 +263,56 @@ export function isQueueProcessorRunning(): boolean {
  */
 export async function triggerQueueProcessing(): Promise<MatchProcessorResult> {
   return await processQueueMatches();
+}
+
+/**
+ * Cleanup orphaned in-call users who are no longer in active matches
+ */
+async function cleanupOrphanedInCallUsers(result: MatchProcessorResult): Promise<void> {
+  console.log('Starting cleanup of orphaned in-call users');
+  
+  try {
+    // Get all active matches
+    const activeMatches = await redis.hgetall(ACTIVE_MATCHES);
+    const activeUsernames = new Set<string>();
+    
+    // Collect all users who are in active matches
+    for (const matchData of Object.values(activeMatches)) {
+      try {
+        const match = JSON.parse(matchData as string);
+        activeUsernames.add(match.user1);
+        activeUsernames.add(match.user2);
+      } catch (e) {
+        console.error('Error parsing match data during cleanup:', e);
+      }
+    }
+    
+    // Get all users in queue
+    const allQueuedUsersRaw = await redis.zrange(MATCHING_QUEUE, 0, -1);
+    let orphanedCount = 0;
+    
+    for (const userData of allQueuedUsersRaw) {
+      try {
+        const user = JSON.parse(userData) as UserDataInQueue;
+        
+        // If user is marked as 'in_call' but not in any active match, they're orphaned
+        if (user.state === 'in_call' && !activeUsernames.has(user.username)) {
+          console.log(`Found orphaned in-call user: ${user.username}, converting to waiting`);
+          
+          // Remove from queue and re-add as waiting
+          await removeUserFromQueue(user.username);
+          await addUserToQueue(user.username, user.useDemo, 'waiting');
+          orphanedCount++;
+        }
+      } catch (e) {
+        console.error('Error processing user during orphaned cleanup:', e);
+        result.errors.push(`Error processing orphaned user: ${e}`);
+      }
+    }
+    
+    console.log(`Found ${orphanedCount} in-call users to check`);
+  } catch (error) {
+    console.error('Error during orphaned user cleanup:', error);
+    result.errors.push(`Orphaned cleanup error: ${error}`);
+  }
 } 

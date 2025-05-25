@@ -17,7 +17,7 @@ function getLiveKitConfig(useDemo: boolean = false) {
   return {
     apiKey: process.env.LIVEKIT_API_KEY || '',
     apiSecret: process.env.LIVEKIT_API_SECRET || '',
-    host: process.env.LIVEKIT_HOST || ''
+    host: process.env.LIVEKIT_HOST || process.env.NEXT_PUBLIC_LIVEKIT_URL?.replace(/^wss?:\/\//, '') || ''
   };
 }
 
@@ -27,16 +27,26 @@ function getLiveKitConfig(useDemo: boolean = false) {
 function getRoomServiceClient(useDemo: boolean = false): RoomServiceClient | null {
   const config = getLiveKitConfig(useDemo);
   
-  if (!config.apiKey || !config.apiSecret || !config.host) {
-    console.error('LiveKit configuration missing');
+  if (!config.apiKey || !config.apiSecret) {
+    console.error('LiveKit API credentials missing');
     return null;
   }
   
-  return new RoomServiceClient(
-    `https://${config.host}`,
-    config.apiKey,
-    config.apiSecret
-  );
+  if (!config.host) {
+    console.error('LiveKit host missing');
+    return null;
+  }
+  
+  try {
+    return new RoomServiceClient(
+      `https://${config.host}`,
+      config.apiKey,
+      config.apiSecret
+    );
+  } catch (error) {
+    console.error('Failed to create RoomServiceClient:', error);
+    return null;
+  }
 }
 
 /**

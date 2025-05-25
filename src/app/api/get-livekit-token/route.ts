@@ -53,6 +53,12 @@ export async function GET(request: NextRequest) {
       apiSecret = 'secret';
       livekitHost = 'demo.livekit.cloud';
       console.log('Using LiveKit demo server credentials');
+    } else {
+      // If no LIVEKIT_HOST is set, try to extract from NEXT_PUBLIC_LIVEKIT_URL
+      if (!livekitHost && process.env.NEXT_PUBLIC_LIVEKIT_URL) {
+        livekitHost = process.env.NEXT_PUBLIC_LIVEKIT_URL.replace(/^wss?:\/\//, '');
+        console.log(`Extracted LiveKit host from NEXT_PUBLIC_LIVEKIT_URL: ${livekitHost}`);
+      }
     }
 
     // Debug log - masked for security
@@ -60,6 +66,7 @@ export async function GET(request: NextRequest) {
     console.log('API Secret defined:', !!apiSecret);
     console.log('API Key value:', apiKey);
     console.log('Using demo server:', useDemo);
+    console.log('LiveKit host:', livekitHost);
 
     if (!apiKey || !apiSecret) {
       return NextResponse.json(

@@ -11,17 +11,38 @@ export async function addUserToQueue(
 ) {
   const now = Date.now();
   
-  // Check if user is already in queue with the same state to prevent thrashing
+  // Validate inputs to prevent negative numbers or invalid data
+  if (!username || typeof username !== 'string') {
+    console.error('Invalid username provided to addUserToQueue:', username);
+    return { username: '', added: false, state, reason: 'invalid_username' };
+  }
+  
+  if (now < 0 || !Number.isFinite(now)) {
+    console.error('Invalid timestamp generated:', now);
+    return { username, added: false, state, reason: 'invalid_timestamp' };
+  }
+  
+  // Clean up any corrupted data for this user first
+  await cleanupCorruptedUserData(username);
+  
+  // Check if user is already in queue to prevent duplicates
   const existingUserData = await scanQueueForUser(MATCHING_QUEUE, username);
   if (existingUserData) {
     try {
       const existingUser = JSON.parse(existingUserData) as UserDataInQueue;
-      if (existingUser.state === state && existingUser.roomName === roomName) {
-        console.log(`User ${username} already in queue with state '${state}' and room ${roomName || 'none'}, skipping add`);
-        return { username, added: false, state, reason: 'already_in_queue' };
+      // If user is already in queue with same or better state, don't add again
+      if (existingUser.state === state || 
+          (existingUser.state === 'in_call' && state === 'waiting')) {
+        console.log(`User ${username} already in queue with state '${existingUser.state}', skipping add of '${state}'`);
+        return { username, added: false, state: existingUser.state, reason: 'already_in_queue' };
       }
+      // Remove existing entry if we're upgrading the state
+      console.log(`Removing existing ${username} (${existingUser.state}) to upgrade to ${state}`);
+      await redis.zrem(MATCHING_QUEUE, existingUserData);
     } catch (e) {
       console.error('Error parsing existing user data:', e);
+      // Remove corrupted entry
+      await redis.zrem(MATCHING_QUEUE, existingUserData);
     }
   }
   
@@ -193,4 +214,34 @@ export async function getWaitingQueueStatus(username: string) {
   }
   
   return { status: 'not_waiting' };
+}
+
+async function cleanupCorruptedUserData(username: string): Promise<void> {
+  try {
+    // Remove any corrupted entries from all queues
+    const allQueues = [MATCHING_QUEUE, WAITING_QUEUE, IN_CALL_QUEUE];
+    
+    for (const queueKey of allQueues) {
+      const allMembers = await redis.zrange(queueKey, 0, -1);
+      
+      for (const member of allMembers) {
+        try {
+          const data = JSON.parse(member);
+          
+          // Check for corrupted data (negative timestamps, invalid usernames, etc.)
+          if (data.username === username && 
+              (data.joinedAt < 0 || !Number.isFinite(data.joinedAt) || !data.username)) {
+            console.log(`Removing corrupted data for ${username} from ${queueKey}`);
+            await redis.zrem(queueKey, member);
+          }
+        } catch {
+          // Remove unparseable data
+          console.log(`Removing unparseable data from ${queueKey}:`, member);
+          await redis.zrem(queueKey, member);
+        }
+      }
+    }
+  } catch (error) {
+    console.error(`Error cleaning up corrupted data for ${username}:`, error);
+  }
 } 

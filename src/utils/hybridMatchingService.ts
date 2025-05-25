@@ -7,8 +7,9 @@ import {
   triggerQueueProcessing,
   MatchProcessorResult
 } from './redis/queueProcessor';
+import { startAloneUserProcessor } from './redis/aloneUserManager';
 
-// Start the queue processor automatically when this module is imported
+// Start the queue processor and alone user processor automatically when this module is imported
 // This ensures background matching is always running
 if (typeof window === 'undefined') { // Server-side only
   // Start with a small delay to ensure Redis connection is ready
@@ -17,6 +18,10 @@ if (typeof window === 'undefined') { // Server-side only
       startQueueProcessor();
       console.log('Hybrid matching service: Started background queue processor');
     }
+    
+    // Start the alone user processor
+    startAloneUserProcessor();
+    console.log('Hybrid matching service: Started alone user processor');
   }, 1000);
 }
 

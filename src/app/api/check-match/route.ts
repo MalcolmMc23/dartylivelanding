@@ -3,6 +3,7 @@ import * as hybridMatchingService from '@/utils/hybridMatchingService';
 import redis from '@/lib/redis';
 import { ROOM_PARTICIPANTS, ROOM_STATES } from '@/utils/redis/constants';
 import { isSyncServiceRunning } from '@/utils/redis/syncService';
+import { syncRoomAndQueueStates } from '@/utils/redis/roomStateManager';
 
 // Debug log with timestamps
 function debugLog(...messages: unknown[]): void {
@@ -20,9 +21,15 @@ export async function POST(request: Request) {
 
     debugLog(`Check match request for user: ${username}`);
     
-    // Clean up stale records
+    // Clean up stale records and sync room states
     await hybridMatchingService.cleanupOldWaitingUsers();
     await hybridMatchingService.cleanupOldMatches();
+    
+    // Sync room and queue states to ensure consistency
+    const syncResult = await syncRoomAndQueueStates();
+    if (syncResult.usersAddedToQueue > 0 || syncResult.usersRemovedFromQueue > 0) {
+      debugLog(`Sync result: ${syncResult.usersAddedToQueue} users added to queue, ${syncResult.usersRemovedFromQueue} users removed`);
+    }
     
     // Check if user has a match using the Redis matching service
     const status = await hybridMatchingService.getWaitingQueueStatus(username);

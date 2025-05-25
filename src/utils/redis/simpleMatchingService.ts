@@ -1,10 +1,11 @@
 import redis from '../../lib/redis';
 import { generateUniqueRoomName } from './roomManager';
+import { canRematch, recordCooldown } from './rematchCooldown';
+import { stopTrackingUserAlone } from './aloneUserManager';
 
 // Simple Redis keys for the new system
 const SIMPLE_QUEUE = 'simple:waiting_queue';
-const SIMPLE_MATCHES = 'simple:active_matches'; 
-const SIMPLE_SKIP_COOLDOWN = 'simple:skip_cooldown:';
+const SIMPLE_MATCHES = 'simple:active_matches';
 
 export interface SimpleUser {
   username: string;
@@ -103,6 +104,10 @@ export async function findMatch(username: string, useDemo: boolean): Promise<Sim
     // Remove both users from queue
     await removeFromQueue(username);
     await removeFromQueue(matchedUser.username);
+    
+    // Stop tracking both users as alone since they're being matched
+    await stopTrackingUserAlone(username);
+    await stopTrackingUserAlone(matchedUser.username);
     
     // Create room and match
     const roomName = await generateUniqueRoomName();
@@ -388,17 +393,11 @@ async function cleanupUser(username: string): Promise<void> {
 }
 
 async function canMatch(user1: string, user2: string): Promise<boolean> {
-  // Check if there's an active skip cooldown between these users
-  const key1 = `${SIMPLE_SKIP_COOLDOWN}${[user1, user2].sort().join(':')}`;
-  const exists = await redis.exists(key1);
-  return exists === 0; // Can match if no cooldown exists
+  return await canRematch(user1, user2);
 }
 
 async function setSkipCooldown(user1: string, user2: string): Promise<void> {
-  const key = `${SIMPLE_SKIP_COOLDOWN}${[user1, user2].sort().join(':')}`;
-  // Set 5 minute cooldown
-  await redis.setex(key, 300, 'skipped');
-  console.log(`Set 5-minute skip cooldown between ${user1} and ${user2}`);
+  await recordCooldown(user1, user2, 'skip');
 }
 
 /**

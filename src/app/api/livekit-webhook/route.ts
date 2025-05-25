@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WebhookReceiver } from 'livekit-server-sdk';
 import { handleParticipantJoined, handleParticipantLeft } from '@/utils/redis/roomSyncManager';
+import { removeUserFromRoom } from '@/utils/redis/roomStateManager';
 import * as hybridMatchingService from '@/utils/hybridMatchingService';
 
 // Initialize webhook receiver
@@ -33,6 +34,8 @@ export async function POST(request: NextRequest) {
             event.participant.metadata
           );
           
+          // Update room occupancy tracking
+          // Note: We don't have full participant list here, so we'll let the client-side updates handle this
           console.log(`Participant ${event.participant.identity} joined room ${event.room.name}`);
         }
         break;
@@ -43,6 +46,9 @@ export async function POST(request: NextRequest) {
             event.room.name,
             event.participant.identity
           );
+          
+          // Update room occupancy tracking
+          await removeUserFromRoom(event.participant.identity, event.room.name);
           
           // Check if this was an unexpected disconnect and handle accordingly
           await handleUnexpectedDisconnect(

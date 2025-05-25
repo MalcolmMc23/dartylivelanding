@@ -9,6 +9,10 @@ import {
   RemoteParticipant,
 } from "livekit-client";
 import { handleDisconnection } from "@/utils/disconnectionService";
+import {
+  updateRoomOccupancy,
+  removeUserFromRoom,
+} from "@/utils/redis/roomStateManager";
 
 interface ConnectionStateLoggerProps {
   onParticipantCountChange: (count: number) => void;
@@ -75,10 +79,16 @@ export function ConnectionStateLogger({
     // Store in ref instead of state to avoid re-renders
     otherParticipantsRef.current = participantList;
 
-    console.log("Current participants:", [
+    const allParticipants = [
       room.localParticipant.identity,
       ...participantList,
-    ]);
+    ];
+    console.log("Current participants:", allParticipants);
+
+    // Update room occupancy in Redis for state synchronization
+    updateRoomOccupancy(roomName, allParticipants).catch((error) => {
+      console.error("Error updating room occupancy:", error);
+    });
 
     onParticipantCountChange(participantCount);
 
@@ -137,6 +147,7 @@ export function ConnectionStateLogger({
     maxParticipants,
     onParticipantCountChange,
     username,
+    roomName,
     onOtherParticipantDisconnected,
   ]);
 
@@ -254,6 +265,11 @@ export function ConnectionStateLogger({
 
           // Clean up room tracking - use the non-async wrapper function
           triggerCleanupRoomTracking(participant.identity, room.name);
+
+          // Update room occupancy to reflect the participant leaving
+          removeUserFromRoom(participant.identity, room.name).catch((error) => {
+            console.error("Error removing user from room tracking:", error);
+          });
         }, 3000); // Give 3 seconds for potential reconnection
 
         // Return cleanup function to clear the timeout if component unmounts

@@ -3,7 +3,7 @@ import { ACTIVE_MATCHES, LEFT_BEHIND_PREFIX } from './constants';
 import { generateUniqueRoomName } from './roomManager';
 import { addUserToQueue, removeUserFromQueue } from './queueManager';
 import { findMatchForUser } from './matchingService';
-import { clearCooldown, recordSkip } from './rematchCooldown';
+import { clearCooldown, recordCooldown } from './rematchCooldown';
 
 // Handle user disconnection
 export async function handleUserDisconnection(username: string, roomName: string, otherUsername?: string) {
@@ -75,8 +75,8 @@ export async function handleLeftBehindUser(
 }> {
   console.log(`Handling left-behind user ${leftBehindUser} after ${disconnectedUser} disconnected`);
   
-  // 1. Clear any cooldown between these users to allow immediate rematch
-  await clearCooldown(leftBehindUser, disconnectedUser);
+  // 1. Set a short cooldown to prevent immediate re-matching with the same user
+  await recordCooldown(leftBehindUser, disconnectedUser, 'normal');
   
   // 2. Remove user from any existing queue to start fresh
   await removeUserFromQueue(leftBehindUser);
@@ -211,7 +211,7 @@ export async function handleUserSkip(username: string, roomName: string, otherUs
     
     // Record a skip cooldown between these users to prevent immediate re-matching
     if (otherUser) {
-      await recordSkip(username, otherUser, 5); // 5 minute cooldown
+      await recordCooldown(username, otherUser, 'skip');
     }
     
     // Add both users back to the queue with normal priority

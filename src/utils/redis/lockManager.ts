@@ -3,51 +3,35 @@ import { MATCH_LOCK_KEY, LOCK_EXPIRY } from './constants';
 
 // Acquire a lock for matching operations with exponential backoff
 export async function acquireMatchLock(lockId: string, expiry = LOCK_EXPIRY): Promise<boolean> {
-  // Try to set the lock with NX (only if it doesn't exist)
   try {
-    // Store the start time for logging
     const startTime = Date.now();
     
-    // First attempt
+    // Check for stale locks first
+    await cleanupStaleLocks();
+    
+    // First attempt with immediate cleanup
     const result = await redis.set(MATCH_LOCK_KEY, lockId, 'EX', expiry, 'NX');
     if (result === "OK") {
-      // Store timestamp when lock was acquired
-      const acquiredTime = Date.now();
-      await redis.set(`${MATCH_LOCK_KEY}:time`, acquiredTime.toString(), 'EX', expiry + 5);
-      console.log(`Lock ${lockId} acquired on first attempt. Took ${acquiredTime - startTime}ms.`);
+      await redis.set(`${MATCH_LOCK_KEY}:time`, startTime.toString(), 'EX', expiry + 5);
+      console.log(`Lock ${lockId} acquired on first attempt. Took ${Date.now() - startTime}ms.`);
       return true;
     }
     
-    // Implement exponential backoff for retries
-    const maxRetries = 3;
-    let retryDelay = 200; // Start with 200ms
+    // Reduced retries to prevent lock contention
+    const maxRetries = 2; // Reduced from 3
+    let retryDelay = 100; // Reduced from 200ms
     
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       console.log(`Lock acquisition attempt ${attempt + 2} for ${lockId}, waiting ${retryDelay}ms`);
       
-      // Wait with exponential backoff
       await new Promise(resolve => setTimeout(resolve, retryDelay));
-      retryDelay *= 2; // Exponential backoff
+      retryDelay *= 1.5; // Reduced exponential backoff
       
-      // Check if current lock has expired or been held too long
-      const lockTime = await redis.get(`${MATCH_LOCK_KEY}:time`);
-      const currentLockId = await redis.get(MATCH_LOCK_KEY);
-      const currentTime = Date.now();
+      // Force cleanup of stale locks
+      await cleanupStaleLocks();
       
-      // Force release if lock has been held for more than 10 seconds
-      // or if the lock time record is missing but the lock exists
-      if ((lockTime && (currentTime - parseInt(lockTime)) > 10000) || 
-          (currentLockId && !lockTime && currentLockId !== lockId)) {
-        const heldDuration = lockTime ? (currentTime - parseInt(lockTime))/1000 : 'unknown time';
-        console.warn(`Force releasing STALE lock (held by ${currentLockId || 'unknown'}) after ${heldDuration} seconds. Current request is for ${lockId}.`);
-        await redis.del(MATCH_LOCK_KEY);
-        await redis.del(`${MATCH_LOCK_KEY}:time`);
-      }
-      
-      // Try again to acquire the lock
       const retryResult = await redis.set(MATCH_LOCK_KEY, lockId, 'EX', expiry, 'NX');
       if (retryResult === "OK") {
-        // Store timestamp when lock was acquired
         const acquiredTime = Date.now();
         await redis.set(`${MATCH_LOCK_KEY}:time`, acquiredTime.toString(), 'EX', expiry + 5);
         console.log(`Lock ${lockId} acquired on attempt ${attempt + 2}. Took ${acquiredTime - startTime}ms total.`);
@@ -60,6 +44,25 @@ export async function acquireMatchLock(lockId: string, expiry = LOCK_EXPIRY): Pr
   } catch (error) {
     console.error('Error acquiring lock:', error);
     return false;
+  }
+}
+
+async function cleanupStaleLocks(): Promise<void> {
+  try {
+    const lockTime = await redis.get(`${MATCH_LOCK_KEY}:time`);
+    const currentLockId = await redis.get(MATCH_LOCK_KEY);
+    const currentTime = Date.now();
+    
+    // Force release if lock has been held for more than 8 seconds (reduced from 10)
+    if ((lockTime && (currentTime - parseInt(lockTime)) > 8000) || 
+        (currentLockId && !lockTime)) {
+      const heldDuration = lockTime ? (currentTime - parseInt(lockTime))/1000 : 'unknown time';
+      console.warn(`Force releasing STALE lock (held by ${currentLockId || 'unknown'}) after ${heldDuration} seconds.`);
+      await redis.del(MATCH_LOCK_KEY);
+      await redis.del(`${MATCH_LOCK_KEY}:time`);
+    }
+  } catch (error) {
+    console.error('Error cleaning up stale locks:', error);
   }
 }
 
