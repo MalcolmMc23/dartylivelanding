@@ -156,15 +156,17 @@ export async function handleSkip(username: string, roomName: string): Promise<{ 
     
     console.log(`Skip: ${username} and ${otherUser} will both go back to queue`);
     
-    // Remove the match
+    // Remove the match FIRST to prevent race conditions
     await redis.hdel(SIMPLE_MATCHES, roomName);
     
     // Set cooldown between these users (5 minutes)
     await setSkipCooldown(username, otherUser);
     
-    // Both users go back to queue
-    await addToQueue(username, match.useDemo);
-    await addToQueue(otherUser, match.useDemo);
+    // Both users go back to queue simultaneously
+    await Promise.all([
+      addToQueue(username, match.useDemo),
+      addToQueue(otherUser, match.useDemo)
+    ]);
     
     console.log(`Skip completed: both users back in queue`);
     return { status: 'skipped', otherUser };
@@ -194,7 +196,7 @@ export async function handleEndCall(username: string, roomName: string): Promise
     
     console.log(`End call: ${username} goes to main screen, ${otherUser} goes to queue`);
     
-    // Remove the match
+    // Remove the match FIRST
     await redis.hdel(SIMPLE_MATCHES, roomName);
     
     // Clean up the user who ended the call (they go to main screen)

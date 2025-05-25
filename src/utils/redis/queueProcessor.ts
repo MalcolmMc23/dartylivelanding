@@ -43,8 +43,8 @@ export async function processQueueMatches(): Promise<MatchProcessorResult> {
   let lockAcquired = false;
 
   try {
-    // Try to acquire processing lock
-    lockAcquired = await acquireMatchLock(lockId, 5000); // 5 second timeout
+    // Try to acquire processing lock with longer timeout
+    lockAcquired = await acquireMatchLock(lockId, 10000); // 10 second timeout
     
     if (!lockAcquired) {
       console.log('Queue processor: Could not acquire lock, skipping this cycle');
@@ -61,42 +61,57 @@ export async function processQueueMatches(): Promise<MatchProcessorResult> {
     await cleanupOrphanedInCallUsers(result);
 
     // 3. GET ALL QUEUED USERS AND REMOVE DUPLICATES
-    const allQueuedUsersRaw = await redis.zrange(MATCHING_QUEUE, 0, -1);
-    const allQueuedUsers: UserDataInQueue[] = [];
-    const seenUsers = new Set<string>();
+    const allQueuedUsersRaw = await redis.zrange(MATCHING_QUEUE, 0, -1, 'WITHSCORES');
+    const userMap = new Map<string, { userData: UserDataInQueue; score: number; rawData: string }>();
     const duplicatesToRemove: string[] = [];
     
-    for (const userData of allQueuedUsersRaw) {
+    // Process users and keep only the earliest entry for each username
+    for (let i = 0; i < allQueuedUsersRaw.length; i += 2) {
+      const rawData = allQueuedUsersRaw[i];
+      const score = parseFloat(allQueuedUsersRaw[i + 1]);
+      
       try {
-        const user = JSON.parse(userData) as UserDataInQueue;
+        const userData = JSON.parse(rawData) as UserDataInQueue;
         
-        if (seenUsers.has(user.username)) {
-          console.log(`Queue processor: Found duplicate entry for ${user.username}, marking for removal`);
-          duplicatesToRemove.push(userData);
-        } else {
-          seenUsers.add(user.username);
-          allQueuedUsers.push(user);
+        // Validate user data
+        if (!userData.username || typeof userData.username !== 'string') {
+          duplicatesToRemove.push(rawData);
+          continue;
         }
-      } catch {
-        // Skip invalid entries and mark for removal
-        duplicatesToRemove.push(userData);
+        
+        const existing = userMap.get(userData.username);
+        if (existing) {
+          // Keep the earlier entry (lower score/timestamp)
+          if (score < existing.score) {
+            duplicatesToRemove.push(existing.rawData);
+            userMap.set(userData.username, { userData, score, rawData });
+          } else {
+            duplicatesToRemove.push(rawData);
+          }
+        } else {
+          userMap.set(userData.username, { userData, score, rawData });
+        }
+      } catch (e) {
+        console.error('Queue processor: Error parsing user data:', e);
+        duplicatesToRemove.push(rawData);
       }
     }
     
-    // Remove duplicates and invalid entries
-    for (const duplicate of duplicatesToRemove) {
-      await redis.zrem(MATCHING_QUEUE, duplicate);
-    }
-    
+    // Remove duplicates and invalid entries atomically
     if (duplicatesToRemove.length > 0) {
+      await redis.zrem(MATCHING_QUEUE, ...duplicatesToRemove);
       console.log(`Queue processor: Removed ${duplicatesToRemove.length} duplicate/invalid entries`);
     }
 
-    // 4. SORT USERS BY JOIN TIME (FIFO)
-    const sortedUsers = allQueuedUsers.sort((a, b) => a.joinedAt - b.joinedAt);
+    // 4. CONVERT MAP TO SORTED ARRAY (FIFO)
+    const sortedUsers = Array.from(userMap.values())
+      .sort((a, b) => a.score - b.score)
+      .map(item => item.userData);
     
+    console.log(`Queue processor: Processing ${sortedUsers.length} unique users`);
+
     // 5. PROCESS USERS IN FIFO ORDER
-    await processUsersInFIFOOrder(sortedUsers, result, startTime + 5000); // 5 second time limit
+    await processUsersInFIFOOrder(sortedUsers, result, startTime + 8000); // 8 second time limit
 
     console.log(`Queue processor: Created ${result.matchesCreated} matches in ${Date.now() - startTime}ms`);
 
@@ -128,13 +143,21 @@ async function processUsersInFIFOOrder(
   for (let i = 0; i < sortedUsers.length - 1 && Date.now() < timeLimit; i++) {
     const user1 = sortedUsers[i];
     
-    // Skip if this user has already been matched
+    // Skip if this user has already been matched in this cycle
     if (matchedUsers.has(user1.username)) continue;
+    
+    // Also skip if user is already in an active match (double-check)
+    const activeMatch = await checkUserInActiveMatch(user1.username);
+    if (activeMatch) {
+      console.log(`Queue processor: ${user1.username} is already in active match, skipping`);
+      matchedUsers.add(user1.username);
+      continue;
+    }
     
     for (let j = i + 1; j < sortedUsers.length && Date.now() < timeLimit; j++) {
       const user2 = sortedUsers[j];
       
-      // Skip if this user has already been matched
+      // Skip if this user has already been matched in this cycle
       if (matchedUsers.has(user2.username)) continue;
       
       // Try to create a match
@@ -143,9 +166,12 @@ async function processUsersInFIFOOrder(
         // Mark both users as matched
         matchedUsers.add(user1.username);
         matchedUsers.add(user2.username);
+        result.matchesCreated++;
         break; // Break inner loop to move to next user1
       }
     }
+    
+    result.usersProcessed++;
   }
 }
 
@@ -164,6 +190,17 @@ async function attemptMatch(
       return false;
     }
     
+    // Double-check neither user is already matched
+    const [match1, match2] = await Promise.all([
+      checkUserInActiveMatch(user1.username),
+      checkUserInActiveMatch(user2.username)
+    ]);
+    
+    if (match1 || match2) {
+      console.log(`Queue processor: One or both users already matched, skipping`);
+      return false;
+    }
+    
     // Check cooldown system - single source of truth
     const canRematchResult = await canRematch(user1.username, user2.username);
     
@@ -172,13 +209,28 @@ async function attemptMatch(
       return false;
     }
 
-    // Remove both users from queue
-    await removeUserFromQueue(user1.username);
-    await removeUserFromQueue(user2.username);
+    // Remove both users from queue BEFORE creating the match
+    const [removed1, removed2] = await Promise.all([
+      removeUserFromQueue(user1.username),
+      removeUserFromQueue(user2.username)
+    ]);
+    
+    if (!removed1 || !removed2) {
+      console.log(`Queue processor: Failed to remove users from queue, skipping match`);
+      // Re-add users if only one was removed
+      if (removed1 && !removed2) {
+        await addUserToQueue(user1.username, user1.useDemo, user1.state, user1.roomName);
+      } else if (!removed1 && removed2) {
+        await addUserToQueue(user2.username, user2.useDemo, user2.state, user2.roomName);
+      }
+      return false;
+    }
     
     // Stop tracking both users as alone since they're being matched
-    await stopTrackingUserAlone(user1.username);
-    await stopTrackingUserAlone(user2.username);
+    await Promise.all([
+      stopTrackingUserAlone(user1.username),
+      stopTrackingUserAlone(user2.username)
+    ]);
 
     // Determine room name (use existing room if available, otherwise create new)
     let roomName = user1.roomName || user2.roomName;
@@ -202,15 +254,43 @@ async function attemptMatch(
 
     console.log(`Queue processor: Successfully matched ${user1.username} (${user1.state}) with ${user2.username} (${user2.state}) in room ${roomName}`);
     
-    result.matchesCreated++;
     return true;
 
   } catch (error) {
     const errorMsg = `Error matching ${user1.username} with ${user2.username}: ${error}`;
     result.errors.push(errorMsg);
     console.error(`Queue processor: ${errorMsg}`);
+    
+    // Try to re-add users to queue on error
+    try {
+      await Promise.all([
+        addUserToQueue(user1.username, user1.useDemo, user1.state, user1.roomName),
+        addUserToQueue(user2.username, user2.useDemo, user2.state, user2.roomName)
+      ]);
+    } catch (readdError) {
+      console.error('Queue processor: Error re-adding users to queue:', readdError);
+    }
+    
     return false;
   }
+}
+
+// Helper to check if user is in an active match
+async function checkUserInActiveMatch(username: string): Promise<boolean> {
+  const allMatches = await redis.hgetall(ACTIVE_MATCHES);
+  
+  for (const matchData of Object.values(allMatches)) {
+    try {
+      const match = JSON.parse(matchData as string);
+      if (match.user1 === username || match.user2 === username) {
+        return true;
+      }
+    } catch (e) {
+      console.error('Error parsing match data:', e);
+    }
+  }
+  
+  return false;
 }
 
 /**

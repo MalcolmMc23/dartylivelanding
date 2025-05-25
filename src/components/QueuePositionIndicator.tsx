@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Users, Clock, TrendingUp } from "lucide-react";
+import { Loader2, Users, Clock, TrendingUp, AlertCircle } from "lucide-react";
 
 interface QueuePositionIndicatorProps {
   username: string;
@@ -10,7 +10,7 @@ interface QueuePositionIndicatorProps {
 }
 
 interface QueuePositionData {
-  position: number | null;
+  position: number;
   estimatedWait: string;
   queueStats: {
     totalWaiting: number;
@@ -30,57 +30,85 @@ export function QueuePositionIndicator({
   );
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
-    if (!username) {
-      setIsLoading(false);
-      return;
-    }
+    if (!username) return;
+
+    let isMounted = true;
+    let timeoutId: NodeJS.Timeout;
 
     const fetchPosition = async () => {
+      if (!isMounted) return;
+
       try {
-        setError(null);
         const response = await fetch(
           `/api/queue-position?username=${encodeURIComponent(username)}`
         );
 
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
+          throw new Error(`Failed to fetch position: ${response.status}`);
         }
 
         const data = await response.json();
-        setPositionData(data);
+
+        if (isMounted) {
+          setPositionData(data);
+          setError(null);
+          setRetryCount(0);
+        }
       } catch (err) {
         console.error("Error fetching queue position:", err);
-        setError(
-          err instanceof Error ? err.message : "Failed to fetch position"
-        );
+        if (isMounted) {
+          setError("Unable to fetch queue position");
+          setRetryCount((prev) => prev + 1);
+        }
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
 
     // Initial fetch
     fetchPosition();
 
-    // Poll every 3 seconds for updates
-    const interval = setInterval(fetchPosition, 3000);
+    // Set up polling with exponential backoff on errors
+    const setupPolling = () => {
+      const baseInterval = 2000; // 2 seconds
+      const maxInterval = 10000; // 10 seconds
+      const interval = Math.min(
+        baseInterval * Math.pow(1.5, retryCount),
+        maxInterval
+      );
 
-    return () => clearInterval(interval);
-  }, [username]);
+      timeoutId = setTimeout(() => {
+        if (isMounted) {
+          fetchPosition();
+          setupPolling();
+        }
+      }, interval);
+    };
 
-  // Don't render if user is not in queue
-  if (!username || (!isLoading && !positionData?.position)) {
-    return null;
-  }
+    setupPolling();
+
+    return () => {
+      isMounted = false;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [username, retryCount]);
 
   if (isLoading) {
     return (
-      <Card className={`border border-blue-200 bg-blue-50 ${className}`}>
-        <CardContent className="p-3">
-          <div className="flex items-center justify-center text-sm text-blue-600">
-            <Clock className="w-4 h-4 mr-2 animate-spin" />
-            Checking queue position...
+      <Card className={`${className} animate-pulse`}>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-center">
+            <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            <span className="ml-2 text-sm text-gray-600">
+              Loading queue position...
+            </span>
           </div>
         </CardContent>
       </Card>
@@ -89,11 +117,11 @@ export function QueuePositionIndicator({
 
   if (error) {
     return (
-      <Card className={`border border-red-200 bg-red-50 ${className}`}>
-        <CardContent className="p-3">
-          <div className="flex items-center text-sm text-red-600">
-            <span className="w-2 h-2 bg-red-500 rounded-full mr-2"></span>
-            Unable to get queue position
+      <Card className={`${className} border-red-200 bg-red-50`}>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-center text-red-600">
+            <AlertCircle className="w-5 h-5 mr-2" />
+            <span className="text-sm">{error}</span>
           </div>
         </CardContent>
       </Card>
@@ -105,68 +133,71 @@ export function QueuePositionIndicator({
   }
 
   const { position, estimatedWait, queueStats } = positionData;
-  const isInCall = queueStats.yourState === "in_call";
-  const isWaiting = queueStats.yourState === "waiting";
+  const isPriority = queueStats.yourState === "in_call";
+  const queueLength = isPriority
+    ? queueStats.totalInCall
+    : queueStats.totalWaiting;
 
   return (
     <Card
-      className={`border ${
-        isInCall ? "border-green-200 bg-green-50" : "border-blue-200 bg-blue-50"
-      } ${className}`}
+      className={`${className} ${
+        isPriority ? "border-blue-500 bg-blue-50/50" : ""
+      } transition-all duration-300`}
     >
-      <CardContent className="p-3 space-y-2">
-        {/* Main position info */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center">
-            {isInCall ? (
-              <TrendingUp className="w-4 h-4 mr-2 text-green-600" />
-            ) : (
-              <Users className="w-4 h-4 mr-2 text-blue-600" />
-            )}
-            <span
-              className={`text-sm font-medium ${
-                isInCall ? "text-green-700" : "text-blue-700"
-              }`}
-            >
-              {position ? `Position #${position}` : "In Queue"}
-            </span>
+      <CardContent className="p-4">
+        <div className="space-y-3">
+          {/* Position Display */}
+          <div className="text-center">
+            <div className="text-3xl font-bold text-gray-800 animate-fade-in">
+              {position > 0 ? `#${position}` : "Processing..."}
+            </div>
+            <div className="text-sm text-gray-600">
+              {isPriority ? "Priority Queue" : "In Queue"}
+            </div>
           </div>
-          <span
-            className={`text-xs ${
-              isInCall ? "text-green-600" : "text-blue-600"
-            }`}
-          >
-            {isInCall ? "Priority" : "Waiting"}
-          </span>
+
+          {/* Stats Grid */}
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className="flex items-center gap-2 text-gray-600">
+              <Users className="w-4 h-4" />
+              <span>{queueLength} waiting</span>
+            </div>
+            <div className="flex items-center gap-2 text-gray-600">
+              <TrendingUp className="w-4 h-4" />
+              <span>{queueStats.activeMatches} active</span>
+            </div>
+          </div>
+
+          {/* Estimated Wait Time */}
+          <div className="flex items-center justify-center gap-2 text-sm text-gray-700">
+            <Clock className="w-4 h-4" />
+            <span className="font-medium">{estimatedWait}</span>
+          </div>
+
+          {/* Priority Badge */}
+          {isPriority && (
+            <div className="text-center">
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 animate-pulse">
+                Priority Matching
+              </span>
+            </div>
+          )}
+
+          {/* Progress Bar */}
+          {position > 0 && queueLength > 0 && (
+            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div
+                className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-500"
+                style={{
+                  width: `${Math.max(
+                    5,
+                    ((queueLength - position + 1) / queueLength) * 100
+                  )}%`,
+                }}
+              />
+            </div>
+          )}
         </div>
-
-        {/* Wait time */}
-        {estimatedWait && (
-          <div className="flex items-center text-xs text-gray-600">
-            <Clock className="w-3 h-3 mr-1" />
-            <span>{estimatedWait}</span>
-          </div>
-        )}
-
-        {/* Queue stats */}
-        <div className="flex items-center justify-between text-xs text-gray-500 pt-1 border-t border-gray-200">
-          <span>{queueStats.totalWaiting} waiting</span>
-          <span>{queueStats.totalInCall} priority</span>
-          <span>{queueStats.activeMatches} chatting</span>
-        </div>
-
-        {/* Status message */}
-        {isInCall && (
-          <div className="text-xs text-green-600 font-medium">
-            🚀 You have priority matching after skip!
-          </div>
-        )}
-
-        {isWaiting && position === 1 && (
-          <div className="text-xs text-blue-600 font-medium">
-            🎯 You&apos;re next in line!
-          </div>
-        )}
       </CardContent>
     </Card>
   );

@@ -96,6 +96,13 @@ export async function updateRoomOccupancy(
  */
 async function ensureUserInQueue(username: string, roomName: string): Promise<void> {
   try {
+    // First check if user is already matched (they might have found a match while we were processing)
+    const activeMatch = await checkUserInActiveMatch(username);
+    if (activeMatch) {
+      console.log(`User ${username} is already in an active match, not adding to queue`);
+      return;
+    }
+    
     // Check if user is already in queue
     const queueStatus = await getUserQueueStatus(username);
     
@@ -115,10 +122,17 @@ async function ensureUserInQueue(username: string, roomName: string): Promise<vo
       }
       
       // Add user to queue with 'in_call' state (high priority)
-      await addUserToQueue(username, useDemo, 'in_call', roomName);
-    } else if (queueStatus.status === 'waiting') {
-      // User is in queue but with wrong state, update to 'in_call'
-      console.log(`User ${username} is in queue as 'waiting' but should be 'in_call', updating`);
+      const result = await addUserToQueue(username, useDemo, 'in_call', roomName);
+      if (result.added) {
+        console.log(`Successfully added ${username} to queue with 'in_call' state`);
+      } else {
+        console.log(`Failed to add ${username} to queue: ${result.reason}`);
+      }
+    } else if (queueStatus.status === 'waiting' && queueStatus.roomName !== roomName) {
+      // User is in queue but with wrong state or room, update to 'in_call'
+      console.log(`User ${username} is in queue as 'waiting' but should be 'in_call' in room ${roomName}, updating`);
+      
+      // Remove and re-add with correct state
       await removeUserFromQueue(username);
       
       let useDemo = false;
@@ -132,11 +146,39 @@ async function ensureUserInQueue(username: string, roomName: string): Promise<vo
         }
       }
       
-      await addUserToQueue(username, useDemo, 'in_call', roomName);
+      const result = await addUserToQueue(username, useDemo, 'in_call', roomName);
+      if (result.added) {
+        console.log(`Successfully updated ${username} to 'in_call' state in room ${roomName}`);
+      } else {
+        console.log(`Failed to update ${username} queue state: ${result.reason}`);
+      }
+    } else if (queueStatus.status === 'in_call' && queueStatus.roomName === roomName) {
+      console.log(`User ${username} is already properly queued for room ${roomName}`);
     }
   } catch (error) {
     console.error(`Error ensuring user ${username} is in queue:`, error);
   }
+}
+
+// Helper to check if user is in an active match
+async function checkUserInActiveMatch(username: string): Promise<{ roomName: string; matchedWith: string } | null> {
+  const allMatches = await redis.hgetall(ACTIVE_MATCHES);
+  
+  for (const [roomName, matchData] of Object.entries(allMatches)) {
+    try {
+      const match = JSON.parse(matchData as string);
+      if (match.user1 === username || match.user2 === username) {
+        return {
+          roomName,
+          matchedWith: match.user1 === username ? match.user2 : match.user1
+        };
+      }
+    } catch (e) {
+      console.error('Error parsing match data:', e);
+    }
+  }
+  
+  return null;
 }
 
 /**

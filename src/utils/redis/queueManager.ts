@@ -1,6 +1,10 @@
 import redis from '../../lib/redis';
 import { MATCHING_QUEUE, ACTIVE_MATCHES, WAITING_QUEUE, IN_CALL_QUEUE } from './constants';
 import { UserQueueState, UserDataInQueue } from './types';
+import { Mutex } from 'async-mutex';
+
+// Create a mutex for queue operations to prevent race conditions
+const queueMutex = new Mutex();
 
 export async function addUserToQueue(
   username: string,
@@ -9,100 +13,156 @@ export async function addUserToQueue(
   roomName?: string,
   lastMatch?: { matchedWith: string }
 ) {
-  const now = Date.now();
+  // Acquire mutex to ensure atomic operation
+  const release = await queueMutex.acquire();
   
-  // Validate inputs to prevent negative numbers or invalid data
-  if (!username || typeof username !== 'string') {
-    console.error('Invalid username provided to addUserToQueue:', username);
-    return { username: '', added: false, state, reason: 'invalid_username' };
-  }
-  
-  if (now < 0 || !Number.isFinite(now)) {
-    console.error('Invalid timestamp generated:', now);
-    return { username, added: false, state, reason: 'invalid_timestamp' };
-  }
-  
-  // Clean up any corrupted data for this user first
-  await cleanupCorruptedUserData(username);
-  
-  // Check if user is already in queue to prevent duplicates
-  const existingUserData = await scanQueueForUser(MATCHING_QUEUE, username);
-  if (existingUserData) {
-    try {
-      const existingUser = JSON.parse(existingUserData) as UserDataInQueue;
-      // If user is already in queue with same or better state, don't add again
-      if (existingUser.state === state || 
-          (existingUser.state === 'in_call' && state === 'waiting')) {
-        console.log(`User ${username} already in queue with state '${existingUser.state}', skipping add of '${state}'`);
-        return { username, added: false, state: existingUser.state, reason: 'already_in_queue' };
-      }
-      // Remove existing entry if we're upgrading the state
-      console.log(`Removing existing ${username} (${existingUser.state}) to upgrade to ${state}`);
-      await redis.zrem(MATCHING_QUEUE, existingUserData);
-    } catch (e) {
-      console.error('Error parsing existing user data:', e);
-      // Remove corrupted entry
-      await redis.zrem(MATCHING_QUEUE, existingUserData);
+  try {
+    const now = Date.now();
+    
+    // Validate inputs to prevent negative numbers or invalid data
+    if (!username || typeof username !== 'string') {
+      console.error('Invalid username provided to addUserToQueue:', username);
+      return { username: '', added: false, state, reason: 'invalid_username' };
     }
-  }
-  
-  // Construct user data using the new structure
-  const userData: UserDataInQueue = {
-    username,
-    useDemo,
-    state,
-    roomName,
-    joinedAt: now,
-    lastMatch: lastMatch ? {
-      matchedWith: lastMatch.matchedWith,
-      timestamp: now
-    } : undefined
-  };
+    
+    if (now < 0 || !Number.isFinite(now)) {
+      console.error('Invalid timestamp generated:', now);
+      return { username, added: false, state, reason: 'invalid_timestamp' };
+    }
+    
+    // Clean up any corrupted data for this user first
+    await cleanupCorruptedUserData(username);
+    
+    // Check if user is already in queue to prevent duplicates
+    const existingUserData = await scanQueueForUser(MATCHING_QUEUE, username);
+    if (existingUserData) {
+      try {
+        const existingUser = JSON.parse(existingUserData) as UserDataInQueue;
+        // If user is already in queue with same state, just update timestamp
+        if (existingUser.state === state && existingUser.roomName === roomName) {
+          console.log(`User ${username} already in queue with same state '${state}', not duplicating`);
+          return { username, added: false, state: existingUser.state, reason: 'already_in_queue_same_state' };
+        }
+        // If user is in 'in_call' state and we're trying to add as 'waiting', skip
+        if (existingUser.state === 'in_call' && state === 'waiting') {
+          console.log(`User ${username} is in 'in_call' state, not downgrading to 'waiting'`);
+          return { username, added: false, state: existingUser.state, reason: 'already_in_better_state' };
+        }
+        // Remove existing entry to update with new state
+        console.log(`Updating ${username} from ${existingUser.state} to ${state}`);
+        await redis.zrem(MATCHING_QUEUE, existingUserData);
+      } catch (e) {
+        console.error('Error parsing existing user data:', e);
+        // Remove corrupted entry
+        await redis.zrem(MATCHING_QUEUE, existingUserData);
+      }
+    }
+    
+    // Also check if user is in an active match
+    const activeMatch = await checkUserInActiveMatch(username);
+    if (activeMatch) {
+      console.log(`User ${username} is already in an active match in room ${activeMatch.roomName}, not adding to queue`);
+      return { username, added: false, state: 'matched', reason: 'already_matched' };
+    }
+    
+    // Construct user data using the new structure
+    const userData: UserDataInQueue = {
+      username,
+      useDemo,
+      state,
+      roomName,
+      joinedAt: now,
+      lastMatch: lastMatch ? {
+        matchedWith: lastMatch.matchedWith,
+        timestamp: now
+      } : undefined
+    };
 
-  // Remove user from any queue they might be in (both new and legacy queues)
-  const wasRemoved = await removeUserFromQueue(username);
-  if (wasRemoved) {
-    console.log(`Removed ${username} from existing queue before re-adding with new state`);
-  }
+    // Remove user from any legacy queues they might be in
+    await removeUserFromLegacyQueues(username);
 
-  // Add to the new unified queue using timestamp as score (FIFO ordering)
-  const userDataString = JSON.stringify(userData);
-  await redis.zadd(MATCHING_QUEUE, now, userDataString);
-  
-  console.log(`Added ${username} to matching queue with state '${state}' at timestamp ${now}`);
-  
-  return { username, added: true, state };
+    // Add to the new unified queue using timestamp as score (FIFO ordering)
+    const userDataString = JSON.stringify(userData);
+    await redis.zadd(MATCHING_QUEUE, now, userDataString);
+    
+    console.log(`Successfully added ${username} to matching queue with state '${state}' at timestamp ${now}`);
+    
+    return { username, added: true, state };
+  } finally {
+    release();
+  }
 }
 
 export async function removeUserFromQueue(username: string) {
-  let removed = false;
+  // Acquire mutex to ensure atomic operation
+  const release = await queueMutex.acquire();
   
-  // Check the new unified queue
-  const result = await scanQueueForUser(MATCHING_QUEUE, username);
-  if (result) {
-    await redis.zrem(MATCHING_QUEUE, result);
-    removed = true;
+  try {
+    let removed = false;
+    
+    // Check the new unified queue
+    const result = await scanQueueForUser(MATCHING_QUEUE, username);
+    if (result) {
+      await redis.zrem(MATCHING_QUEUE, result);
+      removed = true;
+    }
+    
+    // For backward compatibility - also check legacy queues
+    const result1 = await scanQueueForUser(WAITING_QUEUE, username);
+    const result2 = await scanQueueForUser(IN_CALL_QUEUE, username);
+    
+    if (result1) {
+      await redis.zrem(WAITING_QUEUE, result1);
+      removed = true;
+    }
+    
+    if (result2) {
+      await redis.zrem(IN_CALL_QUEUE, result2);
+      removed = true;
+    }
+    
+    if (removed) {
+      console.log(`Successfully removed ${username} from queue system`);
+    }
+    
+    return removed;
+  } finally {
+    release();
+  }
+}
+
+// Helper to check if user is in an active match
+async function checkUserInActiveMatch(username: string): Promise<{ roomName: string; matchedWith: string } | null> {
+  const allMatches = await redis.hgetall(ACTIVE_MATCHES);
+  
+  for (const [roomName, matchData] of Object.entries(allMatches)) {
+    try {
+      const match = JSON.parse(matchData as string);
+      if (match.user1 === username || match.user2 === username) {
+        return {
+          roomName,
+          matchedWith: match.user1 === username ? match.user2 : match.user1
+        };
+      }
+    } catch (e) {
+      console.error('Error parsing match data:', e);
+    }
   }
   
-  // For backward compatibility - also check legacy queues
-  const result1 = await scanQueueForUser(WAITING_QUEUE, username);
-  const result2 = await scanQueueForUser(IN_CALL_QUEUE, username);
+  return null;
+}
+
+// Helper to remove user from legacy queues
+async function removeUserFromLegacyQueues(username: string): Promise<void> {
+  const legacyQueues = [WAITING_QUEUE, IN_CALL_QUEUE];
   
-  if (result1) {
-    await redis.zrem(WAITING_QUEUE, result1);
-    removed = true;
+  for (const queueKey of legacyQueues) {
+    const userData = await scanQueueForUser(queueKey, username);
+    if (userData) {
+      await redis.zrem(queueKey, userData);
+      console.log(`Removed ${username} from legacy queue ${queueKey}`);
+    }
   }
-  
-  if (result2) {
-    await redis.zrem(IN_CALL_QUEUE, result2);
-    removed = true;
-  }
-  
-  if (removed) {
-    console.log(`Removed ${username} from queue system`);
-  }
-  
-  return removed;
 }
 
 // Helper to find user data in a queue

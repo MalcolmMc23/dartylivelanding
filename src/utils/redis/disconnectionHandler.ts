@@ -200,7 +200,7 @@ export async function handleUserSkip(username: string, roomName: string, otherUs
     
     console.log(`User ${username} skipped. Both users will be put back into queue: ${username} and ${otherUser}`);
     
-    // Remove the match from active matches since both users are leaving
+    // Remove the match from active matches FIRST to prevent race conditions
     await redis.hdel(ACTIVE_MATCHES, roomName);
     
     // Remove both users from any existing queues to start fresh
@@ -215,21 +215,28 @@ export async function handleUserSkip(username: string, roomName: string, otherUs
     }
     
     // Add both users back to the queue with normal priority
-    await addUserToQueue(
-      username,
-      match.useDemo,
-      'waiting', // Normal priority
-      undefined // Let them get new room assignments
-    );
+    // Use Promise.all to add both users simultaneously
+    const queuePromises = [
+      addUserToQueue(
+        username,
+        match.useDemo,
+        'waiting', // Normal priority
+        undefined // Let them get new room assignments
+      )
+    ];
     
     if (otherUser) {
-      await addUserToQueue(
-        otherUser,
-        match.useDemo,
-        'waiting', // Normal priority  
-        undefined // Let them get new room assignments
+      queuePromises.push(
+        addUserToQueue(
+          otherUser,
+          match.useDemo,
+          'waiting', // Normal priority  
+          undefined // Let them get new room assignments
+        )
       );
     }
+    
+    await Promise.all(queuePromises);
     
     // Clean up any left-behind states
     await redis.del(`${LEFT_BEHIND_PREFIX}${username}`);
@@ -237,15 +244,18 @@ export async function handleUserSkip(username: string, roomName: string, otherUs
       await redis.del(`${LEFT_BEHIND_PREFIX}${otherUser}`);
     }
     
+    console.log(`Skip completed: both users (${username} and ${otherUser}) are back in queue`);
+    
     return {
-      status: 'both_users_requeued',
+      status: 'skipped',
       skippingUser: username,
       otherUser: otherUser,
-      message: 'Both users have been put back into the queue'
+      message: 'Both users have been put back into the queue',
+      users: [match.user1, match.user2]
     };
   } catch (e) {
-    console.error('Error processing user skip:', e);
-    return { status: 'error', error: String(e), remainingUser: otherUsername };
+    console.error('Error processing skip:', e);
+    return { status: 'error', error: String(e), otherUser: otherUsername };
   }
 }
 
@@ -272,7 +282,7 @@ export async function handleSessionEnd(username: string, roomName: string, other
     
     console.log(`User ${username} ended the call. ${username} goes to main screen, ${otherUser} goes back to queue`);
     
-    // Remove the match from active matches
+    // Remove the match from active matches FIRST
     await redis.hdel(ACTIVE_MATCHES, roomName);
     
     // Remove both users from any existing queues first
@@ -284,13 +294,13 @@ export async function handleSessionEnd(username: string, roomName: string, other
     // Clean up left-behind state for the user who ended the call
     await redis.del(`${LEFT_BEHIND_PREFIX}${username}`);
     
-    // Clear any cooldowns between these users
+    // Clear any cooldowns between these users (they can match again if they want)
     if (otherUser) {
       await clearCooldown(username, otherUser);
       await clearCooldown(otherUser, username);
     }
     
-    // Put the OTHER user back into the queue (not the one who ended the call)
+    // Put ONLY the OTHER user back into the queue (not the one who ended the call)
     if (otherUser) {
       await addUserToQueue(
         otherUser,
@@ -298,6 +308,9 @@ export async function handleSessionEnd(username: string, roomName: string, other
         'waiting', // Normal priority
         undefined // Let them get a new room assignment
       );
+      
+      // Clean up left-behind state for the other user too
+      await redis.del(`${LEFT_BEHIND_PREFIX}${otherUser}`);
       
       console.log(`${otherUser} has been added back to the queue after ${username} ended the call`);
     }
