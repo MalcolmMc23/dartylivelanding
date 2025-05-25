@@ -3,19 +3,24 @@ import { ACTIVE_MATCHES, LEFT_BEHIND_PREFIX } from './constants';
 import { generateUniqueRoomName } from './roomManager';
 import { addUserToQueue, removeUserFromQueue } from './queueManager';
 import { findMatchForUser } from './matchingService';
+import { clearCooldown, recordSkip } from './rematchCooldown';
+import { ActiveMatch } from './types';
+import { updateUserSkipStats, getUserSkipStats } from './skipStatsManager';
 
 // Handle user disconnection
 export async function handleUserDisconnection(username: string, roomName: string, otherUsername?: string) {
   // Get match data
-  const matchData = await redis.hget(ACTIVE_MATCHES, roomName);
+  const matchDataString = await redis.hget(ACTIVE_MATCHES, roomName);
   
-  if (!matchData) {
+  if (!matchDataString) {
     console.log(`No active match found for room ${roomName}`);
+    // If no match found, just clean up the user from any queues
+    await removeUserFromQueue(username);
     return { status: 'no_match_found' };
   }
   
   try {
-    const match = JSON.parse(matchData as string);
+    const match = JSON.parse(matchDataString as string) as ActiveMatch;
     
     // Determine who was left behind
     let leftBehindUser = otherUsername;
@@ -25,37 +30,72 @@ export async function handleUserDisconnection(username: string, roomName: string
     
     console.log(`User ${username} disconnected from ${roomName}. Left-behind user: ${leftBehindUser}`);
     
-    // Check if we already have a left-behind record for this user
+    // Calculate call duration
+    const callEndTime = Date.now();
+    const callDurationMs = callEndTime - match.matchedAt;
+
+    // Get current skip stats for both users before updating
+    const [disconnectingUserStats, leftBehindUserStats] = await Promise.all([
+      getUserSkipStats(username),
+      leftBehindUser ? getUserSkipStats(leftBehindUser) : Promise.resolve(null)
+    ]);
+
+    // Log current skip ratings
+    console.log('=== Skip Ratings Before Update ===');
+    console.log(`User ${username}:`, {
+      averageSkipTime: disconnectingUserStats?.averageSkipTime || 0,
+      totalSkips: disconnectingUserStats?.totalSkipsInvolved || 0,
+      totalInteractionTime: disconnectingUserStats?.totalInteractionTimeWithSkips || 0
+    });
     if (leftBehindUser) {
-      const leftBehindKey = `${LEFT_BEHIND_PREFIX}${leftBehindUser}`;
-      const existingLeftBehindData = await redis.get(leftBehindKey);
-      
-      // If the user is already marked as left-behind in this room, prevent double processing
-      if (existingLeftBehindData) {
-        try {
-          const leftBehindState = JSON.parse(existingLeftBehindData);
-          
-          // If this is the same room and the user being disconnected is actually the one who was 
-          // previously left behind (might happen if the client fires disconnection events incorrectly)
-          if (leftBehindState.previousRoom === roomName && username === leftBehindUser) {
-            console.log(`WARNING: User ${username} appears to be the left-behind user that was already processed. Skipping duplicate disconnection.`);
-            return {
-              status: 'already_processed',
-              leftBehindUser,
-              users: [match.user1, match.user2]
-            };
-          }
-        } catch (e) {
-          console.error('Error parsing left-behind data:', e);
-        }
+      console.log(`User ${leftBehindUser}:`, {
+        averageSkipTime: leftBehindUserStats?.averageSkipTime || 0,
+        totalSkips: leftBehindUserStats?.totalSkipsInvolved || 0,
+        totalInteractionTime: leftBehindUserStats?.totalInteractionTimeWithSkips || 0
+      });
+    }
+
+    // Update skip stats for both users involved if duration is valid
+    if (callDurationMs >= 0) {
+      if (username) {
+        await updateUserSkipStats(username, callDurationMs);
       }
+      if (leftBehindUser) {
+        await updateUserSkipStats(leftBehindUser, callDurationMs);
+      }
+
+      // Get updated stats after the update
+      const [updatedDisconnectingUserStats, updatedLeftBehindUserStats] = await Promise.all([
+        getUserSkipStats(username),
+        leftBehindUser ? getUserSkipStats(leftBehindUser) : Promise.resolve(null)
+      ]);
+
+      // Log updated skip ratings
+      console.log('=== Skip Ratings After Update ===');
+      console.log(`User ${username}:`, {
+        averageSkipTime: updatedDisconnectingUserStats?.averageSkipTime || 0,
+        totalSkips: updatedDisconnectingUserStats?.totalSkipsInvolved || 0,
+        totalInteractionTime: updatedDisconnectingUserStats?.totalInteractionTimeWithSkips || 0
+      });
+      if (leftBehindUser && updatedLeftBehindUserStats) {
+        console.log(`User ${leftBehindUser}:`, {
+          averageSkipTime: updatedLeftBehindUserStats?.averageSkipTime || 0,
+          totalSkips: updatedLeftBehindUserStats?.totalSkipsInvolved || 0,
+          totalInteractionTime: updatedLeftBehindUserStats?.totalInteractionTimeWithSkips || 0
+        });
+      }
+    } else {
+      console.warn(`Negative or invalid call duration (${callDurationMs}ms) for room ${roomName}. Stats not updated.`);
     }
     
     // Remove match from active matches
     await redis.hdel(ACTIVE_MATCHES, roomName);
     
+    // Clean up the disconnecting user from any queues
+    await removeUserFromQueue(username);
+    
     if (leftBehindUser) {
-      // Handle the left-behind user with our dedicated function
+      // Handle the left-behind user with simplified logic
       const result = await handleLeftBehindUser(
         leftBehindUser,
         roomName,
@@ -70,20 +110,24 @@ export async function handleUserDisconnection(username: string, roomName: string
         newRoomName: result.newRoomName,
         immediateMatch: result.immediateMatch
       };
+    } else {
+      // No other user - just a solo disconnection
+      console.log(`User ${username} was alone in room ${roomName}, cleaning up`);
+      return {
+        status: 'disconnected_solo',
+        leftBehindUser: null,
+        users: [match.user1, match.user2]
+      };
     }
-    
-    return {
-      status: 'disconnected',
-      leftBehindUser,
-      users: [match.user1, match.user2]
-    };
   } catch (e) {
     console.error('Error processing match data:', e);
+    // Clean up the user from any queues in case of error
+    await removeUserFromQueue(username);
     return { status: 'error', error: String(e) };
   }
 }
 
-// Handle left-behind user state and matching
+// Simplified left-behind user handling
 export async function handleLeftBehindUser(
   leftBehindUser: string, 
   previousRoomName: string, 
@@ -100,25 +144,17 @@ export async function handleLeftBehindUser(
 }> {
   console.log(`Handling left-behind user ${leftBehindUser} after ${disconnectedUser} disconnected`);
   
-  // 1. Ensure the user is removed from any existing queue
+  // 1. Clear any cooldown between these users to allow immediate rematch
+  await clearCooldown(leftBehindUser, disconnectedUser);
+  
+  // 2. Remove user from any existing queue to start fresh
   await removeUserFromQueue(leftBehindUser);
   
-  // 2. Generate a brand new room name
+  // 3. Generate a new room name for potential matches
   const newRoomName = await generateUniqueRoomName();
   
-  // 3. Store the user's state in a temporary record to ensure consistency
-  const leftBehindState: {
-    username: string;
-    previousRoom: string;
-    disconnectedFrom: string;
-    newRoomName: string;
-    timestamp: number;
-    processed: boolean;
-    matchedWith?: string;
-    matchRoom?: string;
-    inQueue?: boolean;
-    queueTime?: number;
-  } = {
+  // 4. Store simplified left-behind state (short expiry, minimal data)
+  const leftBehindState = {
     username: leftBehindUser,
     previousRoom: previousRoomName,
     disconnectedFrom: disconnectedUser,
@@ -127,15 +163,14 @@ export async function handleLeftBehindUser(
     processed: false
   };
   
-  // Use a unique and consistent key pattern
   await redis.set(
     `${LEFT_BEHIND_PREFIX}${leftBehindUser}`, 
     JSON.stringify(leftBehindState),
     'EX', 
-    300 // 5 minute expiry
+    120 // 2 minute expiry (reduced from 5 minutes)
   );
   
-  // 4. Try to find an immediate match with much simpler logic
+  // 5. Try to find an immediate match (simplified attempt)
   try {
     const matchResult = await findMatchForUser(
       leftBehindUser,
@@ -143,18 +178,18 @@ export async function handleLeftBehindUser(
       disconnectedUser // Don't match with the user who just left
     );
     
-    if (matchResult.status === 'matched') {
+    if (matchResult.status === 'matched' && 
+        'roomName' in matchResult && 
+        'matchedWith' in matchResult) {
       console.log(`Found immediate match for left-behind user ${leftBehindUser} with ${matchResult.matchedWith}`);
       
-      // If matched, update the state to record this
+      // Update state to record the match
       leftBehindState.processed = true;
-      leftBehindState.matchedWith = matchResult.matchedWith;
-      leftBehindState.matchRoom = matchResult.roomName;
       await redis.set(
         `${LEFT_BEHIND_PREFIX}${leftBehindUser}`, 
         JSON.stringify(leftBehindState),
         'EX', 
-        300
+        60 // 1 minute expiry for processed state
       );
       
       return {
@@ -167,27 +202,15 @@ export async function handleLeftBehindUser(
     console.error(`Error finding immediate match for ${leftBehindUser}:`, error);
   }
   
-  // 5. If no immediate match, add to queue with special priority
+  // 6. If no immediate match, add to queue with high priority
   try {
-    console.log(`No immediate match found for ${leftBehindUser}, adding to in-call queue with room ${newRoomName}`);
+    console.log(`No immediate match found for ${leftBehindUser}, adding to high-priority queue in room ${newRoomName}`);
     
-    // Update state to show they're in queue
-    leftBehindState.inQueue = true;
-    leftBehindState.queueTime = Date.now();
-    await redis.set(
-      `${LEFT_BEHIND_PREFIX}${leftBehindUser}`, 
-      JSON.stringify(leftBehindState),
-      'EX', 
-      300
-    );
-    
-    // Add to the in-call queue with high priority
     await addUserToQueue(
       leftBehindUser,
       useDemo,
-      true, // in-call flag
-      newRoomName,
-      { matchedWith: disconnectedUser }
+      'in_call', // High priority state
+      newRoomName
     );
     
     return {
@@ -200,26 +223,200 @@ export async function handleLeftBehindUser(
   }
 }
 
-// Confirm user rematch
+// Simplified rematch confirmation
 export async function confirmUserRematch(username: string, matchRoom: string, matchedWith: string) {
   const key = `${LEFT_BEHIND_PREFIX}${username}`;
   try {
     const existingData = await redis.get(key);
     if (existingData) {
+      // Simply mark as processed and set short expiry
       const leftBehindState = JSON.parse(existingData);
       leftBehindState.processed = true;
       leftBehindState.matchRoom = matchRoom;
       leftBehindState.matchedWith = matchedWith;
       leftBehindState.timestamp = Date.now();
-      // Update the key with the new state, defaulting to 5 min expiry like in handleLeftBehindUser
-      await redis.set(key, JSON.stringify(leftBehindState), 'EX', 300);
+      
+      await redis.set(key, JSON.stringify(leftBehindState), 'EX', 60); // 1 minute expiry
       console.log(`Confirmed rematch for ${username} in ${matchRoom}, updated left_behind state.`);
     } else {
-      // If no existing left_behind key, maybe it expired or was never set for this rematch flow.
-      // This is fine, nothing to update at this point. Could be logged if becomes an issue.
       console.log(`No existing left_behind state found for ${username} upon confirming rematch. This might be okay if key expired or was cleared.`);
     }
   } catch (error) {
     console.error(`Error confirming rematch for ${username}:`, error);
+  }
+}
+
+// Handle user skip (SKIP button) - both users go back to queue
+export async function handleUserSkip(username: string, roomName: string, otherUsername?: string) {
+  console.log(`Handling user skip: ${username} leaving room ${roomName}, other user: ${otherUsername}`);
+  
+  // Get match data
+  const matchData = await redis.hget(ACTIVE_MATCHES, roomName);
+  
+  if (!matchData) {
+    console.log(`No active match found for room ${roomName}`);
+    // Clean up the user from any queues even if no match found
+    await removeUserFromQueue(username);
+    return { status: 'no_match_found', remainingUser: otherUsername };
+  }
+  
+  try {
+    const match = JSON.parse(matchData as string);
+    
+    // Determine the other user
+    let otherUser = otherUsername;
+    if (!otherUser) {
+      otherUser = match.user1 === username ? match.user2 : match.user1;
+    }
+    
+    // Remove the match from active matches since both users are leaving
+    await redis.hdel(ACTIVE_MATCHES, roomName);
+    
+    // Remove both users from any existing queues to start fresh
+    await removeUserFromQueue(username);
+    if (otherUser) {
+      await removeUserFromQueue(otherUser);
+    }
+    
+    if (otherUser) {
+      console.log(`User ${username} skipped. Both users will be put back into queue: ${username} and ${otherUser}`);
+      
+      // Record a skip cooldown between these users to prevent immediate re-matching
+      await recordSkip(username, otherUser, 5); // 5 minute cooldown
+      
+      // Add both users back to the queue with normal priority
+      await addUserToQueue(
+        username,
+        match.useDemo,
+        'waiting', // Normal priority
+        undefined // Let them get new room assignments
+      );
+      
+      await addUserToQueue(
+        otherUser,
+        match.useDemo,
+        'waiting', // Normal priority  
+        undefined // Let them get new room assignments
+      );
+      
+      // Clean up any left-behind states
+      await redis.del(`${LEFT_BEHIND_PREFIX}${username}`);
+      await redis.del(`${LEFT_BEHIND_PREFIX}${otherUser}`);
+      
+      return {
+        status: 'both_users_requeued',
+        skippingUser: username,
+        otherUser: otherUser,
+        message: 'Both users have been put back into the queue'
+      };
+    } else {
+      console.log(`User ${username} skipped but was alone in room ${roomName}. Adding back to queue.`);
+      
+      // Add only the skipping user back to the queue
+      await addUserToQueue(
+        username,
+        match.useDemo,
+        'waiting', // Normal priority
+        undefined // Let them get new room assignments
+      );
+      
+      // Clean up any left-behind states
+      await redis.del(`${LEFT_BEHIND_PREFIX}${username}`);
+      
+      return {
+        status: 'solo_user_requeued',
+        skippingUser: username,
+        otherUser: null,
+        message: 'User was alone and has been put back into the queue'
+      };
+    }
+  } catch (e) {
+    console.error('Error processing user skip:', e);
+    // Clean up the user from any queues in case of error
+    await removeUserFromQueue(username);
+    return { status: 'error', error: String(e), remainingUser: otherUsername };
+  }
+}
+
+// Handle session end (END CALL button) - user who clicked goes to main screen, other user goes to queue
+export async function handleSessionEnd(username: string, roomName: string, otherUsername?: string) {
+  console.log(`Handling session end: ${username} ending call in room ${roomName}, other user: ${otherUsername}`);
+  
+  // Get match data
+  const matchData = await redis.hget(ACTIVE_MATCHES, roomName);
+  
+  if (!matchData) {
+    console.log(`No active match found for room ${roomName}`);
+    // Clean up the user from any queues even if no match found
+    await removeUserFromQueue(username);
+    return { status: 'no_match_found' };
+  }
+  
+  try {
+    const match = JSON.parse(matchData as string);
+    
+    // Determine the other user
+    let otherUser = otherUsername;
+    if (!otherUser) {
+      otherUser = match.user1 === username ? match.user2 : match.user1;
+    }
+    
+    // Remove the match from active matches
+    await redis.hdel(ACTIVE_MATCHES, roomName);
+    
+    // Remove both users from any existing queues first
+    await removeUserFromQueue(username);
+    if (otherUser) {
+      await removeUserFromQueue(otherUser);
+    }
+    
+    // Clean up left-behind state for the user who ended the call
+    await redis.del(`${LEFT_BEHIND_PREFIX}${username}`);
+    
+    if (otherUser) {
+      console.log(`User ${username} ended the call. ${username} goes to main screen, ${otherUser} goes back to queue`);
+      
+      // Clear any cooldowns between these users
+      await clearCooldown(username, otherUser);
+      await clearCooldown(otherUser, username);
+      
+      // Put the OTHER user back into the queue (not the one who ended the call)
+      await addUserToQueue(
+        otherUser,
+        match.useDemo,
+        'waiting', // Normal priority
+        undefined // Let them get a new room assignment
+      );
+      
+      console.log(`${otherUser} has been added back to the queue after ${username} ended the call`);
+      
+      return {
+        status: 'session_ended',
+        endedBy: username,
+        otherUser: otherUser,
+        otherUserRequeued: true,
+        message: `${username} ended the call and returned to main screen. ${otherUser} was put back in queue.`,
+        users: [match.user1, match.user2]
+      };
+    } else {
+      console.log(`User ${username} ended the call but was alone in room ${roomName}. Going to main screen.`);
+      
+      // Note: The user who clicked END (username) is NOT put back in queue
+      // They will go to the main screen and can manually choose to find a new match
+      
+      return {
+        status: 'session_ended_solo',
+        endedBy: username,
+        otherUser: null,
+        otherUserRequeued: false,
+        message: `${username} ended the call and returned to main screen. No other user was present.`,
+        users: [match.user1, match.user2]
+      };
+    }
+  } catch (e) {
+    console.error('Error processing session end:', e);
+    // Clean up the user from any queues in case of error
+    await removeUserFromQueue(username);
+    return { status: 'error', error: String(e) };
   }
 } 

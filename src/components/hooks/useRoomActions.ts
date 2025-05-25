@@ -21,9 +21,9 @@ export function useRoomActions({ username, roomName }: UseRoomActionsProps) {
     resetNavigationState();
   }, []);
 
-  // Handle leaving the call to return to the search screen
+  // Handle leaving the call to return to the search screen (SKIP)
   const handleLeaveCall = useCallback(async () => {
-    console.log("Leave call initiated, redirecting state:", isRedirecting);
+    console.log("Leave call (SKIP) initiated, redirecting state:", isRedirecting);
 
     // If already redirecting or navigation occurred, do nothing
     if (isRedirecting || navigationOccurred.current) {
@@ -38,32 +38,46 @@ export function useRoomActions({ username, roomName }: UseRoomActionsProps) {
     navigationOccurred.current = true;
 
     console.log(
-      "Leave call proceeding, returning to search screen with reset flag"
+      "Leave call proceeding, both users will be put back into queue"
     );
 
-    // Disconnect from the current room
     if (room) {
       // Get the other participant's identity before leaving
       let otherParticipantIdentity: string | undefined;
-      if (room.remoteParticipants.size === 1) {
-        // There should be only one remote participant in a 1:1 call
+      const remoteParticipantCount = room.remoteParticipants.size;
+      
+      console.log(`Remote participants count: ${remoteParticipantCount}`);
+      
+      if (remoteParticipantCount === 1) {
+        // There is exactly one remote participant in a 1:1 call
         otherParticipantIdentity = Array.from(
           room.remoteParticipants.values()
         )[0].identity;
         console.log(`Found other participant: ${otherParticipantIdentity}`);
+      } else if (remoteParticipantCount === 0) {
+        // User is alone in the call
+        console.log("User is alone in the call - no other participants");
+        otherParticipantIdentity = undefined;
+      } else {
+        // More than 1 remote participant (shouldn't happen in 1:1 calls)
+        console.warn(`Unexpected participant count: ${remoteParticipantCount}`);
+        otherParticipantIdentity = Array.from(
+          room.remoteParticipants.values()
+        )[0].identity;
       }
 
-      // Use the disconnection service
       try {
+        // First notify the backend about the skip (both users will be requeued)
         await handleDisconnection({
           username,
           roomName,
           otherUsername: otherParticipantIdentity,
-          reason: "user_left",
+          reason: "user_left", // This indicates a skip scenario
           router,
+          preventAutoMatch: false, // Allow auto-match after skip since user goes back to queue
         });
 
-        // Disconnect from the current room
+        // Then disconnect from the LiveKit room
         room.disconnect();
       } catch (e) {
         console.error("Error initiating leave call:", e);
@@ -72,12 +86,13 @@ export function useRoomActions({ username, roomName }: UseRoomActionsProps) {
         const url = new URL("/video-chat", window.location.origin);
         url.searchParams.set("reset", "true");
         url.searchParams.set("username", username);
+        url.searchParams.set("autoMatch", "true"); // Auto-match after skip
         router.push(url.toString());
       }
     }
   }, [room, username, roomName, router, isRedirecting]);
 
-  // Handle ending the call completely and returning to the initial page
+  // Handle ending the call completely and returning to the initial page (END CALL)
   const handleEndCall = useCallback(async () => {
     console.log("End call initiated, redirecting state:", isRedirecting);
 
@@ -92,12 +107,28 @@ export function useRoomActions({ username, roomName }: UseRoomActionsProps) {
     navigationOccurred.current = true;
 
     console.log(
-      "End call proceeding, returning to initial page with reset flag"
+      "End call proceeding, user goes to main screen, other user goes to queue"
     );
 
     if (room) {
       let otherParticipantIdentity: string | undefined;
-      if (room.remoteParticipants.size === 1) {
+      const remoteParticipantCount = room.remoteParticipants.size;
+      
+      console.log(`Remote participants count: ${remoteParticipantCount}`);
+      
+      if (remoteParticipantCount === 1) {
+        // There is exactly one remote participant
+        otherParticipantIdentity = Array.from(
+          room.remoteParticipants.values()
+        )[0].identity;
+        console.log(`Found other participant: ${otherParticipantIdentity}`);
+      } else if (remoteParticipantCount === 0) {
+        // User is alone in the call
+        console.log("User is alone in the call - no other participants");
+        otherParticipantIdentity = undefined;
+      } else {
+        // More than 1 remote participant (shouldn't happen in 1:1 calls)
+        console.warn(`Unexpected participant count: ${remoteParticipantCount}`);
         otherParticipantIdentity = Array.from(
           room.remoteParticipants.values()
         )[0].identity;
@@ -118,20 +149,20 @@ export function useRoomActions({ username, roomName }: UseRoomActionsProps) {
           console.log("Successfully cancelled match/queue");
         }
 
-        // 2. Disconnect from the LiveKit room
-        if (room.state !== "disconnected") {
-          room.disconnect();
-        }
-
-        // 3. Notify the backend and handle navigation via disconnectionService
+        // 2. Notify the backend about the session end (user who clicked END goes to main, other goes to queue)
         await handleDisconnection({
           username,
           roomName,
           otherUsername: otherParticipantIdentity,
-          reason: "user_left",
+          reason: "session_end", // This indicates an end call scenario
           router,
-          preventAutoMatch: true,
+          preventAutoMatch: true, // Don't auto-match the user who clicked END
         });
+
+        // 3. Disconnect from the LiveKit room
+        if (room.state !== "disconnected") {
+          room.disconnect();
+        }
       } catch (e) {
         console.error("Error ending call:", e);
         // Fallback: attempt to disconnect and navigate manually if handleDisconnection fails

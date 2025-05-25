@@ -1,7 +1,7 @@
 import { AccessToken } from 'livekit-server-sdk';
 import { NextRequest, NextResponse } from 'next/server';
 import { RoomServiceClient } from 'livekit-server-sdk';
-import * as hybridMatchingService from '@/utils/hybridMatchingService';
+import { verifyUserRoomAccess } from '@/utils/redis/roomVerificationService';
 
 // Track room participant counts in memory (for development)
 // In production, this should use a database or Redis
@@ -95,51 +95,22 @@ export async function GET(request: NextRequest) {
     // First, remove the user from any existing room tracking
     // This ensures we don't have ghost entries
     removeUserFromRoomTracking(username);
-    
-    let isAuthorized = false;
 
-    // Check if this room exists in the matching system
-    // We do this primarily to validate the user has permission to join
-    if (!initialMatching) {
-      const matchStatus = await hybridMatchingService.getRoomInfo(room);
+    // Verify user has access to this room through the match system
+    const roomAccess = await verifyUserRoomAccess(username, room);
+    
+    if (!roomAccess.authorized) {
+      console.log(`User ${username} not authorized for room ${room}: ${roomAccess.reason}`);
       
-      if (matchStatus && matchStatus.isActive && matchStatus.users) {
-        const allowedUsers = matchStatus.users;
-        
-        // If user is not one of the allowed users for this room, reject
-        if (!allowedUsers.includes(username)) {
-          console.log(`Rejecting ${username}, not an allowed user for room ${room}`);
-          console.log(`Allowed users:`, allowedUsers);
-          return NextResponse.json(
-            { error: 'You are not authorized to join this room' },
-            { status: 403 }
-          );
-        }
-        
-        console.log(`User ${username} is authorized for room ${room} (in active match)`);
-        isAuthorized = true;
-      } else {
-        // Look up the user in the waiting and in-call queues to check if they should be allowed
-        const userStatus = await hybridMatchingService.getWaitingQueueStatus(username);
-        
-        if (userStatus && userStatus.status === 'matched' && userStatus.roomName === room) {
-          console.log(`User ${username} is authorized via matching status for room ${room}`);
-          isAuthorized = true;
-        } else if (userStatus && userStatus.status === 'waiting') {
-          // For users in waiting state, we need to be more lenient
-          console.log(`User ${username} is in waiting state for room ${room}, allowing`);
-          isAuthorized = true;
-        }
-      }
-      
-      // If still not authorized after all checks, reject
-      if (!isAuthorized && !initialMatching) {
-        console.log(`User ${username} not authorized for room ${room}, rejecting`);
+      // Check if this is an initial matching scenario
+      if (!initialMatching) {
         return NextResponse.json(
-          { error: 'You are not authorized to join this room' },
+          { error: roomAccess.reason || 'You are not authorized to join this room' },
           { status: 403 }
         );
       }
+    } else {
+      console.log(`User ${username} authorized for room ${room}, matched with ${roomAccess.matchedWith}`);
     }
 
     // Initialize room participants tracking if needed

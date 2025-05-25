@@ -12,8 +12,9 @@ export async function acquireMatchLock(lockId: string, expiry = LOCK_EXPIRY): Pr
     const result = await redis.set(MATCH_LOCK_KEY, lockId, 'EX', expiry, 'NX');
     if (result === "OK") {
       // Store timestamp when lock was acquired
-      await redis.set(`${MATCH_LOCK_KEY}:time`, Date.now().toString(), 'EX', expiry + 5);
-      console.log(`Lock ${lockId} acquired on first attempt`);
+      const acquiredTime = Date.now();
+      await redis.set(`${MATCH_LOCK_KEY}:time`, acquiredTime.toString(), 'EX', expiry + 5);
+      console.log(`Lock ${lockId} acquired on first attempt. Took ${acquiredTime - startTime}ms.`);
       return true;
     }
     
@@ -22,7 +23,7 @@ export async function acquireMatchLock(lockId: string, expiry = LOCK_EXPIRY): Pr
     let retryDelay = 200; // Start with 200ms
     
     for (let attempt = 0; attempt < maxRetries; attempt++) {
-      console.log(`Lock acquisition attempt ${attempt + 2} for ${lockId}`);
+      console.log(`Lock acquisition attempt ${attempt + 2} for ${lockId}, waiting ${retryDelay}ms`);
       
       // Wait with exponential backoff
       await new Promise(resolve => setTimeout(resolve, retryDelay));
@@ -36,8 +37,9 @@ export async function acquireMatchLock(lockId: string, expiry = LOCK_EXPIRY): Pr
       // Force release if lock has been held for more than 10 seconds
       // or if the lock time record is missing but the lock exists
       if ((lockTime && (currentTime - parseInt(lockTime)) > 10000) || 
-          (currentLockId && !lockTime)) {
-        console.log(`Force releasing expired lock after ${lockTime ? (currentTime - parseInt(lockTime))/1000 : 'unknown'} seconds`);
+          (currentLockId && !lockTime && currentLockId !== lockId)) {
+        const heldDuration = lockTime ? (currentTime - parseInt(lockTime))/1000 : 'unknown time';
+        console.warn(`Force releasing STALE lock (held by ${currentLockId || 'unknown'}) after ${heldDuration} seconds. Current request is for ${lockId}.`);
         await redis.del(MATCH_LOCK_KEY);
         await redis.del(`${MATCH_LOCK_KEY}:time`);
       }
@@ -46,13 +48,14 @@ export async function acquireMatchLock(lockId: string, expiry = LOCK_EXPIRY): Pr
       const retryResult = await redis.set(MATCH_LOCK_KEY, lockId, 'EX', expiry, 'NX');
       if (retryResult === "OK") {
         // Store timestamp when lock was acquired
-        await redis.set(`${MATCH_LOCK_KEY}:time`, Date.now().toString(), 'EX', expiry + 5);
-        console.log(`Lock ${lockId} acquired on attempt ${attempt + 2} after ${(Date.now() - startTime)}ms`);
+        const acquiredTime = Date.now();
+        await redis.set(`${MATCH_LOCK_KEY}:time`, acquiredTime.toString(), 'EX', expiry + 5);
+        console.log(`Lock ${lockId} acquired on attempt ${attempt + 2}. Took ${acquiredTime - startTime}ms total.`);
         return true;
       }
     }
     
-    console.log(`Failed to acquire lock ${lockId} after ${maxRetries + 1} attempts and ${Date.now() - startTime}ms`);
+    console.warn(`Failed to acquire lock for ${lockId} after ${maxRetries + 1} attempts. Total time: ${Date.now() - startTime}ms.`);
     return false;
   } catch (error) {
     console.error('Error acquiring lock:', error);
@@ -71,8 +74,12 @@ export async function releaseMatchLock(lockId: string): Promise<boolean> {
       if (currentLock === lockId) {
         await redis.del(MATCH_LOCK_KEY);
         await redis.del(`${MATCH_LOCK_KEY}:time`);
-        console.log(`Lock ${lockId} released successfully (fallback method)`);
+        console.log(`Lock ${lockId} released successfully (fallback method).`);
         return true;
+      } else if (currentLock) {
+        console.warn(`Lock ${lockId} NOT released (fallback method). Current lock held by ${currentLock}.`);
+      } else {
+        console.log(`Lock ${lockId} NOT released (fallback method). No lock found.`);
       }
       return false;
     } else {
@@ -98,14 +105,14 @@ export async function releaseMatchLock(lockId: string): Promise<boolean> {
       
       const released = result === 1;
       if (released) {
-        console.log(`Lock ${lockId} released successfully`);
+        console.log(`Lock ${lockId} released successfully.`);
       } else {
         // Check if the lock even exists
         const currentLock = await redis.get(MATCH_LOCK_KEY);
         if (!currentLock) {
-          console.log(`Lock ${lockId} was already released by someone else or expired`);
+          console.log(`Lock ${lockId} was already released (or expired) by someone else or never acquired.`);
         } else {
-          console.log(`Failed to release lock ${lockId} (current lock belongs to ${currentLock})`);
+          console.warn(`Failed to release lock ${lockId}. Current lock: ${currentLock}.`);
         }
       }
       
@@ -120,11 +127,11 @@ export async function releaseMatchLock(lockId: string): Promise<boolean> {
       if (currentLock === lockId) {
         await redis.del(MATCH_LOCK_KEY);
         await redis.del(`${MATCH_LOCK_KEY}:time`);
-        console.log(`Lock ${lockId} released using fallback method`);
+        console.log(`Lock ${lockId} released using fallback method after script error.`);
         return true;
       }
     } catch (fallbackError) {
-      console.error(`Fallback lock release also failed:`, fallbackError);
+      console.error(`Fallback lock release for ${lockId} also failed:`, fallbackError);
     }
     
     return false;

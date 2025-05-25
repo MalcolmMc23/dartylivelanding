@@ -1,28 +1,69 @@
 import Redis from 'ioredis';
 
-// Redis client initialization
+// Redis client initialization with production-ready configuration
 let redis: Redis;
 
 if (process.env.REDIS_URL) {
-  redis = new Redis(process.env.REDIS_URL);
-  console.log('Connected to Redis');
+  // Production Redis configuration with retry logic and better error handling
+  redis = new Redis(process.env.REDIS_URL, {
+    connectTimeout: 10000, // 10 seconds
+    commandTimeout: 5000,  // 5 seconds
+    maxRetriesPerRequest: 3,
+    lazyConnect: true,
+    keepAlive: 30000,
+    // Production-ready retry strategy
+    retryStrategy: (times) => {
+      const delay = Math.min(times * 50, 2000);
+      console.log(`Redis retry attempt ${times}, delay: ${delay}ms`);
+      return delay;
+    },
+    // Reconnect on error
+    reconnectOnError: (err) => {
+      const targetError = 'READONLY';
+      return err.message.includes(targetError);
+    }
+  });
   
-  // Handle connection events
+  console.log('Redis client created with production configuration');
+  
+  // Enhanced connection event handling
   redis.on('error', (err) => {
     console.error('Redis connection error:', err);
+    // Don't crash the app on Redis errors
   });
   
   redis.on('connect', async () => {
     console.log('Redis connected successfully');
     
-    // Perform cleanup on startup
+    // Perform cleanup on startup with error handling
     try {
-      // Clean up any stale data on startup
       await cleanupOnStartup();
+      
+      // Initialize production health monitoring
+      await initializeProductionHealthCheck();
     } catch (e) {
       console.error('Error during Redis startup cleanup:', e);
+      // Continue anyway - don't crash the app
     }
   });
+
+  redis.on('ready', () => {
+    console.log('Redis is ready to accept commands');
+  });
+
+  redis.on('reconnecting', () => {
+    console.log('Redis is reconnecting...');
+  });
+
+  redis.on('close', () => {
+    console.log('Redis connection closed');
+  });
+
+  // Connect immediately in production
+  redis.connect().catch(err => {
+    console.error('Failed to connect to Redis on startup:', err);
+  });
+
 } else {
   // Fallback for development or when Redis not available
   console.warn('REDIS_URL not defined, using fake Redis implementation');
@@ -30,31 +71,90 @@ if (process.env.REDIS_URL) {
   redis = createFakeRedis();
 }
 
-// Clean up stale data when the server starts
+// Enhanced cleanup function with better error handling
 async function cleanupOnStartup() {
   console.log('Running Redis cleanup on startup');
   
   try {
-    // Force cleanup of old waiting users
-    // Remove users who joined more than 5 minutes ago from waiting queue
-    const waitingKey = 'matching:waiting';
-    const inCallKey = 'matching:in_call';
-    const maxWaitTime = Date.now() - (5 * 60 * 1000);
+    // Force cleanup of old waiting users with more aggressive timeouts for production
+    const waitingKey = 'matching:queue';
+    const maxWaitTime = Date.now() - (3 * 60 * 1000); // Reduced to 3 minutes for production
+
+    const removedUsers = await redis.zremrangebyscore(waitingKey, 0, maxWaitTime);
     
-    const removedWaiting = await redis.zremrangebyscore(waitingKey, 0, maxWaitTime);
-    const removedInCall = await redis.zremrangebyscore(inCallKey, 0, maxWaitTime);
-    
-    // Clean up any lingering locks
+    // Clean up any lingering locks more aggressively
     await redis.del('match_lock');
     await redis.del('match_lock:time');
     
-    console.log(`Startup cleanup: removed ${removedWaiting} stale waiting users, ${removedInCall} stale in-call users, and cleared locks`);
+    // Clean up any stale active matches (older than 30 minutes)
+    const activeMatches = await redis.hgetall('matching:active');
+    let removedMatches = 0;
+    
+    for (const [roomName, matchDataStr] of Object.entries(activeMatches)) {
+      try {
+        const matchData = JSON.parse(matchDataStr);
+        const age = Date.now() - (matchData.matchedAt || 0);
+        
+        if (age > 30 * 60 * 1000) { // 30 minutes
+          await redis.hdel('matching:active', roomName);
+          removedMatches++;
+        }
+      } catch {
+        // Remove corrupted match data
+        await redis.hdel('matching:active', roomName);
+        removedMatches++;
+      }
+    }
+    
+    console.log(`Startup cleanup: removed ${removedUsers} stale users, ${removedMatches} stale matches, and cleared locks`);
+    
+    // Start LiveKit-Redis synchronization
+    if (process.env.NODE_ENV === 'production' || process.env.ENABLE_LIVEKIT_SYNC === 'true') {
+      try {
+        const { startPeriodicSync } = await import('@/utils/livekit-sync/roomSyncService');
+        startPeriodicSync(30000); // Sync every 30 seconds
+        console.log('Started LiveKit-Redis periodic synchronization');
+      } catch (syncError) {
+        console.error('Error starting LiveKit-Redis sync:', syncError);
+      }
+    }
   } catch (error) {
     console.error('Error during startup cleanup:', error);
+    // Don't throw - we want the app to continue even if cleanup fails
   }
 }
 
-// Helper function to create a fake Redis client for development
+// Initialize production health monitoring
+async function initializeProductionHealthCheck() {
+  try {
+    // Import the health check module dynamically to avoid circular dependencies
+    const { autoRepairProductionIssues } = await import('../utils/redis/productionHealthCheck');
+    
+    // Run initial auto-repair
+    const repairs = await autoRepairProductionIssues();
+    if (repairs.length > 0) {
+      console.log('Production auto-repairs completed:', repairs);
+    }
+    
+    // Set up periodic health checks (every 5 minutes)
+    setInterval(async () => {
+      try {
+        const repairs = await autoRepairProductionIssues();
+        if (repairs.length > 0) {
+          console.log('Periodic auto-repairs completed:', repairs);
+        }
+      } catch (error) {
+        console.error('Error during periodic health check:', error);
+      }
+    }, 5 * 60 * 1000); // 5 minutes
+    
+    console.log('Production health monitoring initialized');
+  } catch (error) {
+    console.error('Failed to initialize production health monitoring:', error);
+  }
+}
+
+// Enhanced fake Redis implementation for development
 function createFakeRedis() {
   const data: Record<string, string> = {};
   const zsets: Record<string, Record<string, number>> = {};
@@ -64,25 +164,42 @@ function createFakeRedis() {
   console.log('Using memory-based fake Redis implementation');
   
   return {
+    ping: async () => 'PONG',
     set: async (key: string, value: string) => {
-      // Simple implementation that ignores expiry, NX, etc.
+      // Handle different SET variations (EX, NX, etc.)
       data[key] = value;
       return "OK";
     },
     get: async (key: string) => {
       return data[key] || null;
     },
-    del: async (key: string) => {
-      delete data[key];
-      delete zsets[key];
-      delete hashes[key];
-      delete sets[key];
-      return 1;
+    del: async (...keys: string[]) => {
+      let count = 0;
+      keys.forEach(key => {
+        if (data[key] !== undefined) {
+          delete data[key];
+          count++;
+        }
+        if (zsets[key]) {
+          delete zsets[key];
+          count++;
+        }
+        if (hashes[key]) {
+          delete hashes[key];
+          count++;
+        }
+        if (sets[key]) {
+          delete sets[key];
+          count++;
+        }
+      });
+      return count;
     },
     zadd: async (key: string, score: number, member: string) => {
       if (!zsets[key]) zsets[key] = {};
+      const wasNew = zsets[key][member] === undefined;
       zsets[key][member] = score;
-      return 1;
+      return wasNew ? 1 : 0;
     },
     zrange: async (key: string, start: number, end: number, options?: string) => {
       if (!zsets[key]) return [];
@@ -92,7 +209,7 @@ function createFakeRedis() {
       
       if (options === 'WITHSCORES') {
         const withScores: string[] = [];
-        for (const [member, score] of entries) {
+        for (const [member, score] of entries.slice(start, end === -1 ? undefined : end + 1)) {
           withScores.push(member);
           withScores.push(score.toString());
         }
@@ -124,20 +241,24 @@ function createFakeRedis() {
     },
     hset: async (key: string, field: string, value: string) => {
       if (!hashes[key]) hashes[key] = {};
+      const wasNew = hashes[key][field] === undefined;
       hashes[key][field] = value;
-      return 1;
+      return wasNew ? 1 : 0;
     },
     hget: async (key: string, field: string) => {
       if (!hashes[key]) return null;
       return hashes[key][field] || null;
     },
-    hdel: async (key: string, field: string) => {
+    hdel: async (key: string, ...fields: string[]) => {
       if (!hashes[key]) return 0;
-      if (hashes[key][field] !== undefined) {
-        delete hashes[key][field];
-        return 1;
-      }
-      return 0;
+      let count = 0;
+      fields.forEach(field => {
+        if (hashes[key][field] !== undefined) {
+          delete hashes[key][field];
+          count++;
+        }
+      });
+      return count;
     },
     hgetall: async (key: string) => {
       return hashes[key] || {};
@@ -155,6 +276,14 @@ function createFakeRedis() {
     expire: async () => {
       // No-op for fake implementation
       return 1;
+    },
+    eval: async () => {
+      // No-op for fake implementation
+      return 1;
+    },
+    connect: async () => {
+      // No-op for fake implementation
+      return Promise.resolve();
     },
     on: () => {
       // No-op

@@ -7,12 +7,21 @@ interface WaitingRoomComponentProps {
   onCancel: () => void;
 }
 
+interface QueueStatus {
+  queueCount: number;
+  activeMatchCount: number;
+}
+
 export default function WaitingRoomComponent({
   username,
   onCancel,
 }: WaitingRoomComponentProps) {
   const [waitTime, setWaitTime] = useState(0);
   const [dots, setDots] = useState("");
+  const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
+  const [statusMessage, setStatusMessage] = useState(
+    "Waiting for someone to chat with..."
+  );
 
   // Update waiting time every second
   useEffect(() => {
@@ -31,6 +40,42 @@ export default function WaitingRoomComponent({
       });
     }, 500);
     return () => clearInterval(dotTimer);
+  }, []);
+
+  // Check queue status periodically
+  useEffect(() => {
+    const checkQueueStatus = async () => {
+      try {
+        const response = await fetch(
+          "/api/production-health?action=status&detailed=true"
+        );
+        const data = await response.json();
+
+        setQueueStatus({
+          queueCount: data.queueCount || 0,
+          activeMatchCount: data.activeMatchCount || 0,
+        });
+
+        // Update status message based on queue
+        if (data.queueCount <= 1) {
+          setStatusMessage("Looking for other users...");
+        } else if (data.queueCount === 2) {
+          setStatusMessage("Found someone! Connecting...");
+        } else {
+          setStatusMessage(`${data.queueCount - 1} other users waiting`);
+        }
+      } catch (error) {
+        console.error("Error checking queue status:", error);
+      }
+    };
+
+    // Check immediately
+    checkQueueStatus();
+
+    // Then check every 3 seconds
+    const statusTimer = setInterval(checkQueueStatus, 3000);
+
+    return () => clearInterval(statusTimer);
   }, []);
 
   // Format the wait time as minutes:seconds
@@ -55,12 +100,19 @@ export default function WaitingRoomComponent({
         <p className="text-white mb-2 text-lg font-medium">
           Hi <span className="font-semibold text-[#A020F0]">{username}</span>!
         </p>
-        <p className="text-gray-300 mb-2 text-base">
-          Waiting for someone to chat with...
-        </p>
-        <p className="text-xs text-gray-400 tracking-wide">
+        <p className="text-gray-300 mb-2 text-base">{statusMessage}</p>
+        <p className="text-xs text-gray-400 tracking-wide mb-2">
           Wait time: {formatTime(waitTime)}
         </p>
+
+        {queueStatus && (
+          <div className="text-xs text-gray-500 space-y-1">
+            <p>Queue: {queueStatus.queueCount} users</p>
+            {queueStatus.activeMatchCount > 0 && (
+              <p>Active chats: {queueStatus.activeMatchCount}</p>
+            )}
+          </div>
+        )}
       </div>
 
       <button

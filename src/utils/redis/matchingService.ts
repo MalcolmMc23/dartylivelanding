@@ -1,11 +1,13 @@
 import redis from '../../lib/redis';
-import { ACTIVE_MATCHES, IN_CALL_QUEUE, WAITING_QUEUE } from './constants';
+import { ACTIVE_MATCHES, MATCHING_QUEUE } from './constants';
 import { acquireMatchLock, releaseMatchLock } from './lockManager';
 import { addUserToQueue, removeUserFromQueue } from './queueManager';
 import { generateUniqueRoomName } from './roomManager';
+import { UserDataInQueue, ActiveMatch, MatchResult, MatchedResult, WaitingResult, ErrorResult } from './types';
+import { canRematch, recordRecentMatch } from './rematchCooldown';
 
 // Helper function to check if user is already in a match
-export async function checkExistingMatch(username: string) {
+export async function checkExistingMatch(username: string): Promise<MatchedResult | null> {
   const allMatches = await redis.hgetall(ACTIVE_MATCHES);
   
   for (const [roomName, matchData] of Object.entries(allMatches)) {
@@ -28,25 +30,20 @@ export async function checkExistingMatch(username: string) {
 }
 
 // Main function to find match for a user
-export async function findMatchForUser(username: string, useDemo: boolean, lastMatchedWith?: string) {
+export async function findMatchForUser(username: string, useDemo: boolean, lastMatchedWith?: string): Promise<MatchResult> {
   // Generate a unique lock ID for this request
   const lockId = `match-${username}-${Date.now()}`;
   let lockAcquired = false;
   
   try {
-    // Try to acquire the lock
+    // Try to acquire the lock - acquireMatchLock has its own retry logic
     lockAcquired = await acquireMatchLock(lockId);
+    
     if (!lockAcquired) {
-      console.log(`Couldn't acquire match lock for ${username}, will retry`);
-      // Wait a bit and retry once
-      await new Promise(resolve => setTimeout(resolve, 500));
-      lockAcquired = await acquireMatchLock(lockId);
-      if (!lockAcquired) {
-        console.log(`Still couldn't acquire match lock for ${username}, adding to queue`);
-        // If we still can't get the lock, add the user to the waiting queue and return
-        await addUserToQueue(username, useDemo);
-        return { status: 'waiting' };
-      }
+      console.log(`Failed to acquire match lock for ${username} after all retries, adding to queue`);
+      // If we still can't get the lock, add the user to the waiting queue and return
+      await addUserToQueue(username, useDemo, 'waiting');
+      return { status: 'waiting' };
     }
     
     // First check if this user is already in a match
@@ -55,91 +52,66 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
       return existingMatch;
     }
     
-    // First try to match with someone already in a call (priority)
-    const inCallUsers = await redis.zrange(IN_CALL_QUEUE, 0, -1);
+    // Get all users from the unified queue ordered by score (priority)
+    // Lower scores = higher priority, so we get them in the correct order
+    const allQueuedUsersRaw = await redis.zrange(MATCHING_QUEUE, 0, -1);
+    console.log(`Looking for match for ${username}. Found ${allQueuedUsersRaw.length} users in queue`);
     
-    console.log(`Looking for match for ${username}. Found ${inCallUsers.length} users in in-call queue`);
-    
-    for (const userData of inCallUsers) {
+    // Parse all users into UserDataInQueue objects, preserving score-based order
+    const allQueuedUsers: UserDataInQueue[] = [];
+    for (const userData of allQueuedUsersRaw) {
       try {
-        const user = JSON.parse(userData);
-        
-        // Skip ourselves if somehow we're in the in-call queue too
-        if (user.username === username) continue;
-        
+        const user = JSON.parse(userData) as UserDataInQueue;
+        // Skip ourselves
+        if (user.username !== username) {
+          allQueuedUsers.push(user);
+        }
+      } catch (e) {
+        console.error('Error parsing user data from queue:', e);
+      }
+    }
+    
+    // Separate in-call and waiting users but preserve the score-based ordering
+    // In-call users already have higher priority (lower scores) so they'll naturally come first
+    const inCallUsers = allQueuedUsers.filter(u => u.state === 'in_call');
+    const waitingUsers = allQueuedUsers.filter(u => u.state === 'waiting');
+    
+    console.log(`Queue breakdown: ${inCallUsers.length} in-call users, ${waitingUsers.length} waiting users`);
+    console.log(`Processing in priority order based on scores (lower score = higher priority)`);
+    
+    // First try to match with someone already in a call (they have inherently higher priority)
+    for (const user of inCallUsers) {
+      try {
         // Skip if this is the user we just left
         if (lastMatchedWith && user.username === lastMatchedWith) {
           console.log(`Skipping recent match ${user.username} for user ${username}`);
           continue;
         }
         
-        // Skip if we recently matched with this user (5-min cooldown)
-        if (user.lastMatch?.matchedWith === username && 
-            (Date.now() - user.lastMatch.timestamp < 5 * 60 * 1000)) {
-          console.log(`Skipping ${user.username} due to recent match cooldown`);
+        // Skip if cooldown is active using both traditional and new methods
+        const traditionalCooldown = user.lastMatch?.matchedWith === username && 
+            (Date.now() - user.lastMatch.timestamp < 2 * 1000); // Reduced from 5 to 2 seconds
+            
+        const canRematchResult = await canRematch(username, user.username, true); // Enable left-behind bypass
+        
+        if (traditionalCooldown || !canRematchResult) {
+          console.log(`Skipping ${user.username} due to active cooldown (${traditionalCooldown ? 'traditional' : 'new system'})`);
           continue;
         }
         
-        // We found a match!
-        await removeUserFromQueue(user.username); // Remove targetUser from queue
+        console.log(`Matching ${username} with ${user.username} (in-call user with avgSkipTime: ${user.averageSkipTime}, skipCount: ${user.skipCount})`);
         
-        // For in-call users
-        let roomName = user.roomName; // This is roomName of the person found in IN_CALL_QUEUE
+        // We found a match!
+        await removeUserFromQueue(user.username);
+        
+        // For in-call users, use their room if they have one
+        let roomName = user.roomName;
         if (!roomName) {
           roomName = await generateUniqueRoomName();
         }
         
         // Create match record
-        const matchData = {
-          user1: username,
-          user2: user.username,
-          roomName, // Use the newly generated roomName
-          useDemo: useDemo || user.useDemo,
-          matchedAt: Date.now()
-        };
-        
-        await redis.hset(ACTIVE_MATCHES, matchData.roomName, JSON.stringify(matchData));
-        console.log(`Created match: ${username} with ${user.username} in room ${roomName}`);
-        
-        // Make sure both users are removed from all queues
-        await removeUserFromQueue(username); // Remove caller from all queues as well
-        
-        return {
-          status: 'matched',
-          roomName: matchData.roomName,
-          matchedWith: user.username,
-          useDemo: useDemo || user.useDemo
-        };
-      } catch (e) {
-        console.error('Error processing user data from in-call queue:', e);
-      }
-    }
-    
-    // If no in-call matches, try regular waiting users
-    const waitingUsers = await redis.zrange(WAITING_QUEUE, 0, -1);
-    
-    for (const userData of waitingUsers) {
-      try {
-        const user = JSON.parse(userData);
-        
-        if (user.username === username) continue; // Skip ourselves
-        
-        // Skip if this is the user we just left
-        if (lastMatchedWith && user.username === lastMatchedWith) continue;
-        
-        // Skip if we recently matched with this user
-        if (user.lastMatch?.matchedWith === username &&
-            (Date.now() - user.lastMatch.timestamp < 5 * 60 * 1000)) continue;
-        
-        // We found a match!
-        await removeUserFromQueue(user.username);
-        
-        // Generate new room name
-        const roomName = await generateUniqueRoomName();
-        console.log(`Generated new room ${roomName} for match between ${username} (caller) and ${user.username} (from waiting queue)`);
-        
-        // Create match record
-        const matchData = {
+        const matchData: ActiveMatch = {
           user1: username,
           user2: user.username,
           roomName,
@@ -153,30 +125,98 @@ export async function findMatchForUser(username: string, useDemo: boolean, lastM
         // Make sure both users are removed from all queues
         await removeUserFromQueue(username);
         
-        return {
+        // Record the match in the new cooldown system with skip scenario flag
+        const isSkipScenario = user.state === 'in_call'; // In-call users are typically from skip scenarios
+        await recordRecentMatch(username, user.username, 2, isSkipScenario);
+        
+        const result: MatchedResult = {
           status: 'matched',
           roomName: matchData.roomName,
           matchedWith: user.username,
           useDemo: useDemo || user.useDemo
         };
+        
+        return result;
       } catch (e) {
-        console.error('Error processing user data from waiting queue:', e);
+        console.error('Error processing potential match from in-call queue:', e);
+      }
+    }
+    
+    // If no in-call matches, try regular waiting users (also in priority order)
+    for (const user of waitingUsers) {
+      try {
+        // Skip if this is the user we just left
+        if (lastMatchedWith && user.username === lastMatchedWith) {
+          console.log(`Skipping recent match ${user.username} for user ${username}`);
+          continue;
+        }
+        
+        // Skip if cooldown is active using both traditional and new methods
+        const traditionalCooldown = user.lastMatch?.matchedWith === username && 
+            (Date.now() - user.lastMatch.timestamp < 2 * 1000); // Reduced from 5 to 2 seconds
+            
+        const canRematchResult = await canRematch(username, user.username, false); // No left-behind bypass for waiting users
+        
+        if (traditionalCooldown || !canRematchResult) {
+          console.log(`Skipping ${user.username} due to active cooldown (${traditionalCooldown ? 'traditional' : 'new system'})`);
+          continue;
+        }
+        
+        console.log(`Matching ${username} with ${user.username} (waiting user with avgSkipTime: ${user.averageSkipTime}, skipCount: ${user.skipCount})`);
+        
+        // We found a match!
+        await removeUserFromQueue(user.username);
+        
+        // Generate new room name
+        const roomName = await generateUniqueRoomName();
+        console.log(`Generated new room ${roomName} for match between ${username} (caller) and ${user.username} (from waiting queue)`);
+        
+        // Create match record
+        const matchData: ActiveMatch = {
+          user1: username,
+          user2: user.username,
+          roomName,
+          useDemo: useDemo || user.useDemo,
+          matchedAt: Date.now()
+        };
+        
+        await redis.hset(ACTIVE_MATCHES, matchData.roomName, JSON.stringify(matchData));
+        console.log(`Created match: ${username} with ${user.username} in room ${roomName}`);
+        
+        // Make sure both users are removed from all queues
+        await removeUserFromQueue(username);
+        
+        // Record the match in the new cooldown system
+        await recordRecentMatch(username, user.username, 2, false); // Normal scenario, reduced cooldown
+        
+        const result: MatchedResult = {
+          status: 'matched',
+          roomName: matchData.roomName,
+          matchedWith: user.username,
+          useDemo: useDemo || user.useDemo
+        };
+        
+        return result;
+      } catch (e) {
+        console.error('Error processing potential match from waiting queue:', e);
       }
     }
     
     // No match found, make sure the user is in the queue
-    await addUserToQueue(username, useDemo);
+    await addUserToQueue(username, useDemo, 'waiting');
     
-    return { status: 'waiting' };
+    const waitingResult: WaitingResult = { status: 'waiting' };
+    return waitingResult;
   } catch (error) {
     console.error('Error in findMatchForUser:', error);
     // Always make sure user is in queue even if there's an error
     try {
-      await addUserToQueue(username, useDemo);
+      await addUserToQueue(username, useDemo, 'waiting');
     } catch (queueError) {
       console.error('Error adding user to queue after match error:', queueError);
     }
-    return { status: 'waiting', error: String(error) };
+    const errorResult: ErrorResult = { status: 'error', error: String(error) };
+    return errorResult;
   } finally {
     // Always release the lock if we acquired it
     if (lockAcquired) {

@@ -1,76 +1,183 @@
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server';
 import * as hybridMatchingService from '@/utils/hybridMatchingService';
 import redis from '@/lib/redis';
+import { cleanupOrphanedInCallUsers } from '@/utils/redis/queueProcessor';
+import { checkExistingMatch } from '@/utils/redis/matchingService';
+import { PendingMatch } from '@/utils/redis/types';
+import { checkMatchNotification, clearMatchNotification } from '@/utils/redis/matchNotificationService';
 
 // Debug log with timestamps
-function debugLog(...messages: unknown[]): void {
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] [MATCH-DEBUG]`, ...messages);
+function debugLog(message: string) {
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[CHECK-MATCH] ${message}`);
+  }
+}
+
+// Helper function to check if user has any pending matches
+async function checkUserPendingMatches(username: string): Promise<{
+  found: boolean;
+  pendingMatch?: PendingMatch;
+  roomName?: string;
+  matchedWith?: string;
+  useDemo?: boolean;
+}> {
+  try {
+    console.log(`[PENDING-CHECK] Checking pending matches for ${username}`);
+    
+    // Get all pending match keys
+    const pendingKeys = await redis.keys('pending_match:*');
+    console.log(`[PENDING-CHECK] Found ${pendingKeys.length} pending match keys:`, pendingKeys);
+    
+    for (const key of pendingKeys) {
+      const pendingData = await redis.get(key);
+      console.log(`[PENDING-CHECK] Key ${key} data:`, pendingData);
+      
+      if (!pendingData) continue;
+      
+      try {
+        const pendingMatch: PendingMatch = JSON.parse(pendingData);
+        console.log(`[PENDING-CHECK] Parsed match:`, pendingMatch);
+        
+        // Check if this user is in this pending match
+        if (pendingMatch.user1 === username || pendingMatch.user2 === username) {
+          const matchedWith = pendingMatch.user1 === username ? pendingMatch.user2 : pendingMatch.user1;
+          
+          console.log(`[PENDING-CHECK] FOUND MATCH for ${username} with ${matchedWith} in room ${pendingMatch.roomName}`);
+          debugLog(`Found pending match for ${username} with ${matchedWith} in room ${pendingMatch.roomName}`);
+          
+          return {
+            found: true,
+            pendingMatch,
+            roomName: pendingMatch.roomName,
+            matchedWith,
+            useDemo: pendingMatch.useDemo
+          };
+        } else {
+          console.log(`[PENDING-CHECK] Match not for ${username} (user1: ${pendingMatch.user1}, user2: ${pendingMatch.user2})`);
+        }
+      } catch (e) {
+        console.error('[PENDING-CHECK] Error parsing pending match data:', e);
+      }
+    }
+    
+    console.log(`[PENDING-CHECK] No pending match found for ${username}`);
+    return { found: false };
+  } catch (error) {
+    console.error('[PENDING-CHECK] Error checking pending matches:', error);
+    return { found: false };
+  }
 }
 
 export async function POST(request: Request) {
   try {
     const { username } = await request.json();
-
+    
     if (!username) {
-      return NextResponse.json({ error: "Username is required" }, { status: 400 });
+      return NextResponse.json({ error: 'Username is required' }, { status: 400 });
     }
 
-    debugLog(`Check match request for user: ${username}`);
-    
-    // Clean up stale records
-    await hybridMatchingService.cleanupOldWaitingUsers();
-    await hybridMatchingService.cleanupOldMatches();
-    
-    // Check if user has a match using the Redis matching service
-    const status = await hybridMatchingService.getWaitingQueueStatus(username);
-    debugLog(`Current status for ${username}: ${JSON.stringify(status)}`);
-    
-    if (status.status === 'matched') {
-      // User has been matched with someone!
-      debugLog(`MATCH FOUND: ${username} matched with ${status.matchedWith} in room ${status.roomName}`);
+    debugLog(`Checking match status for user: ${username}`);
+
+    // First, check for match notifications
+    const notification = await checkMatchNotification(username);
+    if (notification && notification.hasNotification) {
+      debugLog(`User ${username} has a match notification for room ${notification.roomName}`);
       
-      // Verify that room exists in Redis before sending back to client
-      if (status.roomName) {
-        const roomInfo = await hybridMatchingService.getRoomInfo(status.roomName);
-        if (!roomInfo.isActive) {
-          debugLog(`Room ${status.roomName} is not active, fixing match record...`);
-          // Attempt to create/fix the match
-          await hybridMatchingService.addUserToQueue(username, status.useDemo || false, false);
-          return NextResponse.json({ 
-            match: false,
-            debug: {
-              error: "Room not active, re-added to queue",
-              originalMatch: status
-            }
-          });
+      // Clear the notification after reading
+      await clearMatchNotification(username);
+      
+      return NextResponse.json({ 
+        match: true, 
+        roomName: notification.roomName,
+        matchedWith: notification.matchedWith,
+        useDemo: notification.useDemo || false,
+        routeType: 'room',
+        debug: {
+          matchedWith: notification.matchedWith,
+          useDemo: notification.useDemo || false,
+          matchType: "notification"
         }
-        
-        // Include additional navigation information to ensure proper routing
-        return NextResponse.json({ 
-          match: true, 
-          roomName: status.roomName,
-          matchedWith: status.matchedWith,
-          useDemo: status.useDemo || false,
-          routeType: 'room', // Add a route type to help the client
-          debug: {
-            matchedWith: status.matchedWith,
-            useDemo: status.useDemo || false,
-            roomInfo: roomInfo
-          }
-        });
-      } else {
-        debugLog(`Matched status but missing roomName, fixing...`);
-        // Re-add to queue if room name is missing
-        await hybridMatchingService.addUserToQueue(username, status.useDemo || false, false);
-        return NextResponse.json({ 
-          match: false,
-          debug: {
-            error: "Missing room name, re-added to queue",
-            originalMatch: status
-          }
-        });
+      });
+    }
+
+    // First, run cleanup for orphaned in-call users
+    try {
+      const cleanupResult = await cleanupOrphanedInCallUsers();
+      if (cleanupResult.cleanedUp > 0) {
+        debugLog(`Cleaned up ${cleanupResult.cleanedUp} orphaned in-call users`);
       }
+    } catch (cleanupError) {
+      console.warn('Error during orphaned user cleanup:', cleanupError);
+    }
+
+    // Check if user has an existing match
+    const existingMatch = await checkExistingMatch(username);
+    
+    if (existingMatch && existingMatch.status === 'matched') {
+      const matched = existingMatch as typeof existingMatch & { matchedWith: string; roomName: string; useDemo?: boolean };
+      debugLog(`User ${username} already has an active match with ${matched.matchedWith} in room ${matched.roomName}`);
+      
+      return NextResponse.json({ 
+        match: true, 
+        roomName: matched.roomName,
+        matchedWith: matched.matchedWith,
+        useDemo: matched.useDemo || false,
+        routeType: 'room',
+        debug: {
+          matchedWith: matched.matchedWith,
+          useDemo: matched.useDemo || false,
+          matchType: "existing"
+        }
+      });
+    }
+
+    // NEW: Check for pending matches
+    console.log(`[CHECK-MATCH] About to check pending matches for ${username}`);
+    const pendingMatchCheck = await checkUserPendingMatches(username);
+    console.log(`[CHECK-MATCH] Pending match check result:`, pendingMatchCheck);
+    
+    if (pendingMatchCheck.found) {
+      console.log(`[CHECK-MATCH] User ${username} has a pending match with ${pendingMatchCheck.matchedWith} in room ${pendingMatchCheck.roomName}`);
+      debugLog(`User ${username} has a pending match with ${pendingMatchCheck.matchedWith} in room ${pendingMatchCheck.roomName}`);
+      
+      return NextResponse.json({ 
+        match: true, 
+        roomName: pendingMatchCheck.roomName,
+        matchedWith: pendingMatchCheck.matchedWith,
+        useDemo: pendingMatchCheck.useDemo || false,
+        routeType: 'room',
+        debug: {
+          matchedWith: pendingMatchCheck.matchedWith,
+          useDemo: pendingMatchCheck.useDemo || false,
+          matchType: "pending",
+          pendingMatch: pendingMatchCheck.pendingMatch
+        }
+      });
+    }
+    
+    console.log(`[CHECK-MATCH] No pending match found for ${username}, continuing to queue status check`);
+
+    // Check user's current queue status
+    const status = await hybridMatchingService.getWaitingQueueStatus(username);
+    debugLog(`User ${username} queue status: ${JSON.stringify(status)}`);
+
+    if (status.status === 'matched') {
+      // User was just matched
+      const matched = status as typeof status & { matchedWith: string; roomName: string; useDemo?: boolean };
+      debugLog(`User ${username} was just matched with ${matched.matchedWith} in room ${matched.roomName}`);
+      
+      return NextResponse.json({ 
+        match: true, 
+        roomName: matched.roomName,
+        matchedWith: matched.matchedWith,
+        useDemo: matched.useDemo || false,
+        routeType: 'room',
+        debug: {
+          matchedWith: matched.matchedWith,
+          useDemo: matched.useDemo || false,
+          matchType: "just_matched"
+        }
+      });
     } else if (status.status === 'waiting' || status.status === 'in_call') {
       // User is still waiting for a match or in a call waiting for new match
       debugLog(`User ${username} is in ${status.status} queue`);
@@ -80,17 +187,18 @@ export async function POST(request: Request) {
       const matchResult = await hybridMatchingService.findMatchForUser(username, false);
       
       if (matchResult.status === 'matched') {
-        debugLog(`MATCH FOUND on aggressive try: ${username} matched with ${matchResult.matchedWith} in room ${matchResult.roomName}`);
+        const matched = matchResult as typeof matchResult & { matchedWith: string; roomName: string; useDemo?: boolean };
+        debugLog(`MATCH FOUND on aggressive try: ${username} matched with ${matched.matchedWith} in room ${matched.roomName}`);
         
         return NextResponse.json({ 
           match: true, 
-          roomName: matchResult.roomName,
-          matchedWith: matchResult.matchedWith,
-          useDemo: matchResult.useDemo || false,
+          roomName: matched.roomName,
+          matchedWith: matched.matchedWith,
+          useDemo: matched.useDemo || false,
           routeType: 'room', // Add a route type to help the client
           debug: {
-            matchedWith: matchResult.matchedWith,
-            useDemo: matchResult.useDemo || false,
+            matchedWith: matched.matchedWith,
+            useDemo: matched.useDemo || false,
             matchType: "aggressive"
           }
         });
@@ -106,47 +214,62 @@ export async function POST(request: Request) {
         }
       });
     } else if (status.status === 'not_waiting') {
-      // User is not in the waiting queue, re-add them
-      debugLog(`User ${username} is not in queue, adding back to queue`);
+      // User is not in any queue - this might indicate a stuck state
+      debugLog(`User ${username} is not in any queue, attempting to add them back`);
       
-      // Re-add user to waiting queue with useDemo=false (default)
-      await hybridMatchingService.addUserToQueue(username, false);
+      // Try to add them back to the queue and immediately find a match
+      const matchResult = await hybridMatchingService.findMatchForUser(username, false);
       
-      // Immediately try to find a match (more eager matching)
-      const immediateMatchResult = await hybridMatchingService.findMatchForUser(username, false);
-      
-      if (immediateMatchResult.status === 'matched') {
-        debugLog(`IMMEDIATE MATCH FOUND: ${username} matched with ${immediateMatchResult.matchedWith} in room ${immediateMatchResult.roomName}`);
+      if (matchResult.status === 'matched') {
+        const matched = matchResult as typeof matchResult & { matchedWith: string; roomName: string; useDemo?: boolean };
+        debugLog(`MATCH FOUND after re-adding to queue: ${username} matched with ${matched.matchedWith} in room ${matched.roomName}`);
         
         return NextResponse.json({ 
           match: true, 
-          roomName: immediateMatchResult.roomName,
-          matchedWith: immediateMatchResult.matchedWith,
-          useDemo: immediateMatchResult.useDemo || false,
-          routeType: 'room', // Add a route type to help the client
+          roomName: matched.roomName,
+          matchedWith: matched.matchedWith,
+          useDemo: matched.useDemo || false,
+          routeType: 'room',
           debug: {
-            matchedWith: immediateMatchResult.matchedWith,
-            useDemo: immediateMatchResult.useDemo || false,
-            matchType: "immediate"
+            matchedWith: matched.matchedWith,
+            useDemo: matched.useDemo || false,
+            matchType: "recovered"
+          }
+        });
+      } else {
+        // Still no match, user is now waiting
+        return NextResponse.json({ 
+          match: false,
+          debug: {
+            status: 'waiting',
+            queuePosition: 0,
+            queueLength: 0,
+            waitTime: 0,
+            recovered: true
           }
         });
       }
+    } else {
+      // Unknown status
+      debugLog(`User ${username} has unknown status: ${status.status}`);
       
       return NextResponse.json({ 
         match: false,
         debug: {
-          queuePosition: 1,
-          queueLength: 1,
-          waitTime: 0
+          status: status.status,
+          error: 'Unknown status'
         }
       });
     }
-    
-    // Default response - no match yet
-    return NextResponse.json({ match: false });
+
   } catch (error) {
-    console.error("Error in check-match API:", error);
-    return NextResponse.json({ error: "Internal server error", details: String(error) }, { status: 500 });
+    console.error('Error in check-match:', error);
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      debug: {
+        error: String(error)
+      }
+    }, { status: 500 });
   }
 }
 

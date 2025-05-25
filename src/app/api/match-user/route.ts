@@ -22,105 +22,13 @@ export async function POST(request: NextRequest) {
     await hybridMatchingService.cleanupOldWaitingUsers();
     await hybridMatchingService.cleanupOldMatches();
     
-    // Special handling for users who are being re-matched
-    if (isRematching) {
-      console.log(`User ${username} is being re-matched after being left alone`);
-      
-      // First, check if they have a left-behind record
-      const leftBehindKey = `${LEFT_BEHIND_PREFIX}${username}`;
-      const leftBehindData = await redis.get(leftBehindKey);
-      let leftBehindState = null;
-      
-      if (leftBehindData) {
-        try {
-          leftBehindState = JSON.parse(leftBehindData);
-          console.log(`Found left-behind state for ${username}: inQueue=${leftBehindState.inQueue}, processed=${leftBehindState.processed}`);
-        } catch (e) {
-          console.error(`Error parsing left-behind state for ${username}:`, e);
-        }
-      } else {
-        console.log(`No left-behind state found for ${username}, will create new queue entry`);
-      }
-      
-      // First ensure user is removed from any existing queues or matches
-      await hybridMatchingService.removeUserFromQueue(username);
-      
-      // Try multiple aggressive match attempts for left-behind users
-      let attempts = 0;
-      const maxAttempts = 3;
-      
-      while (attempts < maxAttempts) {
-        // Look for users already in the in-call queue first (priority matching)
-        const matchResult = await hybridMatchingService.findMatchForUser(
-          username, 
-          useDemo,
-          body.lastMatch?.matchedWith
-        );
-        
-        if (matchResult.status === 'matched') {
-          console.log(`Re-matched user ${username} with ${matchResult.matchedWith} in room ${matchResult.roomName} (attempt ${attempts + 1})`);
-          if (matchResult.roomName && matchResult.matchedWith) {
-            await hybridMatchingService.confirmUserRematch(username, matchResult.roomName, matchResult.matchedWith);
-          }
-          return NextResponse.json(matchResult);
-        }
-        
-        // Add a small delay between attempts
-        if (attempts < maxAttempts - 1) {
-          await new Promise(resolve => setTimeout(resolve, 200));
-        }
-        
-        attempts++;
-      }
-      
-      // If we still have the left-behind record, use its roomName for consistency
-      let roomNameToUseInQueue = undefined;
-      if (leftBehindState && leftBehindState.newRoomName) {
-        roomNameToUseInQueue = leftBehindState.newRoomName;
-        console.log(`Using existing room name ${roomNameToUseInQueue} from left-behind state for ${username}`);
-      }
-      
-      console.log(`No immediate match found for ${username} after ${maxAttempts} attempts, adding to in-call queue${roomNameToUseInQueue ? ` with room ${roomNameToUseInQueue}` : ''} for priority matching`);
-      
-      // Always ensure we're in the in-call queue
-      await hybridMatchingService.addUserToQueue(
-        username,
-        useDemo,
-        true, // inCall=true for priority matching
-        roomNameToUseInQueue, // Use room name from left-behind state if available
-        body.lastMatch // Provide any previous match info
-      );
-      
-      // If we had a left-behind state, update it to ensure we're marked as in-queue
-      if (leftBehindState) {
-        leftBehindState.inQueue = true;
-        leftBehindState.queueTime = Date.now();
-        
-        // Update the record with newer expiry time to prevent expiration while waiting
-        await redis.set(
-          leftBehindKey,
-          JSON.stringify(leftBehindState),
-          'EX',
-          600 // 10 minute expiry (extended from 5 minutes)
-        );
-      }
-      
-      return NextResponse.json({
-        status: 'waiting',
-        message: 'Added to priority waiting queue',
-        isPriority: true,
-        roomName: roomNameToUseInQueue
-      });
-    }
-    
-    // Regular matching flow (non-rematch) continues below
-    
     // Check if user is already matched
     const status = await hybridMatchingService.getWaitingQueueStatus(username);
     
     if (status.status === 'matched') {
       console.log(`User ${username} is already matched in room ${status.roomName}`);
-      // If already matched, also update any left_behind state for consistency
+      
+      // Confirm the match state for consistency
       if (status.roomName && status.matchedWith) {
         try {
           await hybridMatchingService.confirmUserRematch(username, status.roomName, status.matchedWith);
@@ -131,123 +39,110 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(status);
     }
     
-    // Try to find a match
+    // Special handling for rematching users (simplified)
+    if (isRematching) {
+      console.log(`User ${username} is being re-matched after being left alone`);
+      
+      // Check for left-behind state
+      const leftBehindKey = `${LEFT_BEHIND_PREFIX}${username}`;
+      const leftBehindData = await redis.get(leftBehindKey);
+      let roomNameFromLeftBehind = undefined;
+      
+      if (leftBehindData) {
+        try {
+          const leftBehindState = JSON.parse(leftBehindData);
+          roomNameFromLeftBehind = leftBehindState.newRoomName;
+          console.log(`Found left-behind state for ${username}: inQueue=${leftBehindState.inQueue}, processed=${leftBehindState.processed}`);
+        } catch (e) {
+          console.error(`Error parsing left-behind state for ${username}:`, e);
+        }
+      } else {
+        console.log(`No left-behind state found for ${username}, will create new queue entry`);
+      }
+      
+      // Remove from any existing queues first
+      await hybridMatchingService.removeUserFromQueue(username);
+      
+      // Try to find a match immediately
+      const matchResult = await hybridMatchingService.findMatchForUser(
+        username, 
+        useDemo,
+        body.lastMatch?.matchedWith
+      );
+      
+      if (matchResult.status === 'matched' && 'roomName' in matchResult && 'matchedWith' in matchResult) {
+        console.log(`Re-matched user ${username} with ${matchResult.matchedWith} in room ${matchResult.roomName}`);
+        await hybridMatchingService.confirmUserRematch(username, matchResult.roomName, matchResult.matchedWith);
+        return NextResponse.json(matchResult);
+      }
+      
+      // If no immediate match, add to high-priority queue
+      console.log(`No immediate match found for ${username}, adding to high-priority queue`);
+      
+      await hybridMatchingService.addUserToQueue(
+        username,
+        useDemo,
+        'in_call', // High priority for rematching users
+        roomNameFromLeftBehind,
+        body.lastMatch
+      );
+      
+      // Trigger additional queue processing for rematching users
+      setTimeout(async () => {
+        try {
+          console.log(`Triggering extra queue processing for rematching user ${username}`);
+          await hybridMatchingService.triggerImmediateProcessing();
+        } catch (error) {
+          console.error('Error triggering extra queue processing for rematch:', error);
+        }
+      }, 500); // Wait 500ms then trigger processing
+      
+      return NextResponse.json({
+        status: 'waiting',
+        message: 'Added to priority waiting queue',
+        isPriority: true,
+        roomName: roomNameFromLeftBehind
+      });
+    }
+    
+    // Regular matching flow for new users
     const matchResult = await hybridMatchingService.findMatchForUser(
       username, 
       useDemo,
       body.lastMatch?.matchedWith
     );
     
-    if (matchResult.status === 'matched') {
+    if (matchResult.status === 'matched' && 'roomName' in matchResult && 'matchedWith' in matchResult) {
       console.log(`User ${username} matched with ${matchResult.matchedWith} in room ${matchResult.roomName}`);
       
-      // Also update any left_behind state when a match is found
-      if (matchResult.roomName && matchResult.matchedWith) {
-        try {
-          await hybridMatchingService.confirmUserRematch(username, matchResult.roomName, matchResult.matchedWith);
-        } catch (e) {
-          console.error(`Error confirming rematch after regular match for ${username}:`, e);
-        }
-      }
-      
-      // Add extra verification that both users are properly tracked in the match
-      try {
-        const roomInfo = await hybridMatchingService.getRoomInfo(matchResult.roomName);
-        
-        if (!roomInfo.isActive || !roomInfo.users?.includes(username)) {
-          console.log(`Room ${matchResult.roomName} not active or missing user ${username}, repairing match`);
-          
-          // Try to ensure the match is properly recorded
-          await hybridMatchingService.removeUserFromQueue(username);
-          await hybridMatchingService.removeUserFromQueue(matchResult.matchedWith);
-        }
-      } catch (verifyError) {
-        console.error(`Error verifying match for ${username}:`, verifyError);
-        // Continue with the flow even if verification fails, as the match might still be valid
-      }
+      // Update any left_behind state when a match is found
+      await hybridMatchingService.confirmUserRematch(username, matchResult.roomName, matchResult.matchedWith);
       
       return NextResponse.json(matchResult);
     }
     
-    // No match found, add user to queue
-    await hybridMatchingService.addUserToQueue(username, useDemo);
+    // No match found, add user to waiting queue
+    await hybridMatchingService.addUserToQueue(username, useDemo, 'waiting');
     
     console.log(`Added ${username} to waiting queue`);
     
-    // After adding to the queue, try one more aggressive match attempt
-    // This helps when two users click at almost the same time
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const retryMatchResult = await hybridMatchingService.findMatchForUser(
-      username, 
-      useDemo,
-      body.lastMatch?.matchedWith
-    );
-
-    if (retryMatchResult.status === 'matched') {
-      console.log(`Retry match found! User ${username} matched with ${retryMatchResult.matchedWith} in room ${retryMatchResult.roomName}`);
-      
-      // Also update any left_behind state for the retry match scenario
-      if (retryMatchResult.roomName && retryMatchResult.matchedWith) {
-        try {
-          await hybridMatchingService.confirmUserRematch(username, retryMatchResult.roomName, retryMatchResult.matchedWith);
-        } catch (e) {
-          console.error(`Error confirming rematch after retry match for ${username}:`, e);
-        }
-      }
-      
-      // Add extra verification for the retry match to ensure both users are properly matched
+    // For regular users who don't find immediate matches, also trigger queue processing
+    setTimeout(async () => {
       try {
-        const roomInfo = await hybridMatchingService.getRoomInfo(retryMatchResult.roomName);
-        
-        if (!roomInfo.isActive || !roomInfo.users?.includes(username) || !roomInfo.users?.includes(retryMatchResult.matchedWith)) {
-          console.log(`Room ${retryMatchResult.roomName} has validation issues, attempting repair`);
-          
-          // Remove both users from any queues to ensure a clean slate
-          await hybridMatchingService.removeUserFromQueue(username);
-          await hybridMatchingService.removeUserFromQueue(retryMatchResult.matchedWith);
-          
-          // Recreate the match with a fresh room
-          const newRoomName = `retry-${retryMatchResult.roomName}`;
-          
-          // Create match record directly
-          const matchData = {
-            user1: username,
-            user2: retryMatchResult.matchedWith,
-            roomName: newRoomName,
-            useDemo: retryMatchResult.useDemo,
-            matchedAt: Date.now()
-          };
-          
-          // Create the match entry in Redis directly
-          await redis.hset(
-            'matching:active',
-            newRoomName,
-            JSON.stringify(matchData)
-          );
-          
-          // This could be encapsulated in a new service method for better organization
-          return NextResponse.json({
-            status: 'matched',
-            roomName: newRoomName,
-            matchedWith: retryMatchResult.matchedWith,
-            useDemo: retryMatchResult.useDemo,
-            repaired: true
-          });
-        }
-      } catch (verifyError) {
-        console.error(`Error verifying retry match for ${username}:`, verifyError);
-        // Continue with the original match result even if verification fails
+        console.log(`Triggering queue processing for new user ${username} who didn't find immediate match`);
+        await hybridMatchingService.triggerImmediateProcessing();
+      } catch (error) {
+        console.error('Error triggering queue processing for new user:', error);
       }
-      
-      return NextResponse.json(retryMatchResult);
-    }
-
+    }, 1000); // Wait 1 second then trigger processing to give other users time to join
+    
     return NextResponse.json({
       status: 'waiting',
       message: 'Added to waiting queue'
     });
+    
   } catch (error) {
-    console.error('Error in match-user:', error);
+    console.error('Error in match-user POST:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
