@@ -11,7 +11,8 @@ type DisconnectionReason =
   | 'browser_closed' 
   | 'component_cleanup' 
   | 'error' 
-  | 'timeout';
+  | 'timeout'
+  | 'session_end'; // Added for end call scenarios
 
 type DisconnectionResult = {
   success: boolean;
@@ -116,7 +117,7 @@ export async function handleDisconnection({
           url.searchParams.set('username', username);
           
           // Add auto-match parameter if requested AND not prevented
-          if (!preventAutoMatch && (data.status === 'immediate_match' || reason === 'user_disconnected' || redirectToNewRoom)) {
+          if (!preventAutoMatch && (data.status === 'immediate_match' || reason === 'user_disconnected' || reason === 'user_left' || redirectToNewRoom)) {
             url.searchParams.set('autoMatch', 'true');
           }
           

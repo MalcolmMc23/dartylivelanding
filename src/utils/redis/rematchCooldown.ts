@@ -26,22 +26,31 @@ export async function canRematch(user1: string, user2: string, skipCooldownForLe
 
 /**
  * Records a match between two users, setting the cooldown period
- * Uses shorter cooldown for skip scenarios
+ * Uses longer cooldown for skip scenarios to prevent immediate re-matching
  */
 export async function recordRecentMatch(
   user1: string, 
   user2: string, 
-  cooldownSeconds = 2, // Reduced from 5 to 2 seconds
+  cooldownSeconds = 2, // Default short cooldown for normal matches
   isSkipScenario = false
 ): Promise<void> {
-  // Use even shorter cooldown for skip scenarios
-  const actualCooldown = isSkipScenario ? 1 : cooldownSeconds;
+  // Use longer cooldown for skip scenarios to prevent immediate re-matching
+  const actualCooldown = isSkipScenario ? 300 : cooldownSeconds; // 5 minutes for skips, 2 seconds for normal
   
   // Sort usernames to ensure consistent key regardless of order
   const key = `${RECENT_MATCH_PREFIX}${[user1, user2].sort().join(':')}`;
   // Set with expiry - will automatically expire after cooldownSeconds
   await redis.set(key, Date.now().toString(), 'EX', actualCooldown);
   console.log(`Recorded match between ${user1} and ${user2} with ${actualCooldown}s cooldown${isSkipScenario ? ' (skip scenario)' : ''}`);
+}
+
+/**
+ * Records a skip between two users, setting a longer cooldown to prevent immediate re-matching
+ */
+export async function recordSkip(user1: string, user2: string, cooldownMinutes = 5): Promise<void> {
+  const cooldownSeconds = cooldownMinutes * 60;
+  await recordRecentMatch(user1, user2, cooldownSeconds, true);
+  console.log(`Recorded skip between ${user1} and ${user2} with ${cooldownMinutes} minute cooldown`);
 }
 
 /**

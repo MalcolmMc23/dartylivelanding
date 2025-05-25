@@ -21,9 +21,9 @@ export function useRoomActions({ username, roomName }: UseRoomActionsProps) {
     resetNavigationState();
   }, []);
 
-  // Handle leaving the call to return to the search screen
+  // Handle leaving the call to return to the search screen (SKIP)
   const handleLeaveCall = useCallback(async () => {
-    console.log("Leave call initiated, redirecting state:", isRedirecting);
+    console.log("Leave call (SKIP) initiated, redirecting state:", isRedirecting);
 
     // If already redirecting or navigation occurred, do nothing
     if (isRedirecting || navigationOccurred.current) {
@@ -38,10 +38,9 @@ export function useRoomActions({ username, roomName }: UseRoomActionsProps) {
     navigationOccurred.current = true;
 
     console.log(
-      "Leave call proceeding, returning to search screen with reset flag"
+      "Leave call proceeding, both users will be put back into queue"
     );
 
-    // Disconnect from the current room
     if (room) {
       // Get the other participant's identity before leaving
       let otherParticipantIdentity: string | undefined;
@@ -53,17 +52,18 @@ export function useRoomActions({ username, roomName }: UseRoomActionsProps) {
         console.log(`Found other participant: ${otherParticipantIdentity}`);
       }
 
-      // Use the disconnection service with skip scenario optimizations
       try {
+        // First notify the backend about the skip (both users will be requeued)
         await handleDisconnection({
           username,
           roomName,
           otherUsername: otherParticipantIdentity,
           reason: "user_left", // This indicates a skip scenario
           router,
+          preventAutoMatch: false, // Allow auto-match after skip since user goes back to queue
         });
 
-        // Disconnect from the current room
+        // Then disconnect from the LiveKit room
         room.disconnect();
       } catch (e) {
         console.error("Error initiating leave call:", e);
@@ -78,7 +78,7 @@ export function useRoomActions({ username, roomName }: UseRoomActionsProps) {
     }
   }, [room, username, roomName, router, isRedirecting]);
 
-  // Handle ending the call completely and returning to the initial page
+  // Handle ending the call completely and returning to the initial page (END CALL)
   const handleEndCall = useCallback(async () => {
     console.log("End call initiated, redirecting state:", isRedirecting);
 
@@ -93,7 +93,7 @@ export function useRoomActions({ username, roomName }: UseRoomActionsProps) {
     navigationOccurred.current = true;
 
     console.log(
-      "End call proceeding, returning to initial page with reset flag"
+      "End call proceeding, user goes to main screen, other user goes to queue"
     );
 
     if (room) {
@@ -119,20 +119,20 @@ export function useRoomActions({ username, roomName }: UseRoomActionsProps) {
           console.log("Successfully cancelled match/queue");
         }
 
-        // 2. Disconnect from the LiveKit room
-        if (room.state !== "disconnected") {
-          room.disconnect();
-        }
-
-        // 3. Notify the backend and handle navigation via disconnectionService
+        // 2. Notify the backend about the session end (user who clicked END goes to main, other goes to queue)
         await handleDisconnection({
           username,
           roomName,
           otherUsername: otherParticipantIdentity,
-          reason: "user_left",
+          reason: "session_end", // This indicates an end call scenario
           router,
-          preventAutoMatch: true,
+          preventAutoMatch: true, // Don't auto-match the user who clicked END
         });
+
+        // 3. Disconnect from the LiveKit room
+        if (room.state !== "disconnected") {
+          room.disconnect();
+        }
       } catch (e) {
         console.error("Error ending call:", e);
         // Fallback: attempt to disconnect and navigate manually if handleDisconnection fails

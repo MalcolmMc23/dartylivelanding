@@ -3,13 +3,13 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-type UseWaitingStatusProps = {
+interface UseWaitingStatusProps {
   isWaiting: boolean;
   username: string;
-  setIsWaiting: (isWaiting: boolean) => void;
+  setIsWaiting: (waiting: boolean) => void;
   setError: (error: string) => void;
-  setUsingDemoServer: (usingDemo: boolean) => void;
-};
+  setUsingDemoServer: (demo: boolean) => void;
+}
 
 export function useWaitingStatus({
   isWaiting,
@@ -23,6 +23,7 @@ export function useWaitingStatus({
   // Function to poll status while waiting
   useEffect(() => {
     let intervalId: NodeJS.Timeout;
+    let queueProcessingTriggered = false;
 
     if (isWaiting && username) {
       // Initial check immediately when entering waiting state
@@ -58,11 +59,48 @@ export function useWaitingStatus({
         }
       };
 
+      // Function to trigger queue processing
+      const triggerQueueProcessing = async () => {
+        try {
+          console.log(`Triggering queue processing for waiting user ${username}`);
+          const response = await fetch('/api/trigger-queue-processing', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          });
+          
+          if (response.ok) {
+            const result = await response.json();
+            console.log(`Queue processing result for ${username}:`, result);
+          }
+        } catch (error) {
+          console.error('Error triggering queue processing:', error);
+        }
+      };
+
       // Check immediately
       checkStatus();
 
-      // Then poll regularly
-      intervalId = setInterval(checkStatus, 2000);
+      // Trigger queue processing after a short delay to ensure user is in queue
+      setTimeout(() => {
+        if (!queueProcessingTriggered) {
+          queueProcessingTriggered = true;
+          triggerQueueProcessing();
+        }
+      }, 2000);
+
+      // Then poll regularly with more frequent checks
+      intervalId = setInterval(() => {
+        checkStatus();
+        
+        // Periodically trigger queue processing to ensure matches are found
+        // Trigger every 6 seconds (every 3rd poll)
+        const now = Date.now();
+        if (now % 6000 < 2000) { // Rough approximation for every 3rd poll
+          triggerQueueProcessing();
+        }
+      }, 2000); // Increased frequency from 2000ms to be more responsive
     }
 
     return () => {

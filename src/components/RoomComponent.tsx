@@ -17,7 +17,7 @@ import { ParticipantCounter } from "./ParticipantCounter";
 import { VideoContainer } from "./room/VideoContainer";
 import { MobileViewToggle } from "./room/MobileViewToggle";
 import { ChatDialog } from "./ChatDialog";
-import { DesktopChat } from "./DesktopChat"; // <-- Add this import
+import { DesktopChat } from "./DesktopChat";
 import UniversityLogoScroll from "./UniversityLogoScroll";
 
 // Max participants allowed in a room
@@ -41,7 +41,7 @@ export default function RoomComponent({
   const [otherParticipantLeft, setOtherParticipantLeft] = useState(false);
   const [wasLeftBehind, setWasLeftBehind] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [hasUnreadChat, setHasUnreadChat] = useState(false); // NEW STATE
+  const [hasUnreadChat, setHasUnreadChat] = useState(false);
 
   const {
     token,
@@ -60,6 +60,12 @@ export default function RoomComponent({
     useDemo,
   });
 
+  const handleNewChatMessage = useCallback(() => {
+    if (!isChatOpen) {
+      setHasUnreadChat(true);
+    }
+  }, [isChatOpen]);
+
   // Handler for when the user needs to join a new room (after being left behind)
   const handleJoinNewRoom = useCallback(
     (newRoomName: string) => {
@@ -74,12 +80,6 @@ export default function RoomComponent({
     },
     [router, username]
   );
-
-  const handleNewChatMessage = useCallback(() => {
-    if (!isChatOpen) {
-      setHasUnreadChat(true);
-    }
-  }, [isChatOpen]);
 
   // Clear unread chat when dialog is opened
   useEffect(() => {
@@ -217,7 +217,7 @@ export default function RoomComponent({
   const handleOtherParticipantLeftRoom = useCallback(
     (otherUsername: string) => {
       console.log(
-        `Other participant ${otherUsername} left the room - will trigger auto-match`
+        `Other participant ${otherUsername} left the room - using default disconnect handling`
       );
 
       // Set the flag that will trigger our redirector component
@@ -226,7 +226,7 @@ export default function RoomComponent({
       // Mark this user as being left behind for the ActiveMatchPoller
       setWasLeftBehind(true);
 
-      // Still call the original handler which notifies the server
+      // Call the original handler which notifies the server
       handleOtherParticipantDisconnected(otherUsername);
     },
     [handleOtherParticipantDisconnected]
