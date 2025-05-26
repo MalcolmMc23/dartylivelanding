@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Users, Clock, Zap } from "lucide-react";
+import { useUnifiedMatchPoller } from "./hooks/useUnifiedMatchPoller";
 import { QueuePositionIndicator } from "./QueuePositionIndicator";
 
 interface UnifiedUserState {
@@ -43,6 +44,18 @@ export function SimpleQueueManager({
   const [message, setMessage] = useState("");
   const [cooldownEndTime, setCooldownEndTime] = useState<number | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<string>("");
+
+  // Use unified match poller
+  useUnifiedMatchPoller({
+    username,
+    isWaiting: userState?.status === "waiting",
+    onMatchFound: onMatched
+      ? (roomName, matchedWith) => {
+          onMatched(roomName, matchedWith);
+        }
+      : undefined,
+    pollingInterval: 2000,
+  });
 
   // Poll for status updates
   const pollStatus = useCallback(async () => {

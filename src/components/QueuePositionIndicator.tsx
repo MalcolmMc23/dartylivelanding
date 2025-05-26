@@ -134,6 +134,7 @@ export function QueuePositionIndicator({
 
   const { position, estimatedWait, queueStats } = positionData;
   const isPriority = queueStats.yourState === "in_call";
+  const isWaiting = !isPriority && position > 0;
   const queueLength = isPriority
     ? queueStats.totalInCall
     : queueStats.totalWaiting;
@@ -183,18 +184,9 @@ export function QueuePositionIndicator({
             </div>
           )}
 
-          {/* Progress Bar */}
-          {position > 0 && queueLength > 0 && (
-            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-              <div
-                className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-500"
-                style={{
-                  width: `${Math.max(
-                    5,
-                    ((queueLength - position + 1) / queueLength) * 100
-                  )}%`,
-                }}
-              />
+          {isWaiting && position === 1 && (
+            <div className="text-xs text-blue-600 font-medium">
+              🎯 You&apos;re next in line!
             </div>
           )}
         </div>

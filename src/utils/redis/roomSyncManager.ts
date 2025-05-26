@@ -125,13 +125,27 @@ export async function syncRoomFromLiveKit(
     const stateStr = await redis.hget(ROOM_STATES, roomName);
     return stateStr ? JSON.parse(stateStr) : null;
     
-  } catch (error) {
-    // Room might not exist in LiveKit
+  } catch (error: unknown) {
+    // Room might not exist in LiveKit (e.g., queried before first participant joins)
     console.log(`Could not sync room ${roomName} from LiveKit:`, error);
+
+    // Only mark the room as inactive if we have no existing participant record in Redis.
+    // This avoids prematurely flagging an about-to-be-created room as empty, which causes
+    // the queue processor to dissolve active matches.
+    const existingStateStr = await redis.hget(ROOM_STATES, roomName);
     
-    // Mark room as inactive in Redis
-    await updateRoomState(roomName, [], false);
-    return null;
+    // Also check if we have room occupancy data that indicates users are expected to join
+    const occupancyData = await redis.hget('room_occupancy', roomName);
+    const hasOccupancyData = !!occupancyData;
+    
+    if (!existingStateStr && !hasOccupancyData) {
+      // Only update to empty if we have no existing state AND no occupancy data
+      await updateRoomState(roomName, [], false);
+    } else if (hasOccupancyData) {
+      console.log(`Room ${roomName} has occupancy data, preserving it despite LiveKit sync failure`);
+    }
+
+    return existingStateStr ? (JSON.parse(existingStateStr) as RoomState) : null;
   }
 }
 

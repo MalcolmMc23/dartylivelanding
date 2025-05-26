@@ -2,18 +2,33 @@
 
 import { useState, useEffect } from "react";
 import { QueuePositionIndicator } from "./QueuePositionIndicator";
+import { useUnifiedMatchPoller } from "./hooks/useUnifiedMatchPoller";
 
 interface WaitingRoomComponentProps {
   username: string;
   onCancel: () => void;
+  onMatchFound?: (
+    roomName: string,
+    matchedWith: string,
+    useDemo: boolean
+  ) => void;
 }
 
 export default function WaitingRoomComponent({
   username,
   onCancel,
+  onMatchFound,
 }: WaitingRoomComponentProps) {
   const [waitTime, setWaitTime] = useState(0);
   const [dots, setDots] = useState("");
+
+  // Use unified match poller to check for matches
+  useUnifiedMatchPoller({
+    username,
+    isWaiting: true,
+    onMatchFound,
+    pollingInterval: 2000,
+  });
 
   // Update waiting time every second
   useEffect(() => {

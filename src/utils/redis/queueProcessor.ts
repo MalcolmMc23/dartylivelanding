@@ -7,6 +7,7 @@ import { canRematch, recordCooldown } from './rematchCooldown';
 import { acquireMatchLock, releaseMatchLock } from './lockManager';
 import { syncRoomAndQueueStates } from './roomStateManager';
 import { stopTrackingUserAlone } from './aloneUserManager';
+import { validateActiveMatches } from './matchValidator';
 
 // Background queue processor settings
 const PROCESSOR_INTERVAL = 3000; // Check every 3 seconds
@@ -53,14 +54,18 @@ export async function processQueueMatches(): Promise<MatchProcessorResult> {
 
     console.log('Queue processor: Starting queue processing cycle');
 
-    // 1. SYNC ROOM AND QUEUE STATES
+    // 1. VALIDATE ACTIVE MATCHES
+    const validationResult = await validateActiveMatches();
+    console.log('Queue processor: Match validation result:', validationResult);
+
+    // 2. SYNC ROOM AND QUEUE STATES
     const syncResult = await syncRoomAndQueueStates();
     console.log('Queue processor: Room sync result:', syncResult);
 
-    // 2. CLEANUP ORPHANED IN-CALL USERS
+    // 3. CLEANUP ORPHANED IN-CALL USERS
     await cleanupOrphanedInCallUsers(result);
 
-    // 3. GET ALL QUEUED USERS AND REMOVE DUPLICATES
+    // 4. GET ALL QUEUED USERS AND REMOVE DUPLICATES
     const allQueuedUsersRaw = await redis.zrange(MATCHING_QUEUE, 0, -1, 'WITHSCORES');
     const userMap = new Map<string, { userData: UserDataInQueue; score: number; rawData: string }>();
     const duplicatesToRemove: string[] = [];
@@ -103,14 +108,14 @@ export async function processQueueMatches(): Promise<MatchProcessorResult> {
       console.log(`Queue processor: Removed ${duplicatesToRemove.length} duplicate/invalid entries`);
     }
 
-    // 4. CONVERT MAP TO SORTED ARRAY (FIFO)
+    // 5. CONVERT MAP TO SORTED ARRAY (FIFO)
     const sortedUsers = Array.from(userMap.values())
       .sort((a, b) => a.score - b.score)
       .map(item => item.userData);
     
     console.log(`Queue processor: Processing ${sortedUsers.length} unique users`);
 
-    // 5. PROCESS USERS IN FIFO ORDER
+    // 6. PROCESS USERS IN FIFO ORDER
     await processUsersInFIFOOrder(sortedUsers, result, startTime + 8000); // 8 second time limit
 
     console.log(`Queue processor: Created ${result.matchesCreated} matches in ${Date.now() - startTime}ms`);
@@ -248,6 +253,12 @@ async function attemptMatch(
     };
 
     await redis.hset(ACTIVE_MATCHES, roomName, JSON.stringify(matchData));
+    
+    // IMPORTANT: Immediately update room occupancy to prevent match validation from thinking the room is empty
+    // This gives users time to actually join the room
+    const { updateRoomOccupancy } = await import('./roomStateManager');
+    await updateRoomOccupancy(roomName, [user1.username, user2.username]);
+    console.log(`Queue processor: Pre-populated room occupancy for ${roomName} with both users`);
     
     // Record cooldown for normal match
     await recordCooldown(user1.username, user2.username, 'normal');

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useUnifiedMatchPoller } from "./hooks/useUnifiedMatchPoller";
 import { StateRecovery } from "./StateRecovery";
 
 interface MatchFinderProps {
@@ -23,8 +24,14 @@ export function MatchFinder({ username }: MatchFinderProps) {
   const [error, setError] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null);
   const [showDebug, setShowDebug] = useState(false);
-  const [checkCount, setCheckCount] = useState(0);
   const [forceReset, setForceReset] = useState(false);
+
+  // Use unified match poller instead of custom polling logic
+  useUnifiedMatchPoller({
+    username,
+    isWaiting: !isCancelling && !forceReset,
+    pollingInterval: 2000,
+  });
 
   // Format wait time as minutes:seconds
   const formattedWaitTime = useCallback(() => {
@@ -74,7 +81,6 @@ export function MatchFinder({ username }: MatchFinderProps) {
       setForceReset(false);
       setError(null);
       setDebugInfo(null);
-      setCheckCount(0);
 
       // Reset wait time to give visual feedback that something changed
       setWaitTime(0);
@@ -87,103 +93,7 @@ export function MatchFinder({ username }: MatchFinderProps) {
     }
   }, [username, logWithTime]);
 
-  // Check for matches periodically
-  useEffect(() => {
-    let cancelled = false;
-    let retryCount = 0;
-    const maxRetries = 3;
-    let checkInterval = 2000; // Start with 2 seconds
-
-    const checkForMatch = async () => {
-      if (cancelled || forceReset) return;
-
-      try {
-        setCheckCount((prev) => prev + 1);
-        logWithTime(`Checking for match (attempt #${checkCount + 1})`);
-
-        const response = await fetch("/api/check-match", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ username }),
-        });
-
-        if (cancelled || forceReset) return;
-
-        if (!response.ok) {
-          throw new Error(
-            `Server returned ${response.status}: ${response.statusText}`
-          );
-        }
-
-        const data = await response.json();
-        setDebugInfo(data.debug || null);
-
-        // Reset retry count on successful response
-        retryCount = 0;
-        checkInterval = 2000;
-
-        if (data.match) {
-          // If match found, redirect to the room
-          logWithTime(`Match found! Redirecting to room ${data.roomName}`);
-
-          // Include matchedWith in the URL if it's available
-          const matchedWith = data.matchedWith
-            ? `&matchedWith=${encodeURIComponent(data.matchedWith)}`
-            : "";
-          const useDemo = data.useDemo ? `&useDemo=true` : "";
-
-          // Use the proper route format
-          const roomUrl = `/video-chat/room/${
-            data.roomName
-          }?username=${encodeURIComponent(username)}${matchedWith}${useDemo}`;
-
-          console.log(`Navigating to room: ${roomUrl}`);
-          router.push(roomUrl);
-        } else if (!cancelled && !forceReset) {
-          // No match yet - log info from server
-          if (data.debug) {
-            logWithTime(
-              `No match yet. Position: ${data.debug.queuePosition}/${data.debug.queueLength}, waiting: ${data.debug.waitTime}s`
-            );
-          } else {
-            logWithTime(`No match yet. Continuing to wait...`);
-          }
-
-          // Check again after a short delay
-          setTimeout(checkForMatch, checkInterval);
-        }
-      } catch (error) {
-        console.error("Error checking for match:", error);
-
-        // Only show error to the user after multiple failed attempts
-        retryCount++;
-        if (retryCount >= maxRetries && !cancelled && !forceReset) {
-          setError(
-            `Error checking for matches: ${String(error)}. Try resetting.`
-          );
-        }
-
-        // Exponential backoff for retries
-        checkInterval = Math.min(10000, checkInterval * 1.5);
-
-        if (!cancelled && !forceReset) {
-          logWithTime(
-            `Retry ${retryCount}/${maxRetries} in ${checkInterval / 1000}s`
-          );
-          setTimeout(checkForMatch, checkInterval);
-        }
-      }
-    };
-
-    // Start checking for matches
-    checkForMatch();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [router, username, checkCount, forceReset, logWithTime]);
+  // Note: Match checking is now handled by useUnifiedMatchPoller hook
 
   // Handle cancel button click
   const handleCancel = useCallback(async () => {
@@ -256,7 +166,6 @@ export function MatchFinder({ username }: MatchFinderProps) {
             onRecoveryComplete={() => {
               setError(null);
               setWaitTime(0);
-              setCheckCount(0);
             }}
           />
         )}

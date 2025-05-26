@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import WaitingRoomComponent from "@/components/WaitingRoomComponent";
 import AnimatedStars from "@/components/AnimatedStars";
 import MatchingInterface from "./MatchingInterface";
@@ -8,6 +9,7 @@ import { useRoomMatching } from "../hooks/useRoomMatching";
 import { useWaitingStatus } from "../hooks/useWaitingStatus";
 
 export default function VideoChatHome() {
+  const router = useRouter();
   const [state, actions] = useRoomMatching();
   const { username, isWaiting, error } = state;
 
@@ -48,6 +50,14 @@ export default function VideoChatHome() {
         <WaitingRoomComponent
           username={username}
           onCancel={actions.cancelWaiting}
+          onMatchFound={(roomName) => {
+            // Navigate to the matched room
+            router.push(
+              `/video-chat/room/${roomName}?username=${encodeURIComponent(
+                username
+              )}`
+            );
+          }}
         />
       ) : (
         <MatchingInterface error={error} actions={actions} />

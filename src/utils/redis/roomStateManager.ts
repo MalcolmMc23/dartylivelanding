@@ -1,8 +1,9 @@
 import redis from '../../lib/redis';
-import { ACTIVE_MATCHES, MATCHING_QUEUE, ROOM_STATES } from './constants';
+import { ACTIVE_MATCHES, MATCHING_QUEUE } from './constants';
 import { UserDataInQueue, ActiveMatch } from './types';
 import { addUserToQueue, removeUserFromQueue } from './queueManager';
 import { trackUserAlone, stopTrackingUserAlone } from './aloneUserManager';
+import { validateMatch } from './matchValidator';
 
 const ROOM_OCCUPANCY_KEY = 'room_occupancy';
 const USER_ROOM_MAPPING = 'user_room_mapping';
@@ -59,13 +60,29 @@ export async function updateRoomOccupancy(
     const aloneUser = occupancy.participants[0];
     console.log(`User ${aloneUser} is alone in room ${roomName}, starting alone tracking`);
     
-    // Get user's demo preference from active match if available
-    let useDemo = false;
+    // Check if there's an active match for this room and validate it
     const matchData = await redis.hget(ACTIVE_MATCHES, roomName);
+    let useDemo = false;
+    
     if (matchData) {
       try {
         const match = JSON.parse(matchData) as ActiveMatch;
         useDemo = match.useDemo || false;
+        
+        // Validate the match - if only one user is in the room, the match is invalid
+        const isValidMatch = await validateMatch(roomName);
+        if (!isValidMatch) {
+          console.log(`Match ${roomName} is invalid (only one user in room), cleaning up and requeuing ${aloneUser}`);
+          
+          // Remove the invalid match
+          await redis.hdel(ACTIVE_MATCHES, roomName);
+          
+          // Add the alone user back to queue with 'in_call' state
+          await addUserToQueue(aloneUser, useDemo, 'in_call', roomName);
+          
+          console.log(`Cleaned up invalid match and requeued ${aloneUser} in room ${roomName}`);
+          return; // Exit early since we've handled this case
+        }
       } catch (e) {
         console.error('Error parsing match data:', e);
       }
@@ -213,28 +230,34 @@ async function getUserQueueStatus(username: string): Promise<{ status: string; r
  * Clean up empty room data
  */
 async function cleanupEmptyRoom(roomName: string): Promise<void> {
-  console.log(`Cleaning up empty room: ${roomName}`);
-  
-  // Remove from room occupancy
-  await redis.hdel(ROOM_OCCUPANCY_KEY, roomName);
-  
-  // Remove from active matches
-  await redis.hdel(ACTIVE_MATCHES, roomName);
-  
-  // Remove from room states
-  await redis.hdel(ROOM_STATES, roomName);
-  
-  // Clean up user-room mappings for this room
-  const allUserMappings = await redis.hgetall(USER_ROOM_MAPPING);
-  for (const [username, mappingData] of Object.entries(allUserMappings)) {
-    try {
-      const userState = JSON.parse(mappingData) as UserRoomState;
-      if (userState.roomName === roomName) {
-        await redis.hdel(USER_ROOM_MAPPING, username);
+  try {
+    console.log(`Cleaning up empty room: ${roomName}`);
+    
+    // Check if there's an active match for this room before cleaning up
+    const matchData = await redis.hget(ACTIVE_MATCHES, roomName);
+    if (matchData) {
+      try {
+        const match = JSON.parse(matchData) as ActiveMatch;
+        const matchAge = Date.now() - match.matchedAt;
+        
+        // If the match is less than 2 minutes old, don't clean up yet
+        if (matchAge < 120000) {
+          console.log(`Room ${roomName} has recent active match (${matchAge}ms old), not cleaning up yet`);
+          return;
+        }
+      } catch (e) {
+        console.error('Error parsing match data during cleanup:', e);
       }
-    } catch (e) {
-      console.error('Error parsing user mapping during cleanup:', e);
     }
+    
+    // Remove from all tracking systems
+    await redis.hdel(ROOM_OCCUPANCY_KEY, roomName);
+    await redis.hdel(USER_ROOM_MAPPING, roomName);
+    await redis.hdel(ACTIVE_MATCHES, roomName);
+    
+    console.log(`Successfully cleaned up room: ${roomName}`);
+  } catch (error) {
+    console.error(`Error cleaning up room ${roomName}:`, error);
   }
 }
 

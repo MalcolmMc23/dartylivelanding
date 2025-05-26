@@ -4,6 +4,7 @@ import redis from '@/lib/redis';
 import { ROOM_PARTICIPANTS, ROOM_STATES } from '@/utils/redis/constants';
 import { isSyncServiceRunning } from '@/utils/redis/syncService';
 import { syncRoomAndQueueStates } from '@/utils/redis/roomStateManager';
+import { isUserInValidMatch } from '@/utils/redis/matchValidator';
 
 // Debug log with timestamps
 function debugLog(...messages: unknown[]): void {
@@ -39,6 +40,23 @@ export async function POST(request: Request) {
       // User has been matched with someone!
       debugLog(`MATCH FOUND: ${username} matched with ${status.matchedWith} in room ${status.roomName}`);
       
+      // First, validate that this is actually a valid match (both users in room)
+      const validMatchResult = await isUserInValidMatch(username);
+      
+      if (!validMatchResult.isValid) {
+        debugLog(`Match for ${username} is invalid - not both users in room, re-adding to queue`);
+        // Match is invalid, re-add user to queue
+        await hybridMatchingService.addUserToQueue(username, status.useDemo || false, false);
+        return NextResponse.json({ 
+          match: false,
+          debug: {
+            error: "Invalid match - not both users in room, re-added to queue",
+            originalMatch: status,
+            validationResult: validMatchResult
+          }
+        });
+      }
+      
       // Verify that room exists in Redis before sending back to client
       if (status.roomName) {
         const roomInfo = await hybridMatchingService.getRoomInfo(status.roomName);
@@ -65,7 +83,8 @@ export async function POST(request: Request) {
           debug: {
             matchedWith: status.matchedWith,
             useDemo: status.useDemo || false,
-            roomInfo: roomInfo
+            roomInfo: roomInfo,
+            validationResult: validMatchResult
           }
         });
       } else {

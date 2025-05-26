@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Users, Clock } from "lucide-react";
+import { useUnifiedMatchPoller } from "./hooks/useUnifiedMatchPoller";
 import { QueuePositionIndicator } from "./QueuePositionIndicator";
 
 interface SimpleVideoChatProps {
@@ -30,29 +31,6 @@ export function SimpleVideoChat({ defaultUsername }: SimpleVideoChatProps) {
   console.log(
     `SimpleVideoChat: username=${username}, autoMatch=${autoMatch}, isSearching=${isSearching}`
   );
-
-  // Auto-match on page load if flag is set
-  useEffect(() => {
-    if (autoMatch && username && !isSearching) {
-      console.log(`Auto-matching triggered for ${username}`);
-      handleFindMatch();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoMatch, username]);
-
-  // Show error if present
-  useEffect(() => {
-    if (error) {
-      const errorMessages: Record<string, string> = {
-        connection_failed: "Connection failed. Please try again.",
-        match_failed: "Could not find a match. Please try again.",
-        server_error: "Server error occurred. Please try again.",
-      };
-      setStatusMessage(
-        errorMessages[error] || "An error occurred. Please try again."
-      );
-    }
-  }, [error]);
 
   // Find match function
   const handleFindMatch = useCallback(async () => {
@@ -113,10 +91,9 @@ export function SimpleVideoChat({ defaultUsername }: SimpleVideoChatProps) {
           throw new Error("Failed to get access token");
         }
       } else if (result.status === "waiting") {
-        // Added to queue, start polling
+        // Added to queue, polling will be handled by useUnifiedMatchPoller
         setStatusMessage("Waiting for someone to join...");
         setQueuePosition(result.position || null);
-        startPolling();
       } else {
         throw new Error(result.error || "Unknown error occurred");
       }
@@ -127,76 +104,73 @@ export function SimpleVideoChat({ defaultUsername }: SimpleVideoChatProps) {
       );
       setIsSearching(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [username, useDemo, router, isSearching]);
 
-  // Polling function to check for matches
-  const startPolling = useCallback(() => {
-    const pollInterval = setInterval(async () => {
-      try {
-        const response = await fetch(
-          `/api/simple-match?username=${encodeURIComponent(username.trim())}`
-        );
-        const status = await response.json();
+  // Use unified match poller when searching
+  useUnifiedMatchPoller({
+    username: username.trim(),
+    isWaiting: isSearching,
+    onMatchFound: (roomName, matchedWith, useDemo) => {
+      setStatusMessage(`Matched with ${matchedWith}! Connecting...`);
 
-        console.log("Poll result:", status);
-
-        if (status.status === "matched") {
-          clearInterval(pollInterval);
-          setStatusMessage(`Matched with ${status.matchedWith}! Connecting...`);
-
-          // Get token and redirect
-          const tokenResponse = await fetch("/api/get-token", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              username: username.trim(),
-              roomName: status.roomName,
-              useDemo: status.useDemo,
-            }),
-          });
-
-          const tokenData = await tokenResponse.json();
-
+      // Get LiveKit token and redirect
+      fetch("/api/get-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: username.trim(),
+          roomName,
+          useDemo,
+        }),
+      })
+        .then((response) => response.json())
+        .then((tokenData) => {
           if (tokenData.token) {
             const roomUrl = new URL(
               "/simple-video/room",
               window.location.origin
             );
-            roomUrl.searchParams.set("roomName", status.roomName);
+            roomUrl.searchParams.set("roomName", roomName);
             roomUrl.searchParams.set("username", username.trim());
-            roomUrl.searchParams.set("matchedWith", status.matchedWith);
-            roomUrl.searchParams.set("useDemo", status.useDemo.toString());
+            roomUrl.searchParams.set("matchedWith", matchedWith);
+            roomUrl.searchParams.set("useDemo", useDemo.toString());
             roomUrl.searchParams.set("token", tokenData.token);
             roomUrl.searchParams.set("serverUrl", tokenData.liveKitUrl);
-
             router.push(roomUrl.toString());
           }
-        } else if (status.status === "waiting") {
-          setQueuePosition(status.position || null);
-        } else {
-          // Error or user not in queue
-          clearInterval(pollInterval);
-          setStatusMessage("Connection lost. Please try again.");
+        })
+        .catch((error) => {
+          console.error("Error getting token:", error);
+          setStatusMessage("Failed to connect. Please try again.");
           setIsSearching(false);
-        }
-      } catch (error) {
-        console.error("Polling error:", error);
-        clearInterval(pollInterval);
-        setStatusMessage("Connection error. Please try again.");
-        setIsSearching(false);
-      }
-    }, 2000); // Poll every 2 seconds
+        });
+    },
+    pollingInterval: 2000,
+  });
 
-    // Cleanup polling after 5 minutes
-    setTimeout(() => {
-      clearInterval(pollInterval);
-      if (isSearching) {
-        handleStopSearching();
-      }
-    }, 5 * 60 * 1000);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [username, router, isSearching]);
+  // Auto-match on page load if flag is set
+  useEffect(() => {
+    if (autoMatch && username && !isSearching) {
+      console.log(`Auto-matching triggered for ${username}`);
+      handleFindMatch();
+    }
+  }, [autoMatch, username, handleFindMatch, isSearching]);
+
+  // Show error if present
+  useEffect(() => {
+    if (error) {
+      const errorMessages: Record<string, string> = {
+        connection_failed: "Connection failed. Please try again.",
+        match_failed: "Could not find a match. Please try again.",
+        server_error: "Server error occurred. Please try again.",
+      };
+      setStatusMessage(
+        errorMessages[error] || "An error occurred. Please try again."
+      );
+    }
+  }, [error]);
+
+  // Note: Polling is now handled by useUnifiedMatchPoller hook
 
   // Stop searching
   const handleStopSearching = useCallback(async () => {
