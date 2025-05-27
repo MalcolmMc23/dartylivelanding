@@ -10,6 +10,8 @@ export async function addUserToQueue(
   lastMatch?: { matchedWith: string }
 ) {
   const now = Date.now();
+  const addLockKey = `queue_add_lock:${username}`;
+  const lockId = `${now}-${Math.random()}`;
   
   // Validate inputs to prevent negative numbers or invalid data
   if (!username || typeof username !== 'string') {
@@ -22,29 +24,37 @@ export async function addUserToQueue(
     return { username, added: false, state, reason: 'invalid_timestamp' };
   }
   
-  // Clean up any corrupted data for this user first
-  await cleanupCorruptedUserData(username);
-  
-  // Check if user is already in queue to prevent duplicates
-  const existingUserData = await scanQueueForUser(MATCHING_QUEUE, username);
-  if (existingUserData) {
-    try {
-      const existingUser = JSON.parse(existingUserData) as UserDataInQueue;
-      // If user is already in queue with same or better state, don't add again
-      if (existingUser.state === state || 
-          (existingUser.state === 'in_call' && state === 'waiting')) {
-        console.log(`User ${username} already in queue with state '${existingUser.state}', skipping add of '${state}'`);
-        return { username, added: false, state: existingUser.state, reason: 'already_in_queue' };
-      }
-      // Remove existing entry if we're upgrading the state
-      console.log(`Removing existing ${username} (${existingUser.state}) to upgrade to ${state}`);
-      await redis.zrem(MATCHING_QUEUE, existingUserData);
-    } catch (e) {
-      console.error('Error parsing existing user data:', e);
-      // Remove corrupted entry
-      await redis.zrem(MATCHING_QUEUE, existingUserData);
+  try {
+    // Acquire a short lock to prevent concurrent adds for the same user
+    const lockAcquired = await redis.set(addLockKey, lockId, 'EX', 2, 'NX');
+    if (lockAcquired !== 'OK') {
+      console.log(`Another process is adding ${username} to queue, skipping`);
+      return { username, added: false, state, reason: 'concurrent_add' };
     }
-  }
+    
+    // Clean up any corrupted data for this user first
+    await cleanupCorruptedUserData(username);
+    
+    // Check if user is already in queue to prevent duplicates
+    const existingUserData = await scanQueueForUser(MATCHING_QUEUE, username);
+    if (existingUserData) {
+      try {
+        const existingUser = JSON.parse(existingUserData) as UserDataInQueue;
+        // If user is already in queue with same or better state, don't add again
+        if (existingUser.state === state || 
+            (existingUser.state === 'in_call' && state === 'waiting')) {
+          console.log(`User ${username} already in queue with state '${existingUser.state}', skipping add of '${state}'`);
+          return { username, added: false, state: existingUser.state, reason: 'already_in_queue' };
+        }
+        // Remove existing entry if we're upgrading the state
+        console.log(`Removing existing ${username} (${existingUser.state}) to upgrade to ${state}`);
+        await redis.zrem(MATCHING_QUEUE, existingUserData);
+      } catch (e) {
+        console.error('Error parsing existing user data:', e);
+        // Remove corrupted entry
+        await redis.zrem(MATCHING_QUEUE, existingUserData);
+      }
+    }
   
   // Construct user data using the new structure
   const userData: UserDataInQueue = {
@@ -65,13 +75,20 @@ export async function addUserToQueue(
     console.log(`Removed ${username} from existing queue before re-adding with new state`);
   }
 
-  // Add to the unified queue using timestamp as score (FIFO ordering)
-  const userDataString = JSON.stringify(userData);
-  await redis.zadd(MATCHING_QUEUE, now, userDataString);
-  
-  console.log(`Added ${username} to matching queue with state '${state}' at timestamp ${now}`);
-  
-  return { username, added: true, state };
+    // Add to the unified queue using timestamp as score (FIFO ordering)
+    const userDataString = JSON.stringify(userData);
+    await redis.zadd(MATCHING_QUEUE, now, userDataString);
+    
+    console.log(`Added ${username} to matching queue with state '${state}' at timestamp ${now}`);
+    
+    return { username, added: true, state };
+  } finally {
+    // Always release the lock
+    const currentLock = await redis.get(addLockKey);
+    if (currentLock === lockId) {
+      await redis.del(addLockKey);
+    }
+  }
 }
 
 export async function removeUserFromQueue(username: string) {

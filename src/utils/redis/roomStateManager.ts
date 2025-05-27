@@ -3,6 +3,7 @@ import { ACTIVE_MATCHES, MATCHING_QUEUE, ROOM_STATES } from './constants';
 import { UserDataInQueue, ActiveMatch } from './types';
 import { addUserToQueue, removeUserFromQueue } from './queueManager';
 import { trackUserAlone, stopTrackingUserAlone } from './aloneUserManager';
+import { checkPendingLeftBehindState } from './leftBehindUserHandler';
 
 const ROOM_OCCUPANCY_KEY = 'room_occupancy';
 const USER_ROOM_MAPPING = 'user_room_mapping';
@@ -96,6 +97,13 @@ export async function updateRoomOccupancy(
  */
 async function ensureUserInQueue(username: string, roomName: string): Promise<void> {
   try {
+    // First check if user has a pending left-behind state being processed
+    const pendingState = await checkPendingLeftBehindState(username);
+    if (pendingState.hasPendingState) {
+      console.log(`User ${username} has pending left-behind state, skipping queue operation`);
+      return;
+    }
+    
     // Check if user is already in queue
     const queueStatus = await getUserQueueStatus(username);
     
