@@ -164,7 +164,7 @@ export function QueuePositionIndicator({
 
         {isWaiting && position === 1 && (
           <div className="text-xs text-blue-600 font-medium">
-            🎯 You're next in line!
+            🎯 You&apos;re next in line!
           </div>
         )}
       </CardContent>
