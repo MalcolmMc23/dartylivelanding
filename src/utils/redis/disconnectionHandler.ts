@@ -4,6 +4,7 @@ import { generateUniqueRoomName } from './roomManager';
 import { addUserToQueue, removeUserFromQueue } from './queueManager';
 import { findMatchForUser } from './matchingService';
 import { clearCooldown, recordCooldown } from './rematchCooldown';
+import { handleLeftBehindUserCentralized } from './leftBehindUserHandler';
 
 // Handle user disconnection
 export async function handleUserDisconnection(username: string, roomName: string, otherUsername?: string) {
@@ -30,8 +31,8 @@ export async function handleUserDisconnection(username: string, roomName: string
     await redis.hdel(ACTIVE_MATCHES, roomName);
     
     if (leftBehindUser) {
-      // Handle the left-behind user with simplified logic
-      const result = await handleLeftBehindUser(
+      // Use the centralized handler for left-behind users
+      const result = await handleLeftBehindUserCentralized(
         leftBehindUser,
         roomName,
         username,

@@ -10,8 +10,4 @@ export const RECENT_MATCH_PREFIX = 'recent_match:'; // For simplified cooldown t
 // Room tracking keys for LiveKit synchronization
 export const ROOM_PARTICIPANTS = 'rooms:participants'; // Track actual LiveKit participants
 export const ROOM_STATES = 'rooms:states'; // Track room states (active, empty, etc.)
-export const LIVEKIT_SYNC_LOCK = 'livekit:sync:lock'; // Lock for sync operations
-
-// Legacy constants - kept for migration code, will remove after full transition
-export const WAITING_QUEUE = 'matching:waiting';
-export const IN_CALL_QUEUE = 'matching:in_call'; 
+export const LIVEKIT_SYNC_LOCK = 'livekit:sync:lock'; // Lock for sync operations 

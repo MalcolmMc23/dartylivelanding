@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import * as hybridMatchingService from '@/utils/hybridMatchingService';
 import redis from '@/lib/redis';
-import { ROOM_PARTICIPANTS, ROOM_STATES } from '@/utils/redis/constants';
-import { isSyncServiceRunning } from '@/utils/redis/syncService';
+import { MATCHING_QUEUE, ACTIVE_MATCHES, ROOM_PARTICIPANTS, ROOM_STATES } from '@/utils/redis/constants';
 import { syncRoomAndQueueStates } from '@/utils/redis/roomStateManager';
 import { isUserInValidMatch } from '@/utils/redis/matchValidator';
 
@@ -23,7 +22,6 @@ export async function POST(request: Request) {
     debugLog(`Check match request for user: ${username}`);
     
     // Clean up stale records and sync room states
-    await hybridMatchingService.cleanupOldWaitingUsers();
     await hybridMatchingService.cleanupOldMatches();
     
     // Sync room and queue states to ensure consistency
@@ -183,31 +181,22 @@ export async function POST(request: Request) {
 export async function GET() {
   try {
     // Clean up stale records
-    await hybridMatchingService.cleanupOldWaitingUsers();
     await hybridMatchingService.cleanupOldMatches();
     
     // For debugging, return the raw Redis queue data
-    const waitingQueueData = await redis.zrange('matching:waiting', 0, -1);
-    const inCallQueueData = await redis.zrange('matching:in_call', 0, -1);
-    const activeMatchesData = await redis.hgetall('matching:active');
+    const matchingQueueData = await redis.zrange(MATCHING_QUEUE, 0, -1);
+    const activeMatchesData = await redis.hgetall(ACTIVE_MATCHES);
     
     // Get room sync data
     const roomParticipantsData = await redis.hgetall(ROOM_PARTICIPANTS);
     const roomStatesData = await redis.hgetall(ROOM_STATES);
 
     return NextResponse.json({
-      waitingQueueSize: waitingQueueData.length,
-      inCallQueueSize: inCallQueueData.length,
+      matchingQueueSize: matchingQueueData.length,
       activeMatchesCount: Object.keys(activeMatchesData || {}).length,
       roomParticipantsCount: Object.keys(roomParticipantsData || {}).length,
       roomStatesCount: Object.keys(roomStatesData || {}).length,
-      syncServiceRunning: isSyncServiceRunning(),
-      waitingQueue: waitingQueueData.map(d => {
-        try { return JSON.parse(d); } 
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        catch (_) { return d; }
-      }),
-      inCallQueue: inCallQueueData.map(d => {
+      matchingQueue: matchingQueueData.map(d => {
         try { return JSON.parse(d); } 
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         catch (_) { return d; }
@@ -222,29 +211,8 @@ export async function GET() {
         }
         return acc;
       }, {} as Record<string, unknown>),
-      roomParticipants: Object.entries(roomParticipantsData || {}).reduce((acc, [key, value]) => {
-        try {
-          acc[key] = JSON.parse(value as string);
-        } 
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        catch (_) {
-          acc[key] = value;
-        }
-        return acc;
-      }, {} as Record<string, unknown>),
-      roomStates: Object.entries(roomStatesData || {}).reduce((acc, [key, value]) => {
-        try {
-          acc[key] = JSON.parse(value as string);
-        } 
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        catch (_) {
-          acc[key] = value;
-        }
-        return acc;
-      }, {} as Record<string, unknown>)
     });
   } catch (error) {
-    console.error("Error in check-match GET API:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 } 

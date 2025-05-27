@@ -16,8 +16,6 @@ export async function GET(request: NextRequest) {
     const allQueuedUsersRaw = await redis.zrange(MATCHING_QUEUE, 0, -1);
     
     let userPosition: number | null = null;
-    let totalWaiting = 0;
-    let totalInCall = 0;
     let userState: UserQueueState | null = null;
     let userJoinedAt: number | null = null;
 
@@ -31,10 +29,8 @@ export async function GET(request: NextRequest) {
         
         if (user.state === 'waiting') {
           waitingUsers.push(user);
-          totalWaiting++;
         } else if (user.state === 'in_call') {
           inCallUsers.push(user);
-          totalInCall++;
         }
 
         // Check if this is our user
@@ -91,16 +87,14 @@ export async function GET(request: NextRequest) {
       position: userPosition,
       estimatedWait,
       queueStats: {
-        totalWaiting,
-        totalInCall,
+        totalWaiting: waitingUsers.length,
+        totalInCall: inCallUsers.length,
         activeMatches: activeMatchesCount,
         yourState: userState as string | null
       },
       timestamp: Date.now()
     });
-
   } catch (error) {
-    console.error('Error getting queue position:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 } 

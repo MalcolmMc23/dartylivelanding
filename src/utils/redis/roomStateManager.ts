@@ -3,7 +3,7 @@ import { ACTIVE_MATCHES, MATCHING_QUEUE } from './constants';
 import { UserDataInQueue, ActiveMatch } from './types';
 import { addUserToQueue, removeUserFromQueue } from './queueManager';
 import { trackUserAlone, stopTrackingUserAlone } from './aloneUserManager';
-import { validateMatch } from './matchValidator';
+import { checkPendingLeftBehindState } from './leftBehindUserHandler';
 
 const ROOM_OCCUPANCY_KEY = 'room_occupancy';
 const USER_ROOM_MAPPING = 'user_room_mapping';
@@ -113,10 +113,10 @@ export async function updateRoomOccupancy(
  */
 async function ensureUserInQueue(username: string, roomName: string): Promise<void> {
   try {
-    // First check if user is already matched (they might have found a match while we were processing)
-    const activeMatch = await checkUserInActiveMatch(username);
-    if (activeMatch) {
-      console.log(`User ${username} is already in an active match, not adding to queue`);
+    // First check if user has a pending left-behind state being processed
+    const pendingState = await checkPendingLeftBehindState(username);
+    if (pendingState.hasPendingState) {
+      console.log(`User ${username} has pending left-behind state, skipping queue operation`);
       return;
     }
     
