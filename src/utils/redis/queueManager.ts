@@ -1,5 +1,5 @@
 import redis from '../../lib/redis';
-import { MATCHING_QUEUE, ACTIVE_MATCHES, WAITING_QUEUE, IN_CALL_QUEUE } from './constants';
+import { MATCHING_QUEUE, ACTIVE_MATCHES } from './constants';
 import { UserQueueState, UserDataInQueue } from './types';
 
 export async function addUserToQueue(
@@ -59,13 +59,13 @@ export async function addUserToQueue(
     } : undefined
   };
 
-  // Remove user from any queue they might be in (both new and legacy queues)
+  // Remove user from the queue before re-adding with new state
   const wasRemoved = await removeUserFromQueue(username);
   if (wasRemoved) {
     console.log(`Removed ${username} from existing queue before re-adding with new state`);
   }
 
-  // Add to the new unified queue using timestamp as score (FIFO ordering)
+  // Add to the unified queue using timestamp as score (FIFO ordering)
   const userDataString = JSON.stringify(userData);
   await redis.zadd(MATCHING_QUEUE, now, userDataString);
   
@@ -77,24 +77,10 @@ export async function addUserToQueue(
 export async function removeUserFromQueue(username: string) {
   let removed = false;
   
-  // Check the new unified queue
+  // Only check the unified queue
   const result = await scanQueueForUser(MATCHING_QUEUE, username);
   if (result) {
     await redis.zrem(MATCHING_QUEUE, result);
-    removed = true;
-  }
-  
-  // For backward compatibility - also check legacy queues
-  const result1 = await scanQueueForUser(WAITING_QUEUE, username);
-  const result2 = await scanQueueForUser(IN_CALL_QUEUE, username);
-  
-  if (result1) {
-    await redis.zrem(WAITING_QUEUE, result1);
-    removed = true;
-  }
-  
-  if (result2) {
-    await redis.zrem(IN_CALL_QUEUE, result2);
     removed = true;
   }
   
@@ -139,7 +125,7 @@ export async function getWaitingQueueStatus(username: string) {
     }
   }
   
-  // Check if user is in the new unified queue
+  // Check if user is in the unified queue
   const userData = await scanQueueForUser(MATCHING_QUEUE, username);
   
   if (userData) {
@@ -185,60 +171,26 @@ export async function getWaitingQueueStatus(username: string) {
     }
   }
   
-  // Fallback to legacy queue checks for transition period
-  const waitingUserData = await scanQueueForUser(WAITING_QUEUE, username);
-  if (waitingUserData) {
-    try {
-      const userInfo = JSON.parse(waitingUserData);
-      return {
-        status: 'waiting',
-        useDemo: userInfo.useDemo
-      };
-    } catch {
-      return { status: 'waiting' };
-    }
-  }
-  
-  const inCallUserData = await scanQueueForUser(IN_CALL_QUEUE, username);
-  if (inCallUserData) {
-    try {
-      const userInfo = JSON.parse(inCallUserData);
-      return {
-        status: 'in_call',
-        roomName: userInfo.roomName,
-        useDemo: userInfo.useDemo
-      };
-    } catch {
-      return { status: 'in_call' };
-    }
-  }
-  
   return { status: 'not_waiting' };
 }
 
 async function cleanupCorruptedUserData(username: string): Promise<void> {
   try {
-    // Remove any corrupted entries from all queues
-    const allQueues = [MATCHING_QUEUE, WAITING_QUEUE, IN_CALL_QUEUE];
-    
-    for (const queueKey of allQueues) {
-      const allMembers = await redis.zrange(queueKey, 0, -1);
-      
-      for (const member of allMembers) {
-        try {
-          const data = JSON.parse(member);
-          
-          // Check for corrupted data (negative timestamps, invalid usernames, etc.)
-          if (data.username === username && 
-              (data.joinedAt < 0 || !Number.isFinite(data.joinedAt) || !data.username)) {
-            console.log(`Removing corrupted data for ${username} from ${queueKey}`);
-            await redis.zrem(queueKey, member);
-          }
-        } catch {
-          // Remove unparseable data
-          console.log(`Removing unparseable data from ${queueKey}:`, member);
-          await redis.zrem(queueKey, member);
+    // Remove any corrupted entries from the unified queue
+    const allMembers = await redis.zrange(MATCHING_QUEUE, 0, -1);
+    for (const member of allMembers) {
+      try {
+        const data = JSON.parse(member);
+        // Check for corrupted data (negative timestamps, invalid usernames, etc.)
+        if (data.username === username && 
+            (data.joinedAt < 0 || !Number.isFinite(data.joinedAt) || !data.username)) {
+          console.log(`Removing corrupted data for ${username} from ${MATCHING_QUEUE}`);
+          await redis.zrem(MATCHING_QUEUE, member);
         }
+      } catch {
+        // Remove unparseable data
+        console.log(`Removing unparseable data from ${MATCHING_QUEUE}:`, member);
+        await redis.zrem(MATCHING_QUEUE, member);
       }
     }
   } catch (error) {

@@ -15,8 +15,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Clean up stale records first to ensure we're working with fresh data
-    await hybridMatchingService.cleanupOldWaitingUsers();
+    // Clean up stale records
     await hybridMatchingService.cleanupOldMatches();
     
     // Get room info to check if it's a valid match

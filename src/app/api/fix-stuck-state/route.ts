@@ -59,8 +59,7 @@ export async function POST(request: NextRequest) {
       console.error('Error cleaning up room occupancy:', error);
     }
     
-    // 6. Trigger cleanup and sync
-    await hybridMatchingService.cleanupOldWaitingUsers();
+    // 6. Clean up stale records
     await hybridMatchingService.cleanupOldMatches();
     
     return NextResponse.json({

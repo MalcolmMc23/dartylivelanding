@@ -19,7 +19,6 @@ export async function POST(request: NextRequest) {
     console.log(`Match request for ${username} (useDemo: ${useDemo}, isRematching: ${isRematching})`);
     
     // Clean up stale records
-    await hybridMatchingService.cleanupOldWaitingUsers();
     await hybridMatchingService.cleanupOldMatches();
     
     // Check if user is already matched
@@ -165,7 +164,6 @@ export async function GET(request: NextRequest) {
     }
     
     // Clean up stale users and matches
-    await hybridMatchingService.cleanupOldWaitingUsers();
     await hybridMatchingService.cleanupOldMatches();
     
     // Handle cancel action

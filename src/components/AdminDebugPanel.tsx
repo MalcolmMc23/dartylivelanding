@@ -4,11 +4,9 @@ import { useState, useCallback, useEffect } from "react";
 
 // Define a type for the debug data structure
 interface DebugData {
-  waitingQueueSize?: number;
-  inCallQueueSize?: number;
+  matchingQueueSize?: number;
   activeMatchesCount?: number;
-  waitingQueue?: string[];
-  inCallQueue?: string[];
+  matchingQueue?: string[];
   activeMatches?: Record<string, unknown>;
 }
 
@@ -248,15 +246,9 @@ export function AdminDebugPanel() {
               </div>
               <div className="grid grid-cols-3 gap-2 text-sm">
                 <div className="bg-gray-700 rounded p-2 text-center">
-                  <div>Waiting</div>
+                  <div>Queue Size</div>
                   <div className="font-mono">
-                    {debugData.waitingQueueSize || 0}
-                  </div>
-                </div>
-                <div className="bg-gray-700 rounded p-2 text-center">
-                  <div>In-Call</div>
-                  <div className="font-mono">
-                    {debugData.inCallQueueSize || 0}
+                    {debugData.matchingQueueSize || 0}
                   </div>
                 </div>
                 <div className="bg-gray-700 rounded p-2 text-center">
@@ -269,20 +261,9 @@ export function AdminDebugPanel() {
             </div>
 
             <div className="text-sm">
-              <div className="font-semibold mb-1 text-gray-300">
-                Waiting Queue:
-              </div>
+              <div className="font-semibold mb-1 text-gray-300">Queue:</div>
               <pre className="bg-gray-800 p-2 rounded overflow-x-auto text-xs">
-                {JSON.stringify(debugData.waitingQueue || [], null, 2)}
-              </pre>
-            </div>
-
-            <div className="text-sm">
-              <div className="font-semibold mb-1 text-gray-300">
-                In-Call Queue:
-              </div>
-              <pre className="bg-gray-800 p-2 rounded overflow-x-auto text-xs">
-                {JSON.stringify(debugData.inCallQueue || [], null, 2)}
+                {JSON.stringify(debugData.matchingQueue || [], null, 2)}
               </pre>
             </div>
 

@@ -89,11 +89,6 @@ export async function getRoomInfo(roomName: string) {
   return await redisMatchingService.getRoomInfo(roomName);
 }
 
-// Cleanup old waiting users
-export async function cleanupOldWaitingUsers() {
-  return await redisMatchingService.cleanupOldWaitingUsers();
-}
-
 // Cleanup old matches
 export async function cleanupOldMatches() {
   return await redisMatchingService.cleanupOldMatches();
