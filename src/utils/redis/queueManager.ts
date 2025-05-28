@@ -1,7 +1,7 @@
 import redis from '../../lib/redis';
 import { MATCHING_QUEUE, ACTIVE_MATCHES } from './constants';
 import { UserQueueState, UserDataInQueue } from './types';
-import { Mutex } from 'async-mutex';
+// import { Mutex } from 'async-mutex';
 
 // Create a mutex for queue operations to prevent race conditions
 // const queueMutex = new Mutex();
