@@ -4,7 +4,7 @@ import { UserQueueState, UserDataInQueue } from './types';
 import { Mutex } from 'async-mutex';
 
 // Create a mutex for queue operations to prevent race conditions
-const queueMutex = new Mutex();
+// const queueMutex = new Mutex();
 
 export async function addUserToQueue(
   username: string,
@@ -217,4 +217,4 @@ async function cleanupCorruptedUserData(username: string): Promise<void> {
   } catch (error) {
     console.error(`Error cleaning up corrupted data for ${username}:`, error);
   }
-} 
+}

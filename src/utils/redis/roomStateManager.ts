@@ -4,6 +4,7 @@ import { UserDataInQueue, ActiveMatch } from './types';
 import { addUserToQueue, removeUserFromQueue } from './queueManager';
 import { trackUserAlone, stopTrackingUserAlone } from './aloneUserManager';
 import { checkPendingLeftBehindState } from './leftBehindUserHandler';
+import { validateMatch } from './matchValidator';
 
 const ROOM_OCCUPANCY_KEY = 'room_occupancy';
 const USER_ROOM_MAPPING = 'user_room_mapping';
@@ -178,25 +179,25 @@ async function ensureUserInQueue(username: string, roomName: string): Promise<vo
 }
 
 // Helper to check if user is in an active match
-async function checkUserInActiveMatch(username: string): Promise<{ roomName: string; matchedWith: string } | null> {
-  const allMatches = await redis.hgetall(ACTIVE_MATCHES);
-  
-  for (const [roomName, matchData] of Object.entries(allMatches)) {
-    try {
-      const match = JSON.parse(matchData as string);
-      if (match.user1 === username || match.user2 === username) {
-        return {
-          roomName,
-          matchedWith: match.user1 === username ? match.user2 : match.user1
-        };
-      }
-    } catch (e) {
-      console.error('Error parsing match data:', e);
-    }
-  }
-  
-  return null;
-}
+// async function checkUserInActiveMatch(username: string): Promise<{ roomName: string; matchedWith: string } | null> {
+//   const allMatches = await redis.hgetall(ACTIVE_MATCHES);
+//   
+//   for (const [roomName, matchData] of Object.entries(allMatches)) {
+//     try {
+//       const match = JSON.parse(matchData as string);
+//       if (match.user1 === username || match.user2 === username) {
+//         return {
+//           roomName,
+//           matchedWith: match.user1 === username ? match.user2 : match.user1
+//         };
+//       }
+//     } catch (e) {
+//       console.error('Error parsing match data:', e);
+//     }
+//   }
+//   
+//   return null;
+// }
 
 /**
  * Get user's current queue status
@@ -425,4 +426,4 @@ export async function removeUserFromRoom(username: string, roomName: string): Pr
   } catch (error) {
     console.error(`Error removing user ${username} from room ${roomName}:`, error);
   }
-} 
+}
