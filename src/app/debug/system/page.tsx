@@ -1,6 +1,5 @@
 import { SystemResetDebugger } from "@/components/debug/SystemResetDebugger";
 import { CooldownDebugger } from "@/components/CooldownDebugger";
-import { QuickActions } from "@/components/debug/QuickActions";
 
 export default function SystemDebugPage() {
   return (
@@ -59,12 +58,6 @@ export default function SystemDebugPage() {
               </p>
             </div>
           </div>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="mt-8">
-          <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
-          <QuickActions />
         </div>
 
         {/* Environment Info */}

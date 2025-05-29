@@ -1,5 +1,3 @@
-import { AloneUserTester } from "@/components/debug/AloneUserTester";
-
 export default function AloneUsersDebugPage() {
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -37,8 +35,6 @@ export default function AloneUsersDebugPage() {
             </ul>
           </div>
         </div>
-
-        <AloneUserTester />
       </div>
     </div>
   );
