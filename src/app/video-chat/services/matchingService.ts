@@ -1,39 +1,33 @@
 import { MatchingAPIResponse } from "../components/types";
 
-// Mock matching service - replace with actual API calls when backend is ready
+// Matching service for API calls
 class MatchingService {
   private readonly baseUrl: string;
 
   constructor() {
-    this.baseUrl = process.env.NEXT_PUBLIC_MATCHING_SERVICE_URL || 'http://localhost:3001';
+    // Use relative URLs for API routes in the same Next.js app
+    this.baseUrl = '';
   }
 
   // Enqueue user for matching
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async enqueue(_userId: string): Promise<MatchingAPIResponse> {
+  async enqueue(userId: string): Promise<MatchingAPIResponse> {
     try {
-      // Mock implementation - replace with actual API call
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          resolve({
-            success: true,
-            data: {
-              sessionId: `session_${Date.now()}`,
-              roomName: `room_${Date.now()}`,
-              accessToken: `token_${Date.now()}`,
-              peerId: `peer_${Math.random().toString(36).substr(2, 9)}`,
-            }
-          });
-        }, 2000 + Math.random() * 3000);
+      const response = await fetch(`${this.baseUrl}/api/matching/enqueue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId })
       });
-
-      // Actual implementation would be:
-      // const response = await fetch(`${this.baseUrl}/api/enqueue`, {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ userId })
-      // });
-      // return await response.json();
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        return {
+          success: false,
+          error: data.error || 'Failed to enqueue user'
+        };
+      }
+      
+      return data;
     } catch (error) {
       console.error('Error enqueuing user:', error);
       return {
@@ -44,31 +38,24 @@ class MatchingService {
   }
 
   // Skip current session and look for new match
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async skip(_sessionId: string, _userId: string): Promise<MatchingAPIResponse> {
+  async skip(sessionId: string, userId: string): Promise<MatchingAPIResponse> {
     try {
-      // Mock implementation
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          resolve({
-            success: true,
-            data: {
-              sessionId: `session_${Date.now()}`,
-              roomName: `room_${Date.now()}`,
-              accessToken: `token_${Date.now()}`,
-              peerId: `peer_${Math.random().toString(36).substr(2, 9)}`,
-            }
-          });
-        }, 1000 + Math.random() * 2000);
+      const response = await fetch(`${this.baseUrl}/api/matching/skip`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, userId })
       });
-
-      // Actual implementation would be:
-      // const response = await fetch(`${this.baseUrl}/api/skip`, {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ sessionId, userId })
-      // });
-      // return await response.json();
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        return {
+          success: false,
+          error: data.error || 'Failed to skip session'
+        };
+      }
+      
+      return data;
     } catch (error) {
       console.error('Error skipping session:', error);
       return {
@@ -79,25 +66,24 @@ class MatchingService {
   }
 
   // End current session
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async endSession(_sessionId: string, _userId: string): Promise<MatchingAPIResponse> {
+  async endSession(sessionId: string, userId: string): Promise<MatchingAPIResponse> {
     try {
-      // Mock implementation
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          resolve({
-            success: true
-          });
-        }, 500);
+      const response = await fetch(`${this.baseUrl}/api/matching/end`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, userId })
       });
-
-      // Actual implementation would be:
-      // const response = await fetch(`${this.baseUrl}/api/end`, {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ sessionId, userId })
-      // });
-      // return await response.json();
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        return {
+          success: false,
+          error: data.error || 'Failed to end session'
+        };
+      }
+      
+      return data;
     } catch (error) {
       console.error('Error ending session:', error);
       return {
@@ -108,17 +94,15 @@ class MatchingService {
   }
 
   // Get queue status
-  async getQueueStatus(): Promise<{ position: number; estimatedWaitTime: number }> {
+  async getQueueStatus(userId: string): Promise<{ position: number; estimatedWaitTime: number }> {
     try {
-      // Mock implementation
-      return {
-        position: Math.floor(Math.random() * 50) + 1,
-        estimatedWaitTime: Math.floor(Math.random() * 30000) + 5000 // 5-35 seconds
-      };
-
-      // Actual implementation would be:
-      // const response = await fetch(`${this.baseUrl}/api/queue/status`);
-      // return await response.json();
+      const response = await fetch(`${this.baseUrl}/api/matching/status?userId=${userId}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to get queue status');
+      }
+      
+      return await response.json();
     } catch (error) {
       console.error('Error getting queue status:', error);
       return {
