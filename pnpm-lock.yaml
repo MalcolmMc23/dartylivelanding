@@ -11,6 +11,9 @@ importers:
       '@livekit/components-react':
         specifier: ^2.9.3
         version: 2.9.3(livekit-client@2.11.3)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(tslib@2.8.1)
+      '@livekit/components-styles':
+        specifier: ^1.1.6
+        version: 1.1.6
       '@radix-ui/react-dialog':
         specifier: ^1.1.13
         version: 1.1.13(@types/react-dom@19.1.2(@types/react@19.1.2))(@types/react@19.1.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -362,6 +365,10 @@ packages:
     peerDependenciesMeta:
       '@livekit/krisp-noise-filter':
         optional: true
+
+  '@livekit/components-styles@1.1.6':
+    resolution: {integrity: sha512-V6zfuREC2ksW8z6T6WSbEvdLB5ICVikGz1GtLr59UcxHDyAsKDbuDHAyl3bF3xBqPKYmY3GWF3Qk39rnScyOtA==}
+    engines: {node: '>=18'}
 
   '@livekit/mutex@1.1.1':
     resolution: {integrity: sha512-EsshAucklmpuUAfkABPxJNhzj9v2sG7JuzFDL4ML1oJQSV14sqrpTYnsaOudMAw9yOaW53NU3QQTlUQoRs4czw==}
@@ -2727,6 +2734,8 @@ snapshots:
       react-dom: 19.1.0(react@19.1.0)
       tslib: 2.8.1
       usehooks-ts: 3.1.1(react@19.1.0)
+
+  '@livekit/components-styles@1.1.6': {}
 
   '@livekit/mutex@1.1.1': {}
 
