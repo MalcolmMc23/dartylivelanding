@@ -21,6 +21,7 @@
     "bcrypt": "^6.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "darty_live_landing": "link:",
     "dotenv": "^16.3.1",
     "ioredis": "^5.6.1",
     "livekit-client": "^2.11.3",

@@ -63,10 +63,24 @@ export async function createRoom(roomName: string): Promise<unknown> {
  */
 export async function deleteRoom(roomName: string) {
   try {
-    await roomService.deleteRoom(roomName);
-  } catch (error) {
-    console.error('Error deleting LiveKit room:', error);
-    // Don't throw - room might already be deleted
+    // First check if the room exists
+    const rooms = await roomService.listRooms([roomName]);
+    if (rooms && rooms.length > 0) {
+      await roomService.deleteRoom(roomName);
+      console.log(`Deleted LiveKit room: ${roomName}`);
+    } else {
+      console.log(`Room ${roomName} doesn't exist, skipping deletion`);
+    }
+  } catch (error: unknown) {
+    // Only log real errors, not "room not found"
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error as { code?: string }).code !== 'not_found'
+    ) {
+      console.error('Error deleting LiveKit room:', error);
+    }
   }
 }
 
