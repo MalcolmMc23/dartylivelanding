@@ -10,11 +10,15 @@ import { LeaveButtonOverrideEffect } from "./room/LeaveButtonOverrideEffect";
 interface CustomControlBarProps extends ControlBarProps {
   onChatClick: () => void;
   hasUnreadChat?: boolean;
+  onSkip?: () => void;
+  onEnd?: () => void;
 }
 
 export function CustomControlBar({
   onChatClick,
   hasUnreadChat = false,
+  onSkip,
+  onEnd,
 }: CustomControlBarProps) {
   // Removed useRoomActions-related logic
 
@@ -30,8 +34,8 @@ export function CustomControlBar({
       />
 
       <CallActionButtons
-        onSkip={() => {}}
-        onEnd={() => {}}
+        onSkip={onSkip || (() => {})}
+        onEnd={onEnd || (() => {})}
         isRedirecting={false}
       />
 

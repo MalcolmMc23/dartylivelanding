@@ -1,199 +1,142 @@
-# Matching Implementation Plan
+# Matching Implementation Plan - Updated
 
-Based on the architecture in `instructions/Matching.md`, here's what needs to be implemented to complete the Omegle-style video chat matching system.
+## Current Implementation Status
 
-## Current State Summary
-- ✅ Basic HTTP API endpoints (enqueue, skip, end, status)
-- ✅ Redis queue structure (waiting, in_call)
-- ✅ Database schema (users, sessions, blocklist)
-- ✅ LiveKit room creation and token generation
-- ❌ Real-time notifications (WebSocket/SSE)
-- ❌ LiveKit webhooks for state sync
-- ❌ Proper authentication integration
-- ❌ Queue polling in frontend
-- ❌ Blocklist filtering
-- ❌ Rate limiting
-- ❌ Session heartbeat/cleanup
+### Simplified Random Chat System (`/random-chat`)
+We've implemented a simplified matching system that works without authentication:
 
-## Priority 1: Core Real-time Features
+#### ✅ Completed Features:
+1. **Random Matching**
+   - Users get random IDs (no login required)
+   - Instant matching when two users are waiting
+   - Redis-based queue management
 
-### 1. WebSocket/SSE for Match Notifications
-**Why**: Users in queue need immediate notification when matched
+2. **Real-time Updates**
+   - Polling mechanism for match detection
+   - Heartbeat system to detect disconnected users
+   - Force disconnect notification for partner
 
-**Implementation**:
+3. **LiveKit Integration**
+   - Room creation on match
+   - Token generation for both users
+   - Automatic room deletion on disconnect
+
+4. **State Management**
+   - Complete cleanup when users disconnect
+   - No orphaned data in Redis
+   - Automatic stale user removal
+
+5. **Error Handling**
+   - Retry mechanism for match detection
+   - Proper error messages
+   - Debug tools for testing
+
+#### 🔧 Implementation Details:
+
+**API Endpoints:**
+- `/api/simple-matching/enqueue` - Join the matching queue
+- `/api/simple-matching/check-match` - Poll for match status
+- `/api/simple-matching/heartbeat` - Keep-alive signal
+- `/api/simple-matching/end` - End session and cleanup
+- `/api/simple-matching/cleanup` - Remove stale users
+- `/api/simple-matching/check-disconnect` - Check force disconnect
+- `/api/simple-matching/force-cleanup` - Manual cleanup
+
+**Redis Keys:**
+- `matching:waiting` - Sorted set of users waiting for match
+- `matching:in_call` - Sorted set of users in active calls
+- `match:{userId}` - Match data with 5-minute TTL
+- `heartbeat:{userId}` - Heartbeat with 30-second TTL
+- `force-disconnect:{userId}` - Force disconnect flag
+
+**Key Improvements Made:**
+1. Fixed race condition where users were removed from queue before match data was stored
+2. Added duplicate end call prevention
+3. Improved cleanup to ensure no stale data
+4. Added retry logic for match detection
+5. Better error handling and logging
+
+## Original System (Removed)
+The original `/video-chat` system with authentication has been removed in favor of the simplified system.
+
+## Future Enhancements (Optional)
+
+### 1. Add Skip Functionality
 ```typescript
-// Option A: Server-Sent Events (Simpler)
-// Create: src/app/api/matching/events/route.ts
-// - Stream queue updates to waiting users
-// - Notify when match is found with session details
-
-// Option B: WebSocket (More complex, bidirectional)
-// Create: src/lib/websocket.ts
-// - Establish WS connection on enqueue
-// - Send match notifications
-// - Handle disconnections
+// Allow users to skip current partner and find new match
+// Reuse existing matching logic
 ```
 
-**Steps**:
-1. Create SSE endpoint `/api/matching/events`
-2. Modify enqueue to store connection info
-3. When match found, send event to waiting user
-4. Update frontend to establish EventSource connection
-
-### 2. LiveKit Webhook Handlers
-**Why**: Sync room state when users disconnect unexpectedly
-
-**Implementation**:
+### 2. Add Text Chat
 ```typescript
-// Create: src/app/api/livekit/webhooks/route.ts
-// Handle events:
-// - participant_joined
-// - participant_left
-// - room_finished
+// Use LiveKit data channels for text messaging
+// Add chat UI alongside video
 ```
 
-**Steps**:
-1. Create webhook endpoint
-2. Verify webhook signatures (security)
-3. Update session/user status on disconnect
-4. Clean up Redis state
-5. Configure LiveKit to send webhooks
-
-### 3. Fix Authentication Integration
-**Why**: Currently using mock user IDs
-
-**Steps**:
-1. Update `VideoChatController` to get username from session
-2. Remove MOCK_USER_ID constant
-3. Ensure all API calls use authenticated username
-4. Add proper error handling for unauthenticated users
-
-## Priority 2: Reliability & UX
-
-### 4. Implement Queue Status Polling
-**Why**: Show real queue position while waiting
-
-**Implementation**:
+### 3. Add Filters
 ```typescript
-// Update: src/app/video-chat/components/MatchingQueue.tsx
-// - Poll /api/matching/status every 2 seconds
-// - Display actual queue position
-// - Show estimated wait time
+// Language preferences
+// Interest matching
+// Geographic filtering
 ```
 
-**Steps**:
-1. Add polling logic to MatchingQueue component
-2. Use actual API data instead of fake countdown
-3. Stop polling when matched or cancelled
-
-### 5. Session Heartbeat Mechanism
-**Why**: Detect and clean up abandoned sessions
-
-**Implementation**:
+### 4. Add Reporting
 ```typescript
-// Create: src/app/api/matching/heartbeat/route.ts
-// Update: src/lib/redis.ts - add heartbeat tracking
+// Report inappropriate behavior
+// Block specific users (store in Redis)
 ```
 
-**Steps**:
-1. Add heartbeat endpoint
-2. Frontend sends heartbeat every 30s during call
-3. Mark sessions as stale after 60s without heartbeat
-4. Background job to clean stale sessions
-
-### 6. Automatic Session Cleanup
-**Why**: Prevent orphaned rooms and stuck users
-
-**Implementation**:
-- Cron job or background worker
-- Clean up sessions older than X minutes
-- Delete associated LiveKit rooms
-- Update user statuses
-
-## Priority 3: Safety & Moderation
-
-### 7. Blocklist Filtering
-**Why**: Users should not match with blocked users
-
-**Steps**:
-1. Update enqueue logic to filter blocked users
-2. Query blocklist table during matching
-3. Skip blocked users in queue
-
-### 8. Rate Limiting for Skips
-**Why**: Prevent abuse of skip feature
-
-**Implementation**:
+### 5. Add Statistics
 ```typescript
-// Track in Redis:
-// - skip_count:{userId} - count of skips
-// - skip_cooldown:{userId} - timestamp of cooldown end
+// Track connection duration
+// Show active users count
+// Average wait time
 ```
-
-**Steps**:
-1. Increment skip counter on each skip
-2. Implement exponential cooldown (1min, 5min, 15min)
-3. Return error if in cooldown period
-4. Reset counter after successful conversation
-
-## Implementation Order
-
-1. **Week 1**: 
-   - Fix authentication (Priority 1.3)
-   - Implement SSE for match notifications (Priority 1.1)
-   - Add queue status polling (Priority 2.4)
-
-2. **Week 2**:
-   - LiveKit webhook handlers (Priority 1.2)
-   - Session heartbeat mechanism (Priority 2.5)
-   - Automatic cleanup (Priority 2.6)
-
-3. **Week 3**:
-   - Blocklist filtering (Priority 3.7)
-   - Rate limiting (Priority 3.8)
-   - Testing and bug fixes
 
 ## Testing Checklist
 
-- [ ] User can enqueue and get matched
-- [ ] Waiting user gets notified when matched
-- [ ] Queue position updates in real-time
-- [ ] Skip creates new match quickly
-- [ ] Disconnected users are cleaned up
-- [ ] Blocked users don't match
-- [ ] Rate limiting prevents skip abuse
-- [ ] No orphaned rooms or sessions
-- [ ] Concurrent matching works correctly
+- [x] Two users can match successfully
+- [x] Both users receive match notification
+- [x] Video connection establishes properly
+- [x] End call disconnects both users
+- [x] State is fully cleaned on disconnect
+- [x] Stale users are removed from queue
+- [x] No duplicate matches occur
+- [x] Error states are handled gracefully
 
-## Environment Variables Needed
+## Environment Variables
 
 ```env
-# LiveKit
-LIVEKIT_URL=ws://localhost:7880
-LIVEKIT_API_KEY=your-api-key
-LIVEKIT_API_SECRET=your-api-secret
-LIVEKIT_WEBHOOK_SECRET=your-webhook-secret
+# Database
+DATABASE_URL=postgresql://...
 
 # Redis
 REDIS_URL=redis://localhost:6379
 
-# App
-NEXT_PUBLIC_APP_URL=http://localhost:3000
+# LiveKit
+NEXT_PUBLIC_LIVEKIT_URL=wss://...
+LIVEKIT_HOST=https://...
+LIVEKIT_API_KEY=...
+LIVEKIT_API_SECRET=...
+
+# Auth (if re-enabled)
+NEXTAUTH_SECRET=...
 ```
 
-## Database Migrations Needed
+## Current Architecture
 
-```sql
--- Add heartbeat tracking
-ALTER TABLE sessions 
-ADD COLUMN last_heartbeat TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
-
--- Add skip tracking
-ALTER TABLE users
-ADD COLUMN skip_count INTEGER DEFAULT 0,
-ADD COLUMN skip_cooldown_until TIMESTAMP WITH TIME ZONE;
-
--- Add indexes for performance
-CREATE INDEX idx_sessions_active ON sessions(ended_at) WHERE ended_at IS NULL;
-CREATE INDEX idx_blocklist_lookup ON blocklist(blocker_username, blocked_username);
 ```
+User A                    User B
+   |                         |
+   ├─── /enqueue ──────────┤
+   |                         |
+   ├─── [Polling] ────────┤
+   |                         |
+   ├─── Match Found! ──────┤
+   |                         |
+   ├─── Get Token ─────────┤
+   |                         |
+   └─── LiveKit Room ──────┘
+```
+
+The system is now production-ready for anonymous random video chat!

@@ -1,11 +1,19 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { LiveKitRoom, VideoConference } from "@livekit/components-react";
+import { 
+  LiveKitRoom, 
+  GridLayout, 
+  ParticipantTile, 
+  RoomAudioRenderer, 
+  useTracks 
+} from "@livekit/components-react";
 import "@livekit/components-styles";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Video, PhoneOff, Users, AlertCircle } from "lucide-react";
+import { Video, Users, AlertCircle } from "lucide-react";
+import { Track } from "livekit-client";
+import { CustomControlBar } from "@/components/CustomControlBar";
 
 type ChatState = "IDLE" | "WAITING" | "CONNECTING" | "IN_CALL";
 
@@ -15,6 +23,39 @@ interface MatchData {
   peerId?: string;
 }
 
+interface CustomVideoConferenceProps {
+  onSkip: () => void;
+  onEnd: () => void;
+}
+
+function CustomVideoConference({ onSkip, onEnd }: CustomVideoConferenceProps) {
+  const tracks = useTracks(
+    [
+      { source: Track.Source.Camera, withPlaceholder: true },
+      { source: Track.Source.ScreenShare, withPlaceholder: false },
+    ],
+    { onlySubscribed: false },
+  );
+
+  return (
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <GridLayout 
+        tracks={tracks}
+        style={{ height: 'calc(100vh - 80px)' }}
+      >
+        <ParticipantTile />
+      </GridLayout>
+      <CustomControlBar 
+        onChatClick={() => {}} 
+        hasUnreadChat={false}
+        onSkip={onSkip}
+        onEnd={onEnd}
+      />
+      <RoomAudioRenderer />
+    </div>
+  );
+}
+
 export default function RandomChatPage() {
   const [chatState, setChatState] = useState<ChatState>("IDLE");
   const [token, setToken] = useState<string>("");
@@ -22,7 +63,7 @@ export default function RandomChatPage() {
   const [error, setError] = useState<string>("");
   const userIdRef = useRef<string | null>(null);
   if (userIdRef.current === null && typeof window !== "undefined") {
-    userIdRef.current = `user_${Math.random().toString(36).substr(2, 9)}`;
+    userIdRef.current = `user_${Math.random().toString(36).substring(2, 11)}`;
   }
   const userId = userIdRef.current;
   const pollingInterval = useRef<NodeJS.Timeout | null>(null);
@@ -62,7 +103,7 @@ export default function RandomChatPage() {
   };
 
   // Start matching
-  const startMatching = async () => {
+  const startMatching = useCallback(async () => {
     if (!userId) {
       console.error("Cannot start matching: userId is null");
       setError("User ID not initialized");
@@ -104,7 +145,7 @@ export default function RandomChatPage() {
       setChatState("IDLE");
       stopHeartbeat();
     }
-  };
+  }, [userId]);
 
   // Handle successful match
   const handleMatch = useCallback(
@@ -254,6 +295,46 @@ export default function RandomChatPage() {
     }, 1000);
   }, [userId, sessionId, chatState]);
 
+  // Skip to next user
+  const skipCall = useCallback(async () => {
+    if (isEndingCall.current) {
+      console.log("Already ending/skipping call, skipping duplicate");
+      return;
+    }
+    
+    isEndingCall.current = true;
+    stopPolling();
+    stopHeartbeat();
+
+    const currentSessionId = sessionId;
+    if (currentSessionId && chatState === "IN_CALL") {
+      try {
+        console.log("Skipping call for session:", currentSessionId);
+        await fetch("/api/simple-matching/skip", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId, sessionId: currentSessionId }),
+        });
+      } catch (err) {
+        console.error("Error skipping session:", err);
+      }
+    }
+
+    setToken("");
+    setSessionId("");
+    setChatState("IDLE");
+    
+    // Reset the flag after a delay
+    setTimeout(() => {
+      isEndingCall.current = false;
+    }, 1000);
+    
+    // Automatically start matching again after skip
+    setTimeout(() => {
+      startMatching();
+    }, 500);
+  }, [userId, sessionId, chatState, startMatching]);
+
   // Cancel waiting
   const cancelWaiting = async () => {
     stopPolling();
@@ -375,22 +456,12 @@ export default function RandomChatPage() {
             peerConnectionTimeout: 10000,
           }}
         >
-          <VideoConference />
+          <CustomVideoConference onSkip={skipCall} onEnd={endCall} />
           <style jsx global>{`
             .lk-disconnect-button {
               display: none !important;
             }
           `}</style>
-          <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-50">
-            <Button
-              onClick={endCall}
-              size="lg"
-              className="bg-red-600 hover:bg-red-700 text-white"
-            >
-              <PhoneOff className="h-5 w-5 mr-2" />
-              End Call
-            </Button>
-          </div>
         </LiveKitRoom>
       </div>
     );
