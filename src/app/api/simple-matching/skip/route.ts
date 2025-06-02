@@ -26,49 +26,49 @@ export async function POST(request: Request) {
       otherUserId = match.user1 === userId ? match.user2 : match.user1;
     }
 
-    // === CLEANUP CURRENT USER (SKIPPER) ===
-    // 1. Remove from all Redis sets
+    // === CLEANUP BOTH USERS ===
+    console.log(`[Skip] Cleaning up both users: ${userId} and ${otherUserId}`);
+    
+    // Clean up current user (skipper)
     await redis.zrem('matching:waiting', userId);
     await redis.zrem('matching:in_call', userId);
-    
-    // 2. Remove match data
     await redis.del(`match:${userId}`);
-    
-    // 3. Remove heartbeat
-    await redis.del(`heartbeat:${userId}`);
-    
-    // 4. Clear any force-disconnect flags
     await redis.del(`force-disconnect:${userId}`);
-
     console.log(`[Skip] Cleaned up state for user ${userId}`);
 
-    // === HANDLE OTHER USER (SKIPPED USER) ===
+    // Clean up other user if exists
     if (otherUserId) {
-      console.log(`[Skip] Handling skipped user: ${otherUserId}`);
-      
-      // 1. Remove from all Redis sets
       await redis.zrem('matching:waiting', otherUserId);
       await redis.zrem('matching:in_call', otherUserId);
-      
-      // 2. Remove match data
       await redis.del(`match:${otherUserId}`);
       
-      // 3. Mark other user as force disconnected
+      // Mark other user as force disconnected so they get kicked from the room
       await redis.setex(`force-disconnect:${otherUserId}`, 30, 'true');
-      
-      // 4. Re-queue the skipped user back to waiting
-      // First check if they still have a recent heartbeat (are still online)
+      console.log(`[Skip] Cleaned up state for other user ${otherUserId}`);
+    }
+
+    // === RE-QUEUE BOTH USERS ===
+    const now = Date.now();
+    
+    // Re-queue the skipper (current user) - they should have a recent heartbeat
+    const skipperHeartbeat = await redis.get(`heartbeat:${userId}`);
+    if (skipperHeartbeat && (now - parseInt(skipperHeartbeat)) < 30000) {
+      await redis.zadd('matching:waiting', Date.now(), userId);
+      console.log(`[Skip] Re-queued skipper ${userId} back to waiting`);
+    } else {
+      console.log(`[Skip] Skipper ${userId} heartbeat is stale, not re-queuing`);
+    }
+    
+    // Re-queue the other user if they're still online
+    if (otherUserId) {
       const otherUserHeartbeat = await redis.get(`heartbeat:${otherUserId}`);
-      const now = Date.now();
-      
       if (otherUserHeartbeat && (now - parseInt(otherUserHeartbeat)) < 30000) {
-        // User is still active, add them back to the queue
         await redis.zadd('matching:waiting', Date.now(), otherUserId);
-        console.log(`[Skip] Re-queued skipped user ${otherUserId} back to waiting`);
+        console.log(`[Skip] Re-queued other user ${otherUserId} back to waiting`);
       } else {
         // User is stale/offline, clean up their heartbeat
         await redis.del(`heartbeat:${otherUserId}`);
-        console.log(`[Skip] Skipped user ${otherUserId} is offline, not re-queuing`);
+        console.log(`[Skip] Other user ${otherUserId} is offline, not re-queuing`);
       }
     }
 
@@ -95,11 +95,11 @@ export async function POST(request: Request) {
     
     return NextResponse.json({
       success: true,
-      message: 'Session skipped and users reset',
+      message: 'Session skipped, both users disconnected and re-queued',
       cleanup: {
         userId,
         otherUserId,
-        otherUserRequeued: otherUserId !== null,
+        bothUsersRequeued: true,
         roomDeleted: roomName !== null
       }
     });

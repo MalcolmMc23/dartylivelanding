@@ -5,7 +5,6 @@ import { ControlBarContainer } from "./ControlBarContainer";
 import { MediaControls } from "./room/MediaControls";
 import { ChatButton } from "./room/ChatButton";
 import { CallActionButtons } from "./room/CallActionButtons";
-import { LeaveButtonOverrideEffect } from "./room/LeaveButtonOverrideEffect";
 
 interface CustomControlBarProps extends ControlBarProps {
   onChatClick: () => void;
@@ -38,8 +37,6 @@ export function CustomControlBar({
         onEnd={onEnd || (() => {})}
         isRedirecting={false}
       />
-
-      <LeaveButtonOverrideEffect onLeaveButtonClick={() => {}} />
     </>
   );
 

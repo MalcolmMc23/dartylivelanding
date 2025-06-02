@@ -6,7 +6,8 @@ import {
   GridLayout, 
   ParticipantTile, 
   RoomAudioRenderer, 
-  useTracks 
+  useTracks,
+  useRoomContext 
 } from "@livekit/components-react";
 import "@livekit/components-styles";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ interface CustomVideoConferenceProps {
 }
 
 function CustomVideoConference({ onSkip, onEnd }: CustomVideoConferenceProps) {
+  const room = useRoomContext();
   const tracks = useTracks(
     [
       { source: Track.Source.Camera, withPlaceholder: true },
@@ -36,6 +38,22 @@ function CustomVideoConference({ onSkip, onEnd }: CustomVideoConferenceProps) {
     ],
     { onlySubscribed: false },
   );
+
+  const handleSkip = useCallback(() => {
+    // Disconnect from LiveKit room first
+    if (room) {
+      room.disconnect();
+    }
+    onSkip();
+  }, [room, onSkip]);
+
+  const handleEnd = useCallback(() => {
+    // Disconnect from LiveKit room first
+    if (room) {
+      room.disconnect();
+    }
+    onEnd();
+  }, [room, onEnd]);
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -48,8 +66,8 @@ function CustomVideoConference({ onSkip, onEnd }: CustomVideoConferenceProps) {
       <CustomControlBar 
         onChatClick={() => {}} 
         hasUnreadChat={false}
-        onSkip={onSkip}
-        onEnd={onEnd}
+        onSkip={handleSkip}
+        onEnd={handleEnd}
       />
       <RoomAudioRenderer />
     </div>
@@ -69,6 +87,7 @@ export default function RandomChatPage() {
   const pollingInterval = useRef<NodeJS.Timeout | null>(null);
   const heartbeatInterval = useRef<NodeJS.Timeout | null>(null);
   const isEndingCall = useRef(false);
+  const isSkipping = useRef(false);
 
   // Send heartbeat
   const sendHeartbeat = async () => {
@@ -297,11 +316,12 @@ export default function RandomChatPage() {
 
   // Skip to next user
   const skipCall = useCallback(async () => {
-    if (isEndingCall.current) {
+    if (isEndingCall.current || isSkipping.current) {
       console.log("Already ending/skipping call, skipping duplicate");
       return;
     }
     
+    isSkipping.current = true;
     isEndingCall.current = true;
     stopPolling();
     stopHeartbeat();
@@ -310,30 +330,38 @@ export default function RandomChatPage() {
     if (currentSessionId && chatState === "IN_CALL") {
       try {
         console.log("Skipping call for session:", currentSessionId);
-        await fetch("/api/simple-matching/skip", {
+        const response = await fetch("/api/simple-matching/skip", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId, sessionId: currentSessionId }),
         });
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log("Skip successful:", data);
+        } else {
+          console.error("Skip failed:", await response.text());
+        }
       } catch (err) {
         console.error("Error skipping session:", err);
       }
     }
 
+    // Clear the current call state - this will trigger LiveKit disconnection
     setToken("");
     setSessionId("");
-    setChatState("IDLE");
+    setChatState("WAITING");
     
-    // Reset the flag after a delay
+    // Reset the flags after a short delay
     setTimeout(() => {
       isEndingCall.current = false;
-    }, 1000);
+      isSkipping.current = false;
+    }, 100);
     
-    // Automatically start matching again after skip
-    setTimeout(() => {
-      startMatching();
-    }, 500);
-  }, [userId, sessionId, chatState, startMatching]);
+    // Start heartbeat and polling for new match (we're already re-queued on backend)
+    startHeartbeat();
+    startPolling();
+  }, [userId, sessionId, chatState, startPolling, startHeartbeat]);
 
   // Cancel waiting
   const cancelWaiting = async () => {
@@ -387,14 +415,27 @@ export default function RandomChatPage() {
     };
   }, [userId, sessionId, chatState, endCall]);
 
-  // Periodic cleanup of stale users and check for force disconnect
+  // Periodic cleanup of stale users
   useEffect(() => {
     const cleanupInterval = setInterval(async () => {
       try {
         await fetch("/api/simple-matching/cleanup", { method: "POST" });
+      } catch (err) {
+        console.error("Cleanup error:", err);
+      }
+    }, 15000); // Every 15 seconds
 
-        // Check for force disconnect if in call
-        if (chatState === "IN_CALL") {
+    return () => clearInterval(cleanupInterval);
+  }, []);
+
+  // More frequent force disconnect check when in call
+  useEffect(() => {
+    let disconnectCheckInterval: NodeJS.Timeout | null = null;
+    
+    if (chatState === "IN_CALL") {
+      // Check every 2 seconds when in a call
+      disconnectCheckInterval = setInterval(async () => {
+        try {
           const response = await fetch(
             "/api/simple-matching/check-disconnect",
             {
@@ -406,16 +447,21 @@ export default function RandomChatPage() {
 
           const data = await response.json();
           if (data.shouldDisconnect) {
+            console.log("Force disconnect detected - ending call");
             endCall();
-            setError("Call ended by other user");
+            setError("Skipped by other user");
           }
+        } catch (err) {
+          console.error("Disconnect check error:", err);
         }
-      } catch (err) {
-        console.error("Cleanup error:", err);
-      }
-    }, 15000); // Every 15 seconds to avoid conflicts
+      }, 2000); // Check every 2 seconds
+    }
 
-    return () => clearInterval(cleanupInterval);
+    return () => {
+      if (disconnectCheckInterval) {
+        clearInterval(disconnectCheckInterval);
+      }
+    };
   }, [chatState, userId, endCall]);
 
   // Render based on state
@@ -439,8 +485,11 @@ export default function RandomChatPage() {
           style={{ height: "100%" }}
           onDisconnected={() => {
             console.log("LiveKit disconnected");
-            endCall();
-            setError("");
+            // Only call endCall if we're not already skipping
+            if (!isSkipping.current) {
+              endCall();
+              setError("");
+            }
           }}
           onError={(error) => {
             console.error("LiveKit error:", error);
