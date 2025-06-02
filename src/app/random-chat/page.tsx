@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { 
-  LiveKitRoom, 
-  GridLayout, 
-  ParticipantTile, 
-  RoomAudioRenderer, 
+import {
+  LiveKitRoom,
+  GridLayout,
+  ParticipantTile,
+  RoomAudioRenderer,
   useTracks,
-  useRoomContext 
+  useRoomContext,
 } from "@livekit/components-react";
 import "@livekit/components-styles";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,31 @@ interface MatchData {
   peerId?: string;
 }
 
+interface SkipMatchData {
+  sessionId: string;
+  roomName: string;
+  peerId?: string;
+}
+
+interface SkipCallMatchResult {
+  matched: boolean;
+  matchData?: SkipMatchData;
+}
+
+interface SkipCallResponse {
+  success: boolean;
+  message: string;
+  cleanup: {
+    userId: string;
+    otherUserId: string | null;
+    roomDeleted: boolean;
+  };
+  matchResults: {
+    skipper?: SkipCallMatchResult;
+    other?: SkipCallMatchResult;
+  };
+}
+
 interface CustomVideoConferenceProps {
   onSkip: () => void;
   onEnd: () => void;
@@ -36,7 +61,7 @@ function CustomVideoConference({ onSkip, onEnd }: CustomVideoConferenceProps) {
       { source: Track.Source.Camera, withPlaceholder: true },
       { source: Track.Source.ScreenShare, withPlaceholder: false },
     ],
-    { onlySubscribed: false },
+    { onlySubscribed: false }
   );
 
   const handleSkip = useCallback(() => {
@@ -56,15 +81,12 @@ function CustomVideoConference({ onSkip, onEnd }: CustomVideoConferenceProps) {
   }, [room, onEnd]);
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <GridLayout 
-        tracks={tracks}
-        style={{ height: 'calc(100vh - 80px)' }}
-      >
+    <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
+      <GridLayout tracks={tracks} style={{ height: "calc(100vh - 80px)" }}>
         <ParticipantTile />
       </GridLayout>
-      <CustomControlBar 
-        onChatClick={() => {}} 
+      <CustomControlBar
+        onChatClick={() => {}}
         hasUnreadChat={false}
         onSkip={handleSkip}
         onEnd={handleEnd}
@@ -108,10 +130,10 @@ export default function RandomChatPage() {
   };
 
   // Start heartbeat
-  const startHeartbeat = () => {
+  const startHeartbeat = useCallback(() => {
     sendHeartbeat(); // Send immediately
     heartbeatInterval.current = setInterval(sendHeartbeat, 10000); // Every 10 seconds
-  };
+  }, [sendHeartbeat]);
 
   // Stop heartbeat
   const stopHeartbeat = () => {
@@ -227,14 +249,14 @@ export default function RandomChatPage() {
         } else if (!data.inQueue) {
           // No longer in queue - but don't stop immediately, could be transitioning
           console.log("Not in queue - checking for match one more time...");
-          
+
           // Do one final check for match data
           const finalCheck = await fetch("/api/simple-matching/check-match", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ userId }),
           });
-          
+
           const finalData = await finalCheck.json();
           if (finalData.matched) {
             console.log("Found match on final check!");
@@ -285,7 +307,7 @@ export default function RandomChatPage() {
       console.log("Already ending call, skipping duplicate");
       return;
     }
-    
+
     isEndingCall.current = true;
     stopPolling();
     stopHeartbeat();
@@ -307,7 +329,7 @@ export default function RandomChatPage() {
     setToken("");
     setSessionId("");
     setChatState("IDLE");
-    
+
     // Reset the flag after a delay
     setTimeout(() => {
       isEndingCall.current = false;
@@ -320,12 +342,13 @@ export default function RandomChatPage() {
       console.log("Already ending/skipping call, skipping duplicate");
       return;
     }
-    
+
     isSkipping.current = true;
     isEndingCall.current = true;
     stopPolling();
     stopHeartbeat();
 
+    let skipData: SkipCallResponse | null = null;
     const currentSessionId = sessionId;
     if (currentSessionId && chatState === "IN_CALL") {
       try {
@@ -335,10 +358,45 @@ export default function RandomChatPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId, sessionId: currentSessionId }),
         });
-        
+
         if (response.ok) {
-          const data = await response.json();
-          console.log("Skip successful:", data);
+          skipData = await response.json();
+          console.log("Skip successful:", skipData);
+
+          // Check if skipper was immediately matched
+          if (
+            skipData &&
+            skipData.matchResults?.skipper?.matched &&
+            skipData.matchResults.skipper.matchData
+          ) {
+            console.log("Skip resulted in immediate match!");
+            const matchData = skipData.matchResults.skipper.matchData;
+            setSessionId(matchData.sessionId);
+
+            // Generate token for the new room
+            const tokenResponse = await fetch("/api/livekit-token", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                roomName: matchData.roomName,
+                participantName: userId,
+              }),
+            });
+
+            if (tokenResponse.ok) {
+              const { token } = await tokenResponse.json();
+              setToken(token);
+              setChatState("IN_CALL");
+              // Don't start polling - we're already matched
+
+              // Reset the flags after a short delay
+              setTimeout(() => {
+                isEndingCall.current = false;
+                isSkipping.current = false;
+              }, 100);
+              return;
+            }
+          }
         } else {
           console.error("Skip failed:", await response.text());
         }
@@ -347,20 +405,23 @@ export default function RandomChatPage() {
       }
     }
 
-    // Clear the current call state - this will trigger LiveKit disconnection
-    setToken("");
-    setSessionId("");
-    setChatState("WAITING");
-    
+    // If we didn't get an immediate match, go to waiting state
+    if (!skipData || !skipData.matchResults?.skipper?.matched) {
+      // Clear the current call state - this will trigger LiveKit disconnection
+      setToken("");
+      setSessionId("");
+      setChatState("WAITING");
+
+      // Start heartbeat and polling for new match (we're already re-queued on backend)
+      startHeartbeat();
+      startPolling();
+    }
+
     // Reset the flags after a short delay
     setTimeout(() => {
       isEndingCall.current = false;
       isSkipping.current = false;
     }, 100);
-    
-    // Start heartbeat and polling for new match (we're already re-queued on backend)
-    startHeartbeat();
-    startPolling();
   }, [userId, sessionId, chatState, startPolling, startHeartbeat]);
 
   // Cancel waiting
@@ -431,7 +492,7 @@ export default function RandomChatPage() {
   // More frequent force disconnect check when in call
   useEffect(() => {
     let disconnectCheckInterval: NodeJS.Timeout | null = null;
-    
+
     if (chatState === "IN_CALL") {
       // Check every 2 seconds when in a call
       disconnectCheckInterval = setInterval(async () => {
@@ -466,9 +527,12 @@ export default function RandomChatPage() {
 
   // Render based on state
   if (chatState === "IN_CALL" && token) {
-    console.log("Rendering LiveKit room with token:", token.substring(0, 20) + "...");
+    console.log(
+      "Rendering LiveKit room with token:",
+      token.substring(0, 20) + "..."
+    );
     console.log("LiveKit URL:", process.env.NEXT_PUBLIC_LIVEKIT_URL);
-    
+
     return (
       <div style={{ height: "100vh" }}>
         <div className="absolute top-4 left-4 z-50 bg-black/80 text-white p-2 rounded text-xs">

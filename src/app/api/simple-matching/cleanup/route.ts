@@ -16,12 +16,17 @@ export async function POST() {
       const userId = waitingUsers[i];
       const heartbeat = await redis.get(`heartbeat:${userId}`);
       
-      if (!heartbeat || (now - parseInt(heartbeat)) > staleThreshold) {
+      // Check if user has a grace period (just requeued)
+      const hasGracePeriod = await redis.get(`requeue-grace:${userId}`);
+      
+      if (!hasGracePeriod && (!heartbeat || (now - parseInt(heartbeat)) > staleThreshold)) {
         // Remove stale user from queue
         console.log(`[Cleanup] Removing stale user ${userId} from waiting queue`);
         await redis.zrem('matching:waiting', userId);
         await redis.del(`heartbeat:${userId}`);
         removedCount++;
+      } else if (hasGracePeriod) {
+        console.log(`[Cleanup] Skipping ${userId} - has grace period after requeue`);
       }
     }
     
