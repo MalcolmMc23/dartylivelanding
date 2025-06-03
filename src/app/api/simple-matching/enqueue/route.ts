@@ -107,24 +107,44 @@ export async function POST(request: Request) {
       // Valid candidate found - attempt to lock this match
       const lockKey = `matchlock:${userId}:${candidateUserId}`;
       const reverseLockKey = `matchlock:${candidateUserId}:${userId}`;
+      const lockId = uuidv4();
       
-      // Try to acquire lock (prevents race conditions)
-      // Using setex with a check for existing key
+      // Check if forward lock exists
       const existingLock = await redis.get(lockKey);
       if (existingLock) {
-        // Someone else is already matching these users
+        console.log(`[Enqueue] Lock already exists for ${userId} -> ${candidateUserId}`);
         continue;
       }
-      await redis.setex(lockKey, 5, '1');
       
-      // Check if reverse lock exists (other user trying to match with us)
+      // Check if reverse lock exists
       const reverseLock = await redis.get(reverseLockKey);
       if (reverseLock) {
-        await redis.del(lockKey);
+        console.log(`[Enqueue] Reverse lock exists, someone else is matching these users`);
         continue;
       }
       
-      // We have the lock, this is our match
+      // Set both locks atomically
+      await Promise.all([
+        redis.setex(lockKey, 10, lockId),
+        redis.setex(reverseLockKey, 10, lockId)
+      ]);
+      
+      // Double-check candidate is still available after acquiring locks
+      const [stillInQueue, stillNoMatch] = await Promise.all([
+        redis.zscore('matching:waiting', candidateUserId),
+        redis.get(`match:${candidateUserId}`)
+      ]);
+      
+      if (!stillInQueue || stillNoMatch) {
+        console.log(`[Enqueue] Candidate ${candidateUserId} no longer available after lock`);
+        await Promise.all([
+          redis.del(lockKey),
+          redis.del(reverseLockKey)
+        ]);
+        continue;
+      }
+      
+      // We have the lock and candidate is available
       matchedUserId = candidateUserId;
       break;
     }

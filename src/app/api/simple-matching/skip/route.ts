@@ -116,13 +116,26 @@ export async function POST(request: Request) {
     
     // Helper function to try matching a user
     async function tryMatchUser(userToMatch: string, excludeUserId?: string): Promise<TryMatchUserResult> {
-      // Check if user has recent heartbeat (use current time for check)
-      const currentTime = Date.now();
-      const userHeartbeat = await redis.get(`heartbeat:${userToMatch}`);
-      if (!userHeartbeat || (currentTime - parseInt(userHeartbeat)) > 30000) {
-        console.log(`[Skip] User ${userToMatch} heartbeat is stale, not re-queuing`);
+      // Mark this user as being processed for matching to prevent race conditions
+      const matchingInProgressKey = `matching-in-progress:${userToMatch}`;
+      const alreadyMatching = await redis.get(matchingInProgressKey);
+      if (alreadyMatching) {
+        console.log(`[Skip] User ${userToMatch} is already being matched by another process`);
         return { matched: false };
       }
+      
+      // Set matching in progress flag with short TTL
+      await redis.setex(matchingInProgressKey, 5, 'true');
+      
+      try {
+        // Check if user has recent heartbeat (use current time for check)
+        const currentTime = Date.now();
+        const userHeartbeat = await redis.get(`heartbeat:${userToMatch}`);
+        if (!userHeartbeat || (currentTime - parseInt(userHeartbeat)) > 30000) {
+          console.log(`[Skip] User ${userToMatch} heartbeat is stale, not re-queuing`);
+          await redis.del(matchingInProgressKey);
+          return { matched: false };
+        }
       
       // Set skip cooldown to prevent immediate re-matching with the same person
       if (excludeUserId && excludeUserId !== userToMatch) {
@@ -165,6 +178,13 @@ export async function POST(request: Request) {
       
       // Try to find a match from filtered list
       for (const candidateUserId of waitingUsers) {
+        // Check if candidate is being matched by another process
+        const candidateMatchingInProgress = await redis.get(`matching-in-progress:${candidateUserId}`);
+        if (candidateMatchingInProgress) {
+          console.log(`[Skip] Candidate ${candidateUserId} is being matched by another process`);
+          continue;
+        }
+        
         // Check for skip cooldown between these users
         const cooldownKey = `skip-cooldown:${userToMatch}:${candidateUserId}`;
         const hasCooldown = await redis.get(cooldownKey);
@@ -192,8 +212,53 @@ export async function POST(request: Request) {
           continue;
         }
         
-        // Found a valid match!
-        console.log(`[Skip] Found match: ${userToMatch} with ${candidateUserId}`);
+        // Found a potential match - need to lock it
+        console.log(`[Skip] Found potential match: ${userToMatch} with ${candidateUserId}`);
+        
+        // Create bidirectional locks to prevent race conditions
+        const lockKey = `matchlock:${userToMatch}:${candidateUserId}`;
+        const reverseLockKey = `matchlock:${candidateUserId}:${userToMatch}`;
+        
+        // Try to acquire both locks atomically using Redis SETNX with expiry
+        const lockId = uuidv4();
+        
+        // Check if forward lock exists
+        const existingLock = await redis.get(lockKey);
+        if (existingLock) {
+          console.log(`[Skip] Lock already exists for ${userToMatch} -> ${candidateUserId}`);
+          continue;
+        }
+        
+        // Check if reverse lock exists
+        const reverseLock = await redis.get(reverseLockKey);
+        if (reverseLock) {
+          console.log(`[Skip] Reverse lock exists, someone else is matching these users`);
+          continue;
+        }
+        
+        // Set both locks atomically
+        await Promise.all([
+          redis.setex(lockKey, 10, lockId),
+          redis.setex(reverseLockKey, 10, lockId)
+        ]);
+        
+        // Double-check candidate is still available
+        const [stillInQueue, alreadyMatched] = await Promise.all([
+          redis.zscore('matching:waiting', candidateUserId),
+          redis.get(`match:${candidateUserId}`)
+        ]);
+        
+        if (!stillInQueue || alreadyMatched) {
+          console.log(`[Skip] Candidate ${candidateUserId} no longer available`);
+          await Promise.all([
+            redis.del(lockKey),
+            redis.del(reverseLockKey)
+          ]);
+          continue;
+        }
+        
+        // Now we have exclusive access to match these users
+        console.log(`[Skip] Lock acquired, matching: ${userToMatch} with ${candidateUserId}`);
         
         // Create room
         const sessionId = uuidv4();
@@ -204,6 +269,11 @@ export async function POST(request: Request) {
           console.log(`[Skip] Created LiveKit room: ${roomName}`);
         } catch (error) {
           console.error('[Skip] Failed to create LiveKit room:', error);
+          // Clean up locks
+          await Promise.all([
+            redis.del(lockKey),
+            redis.del(reverseLockKey)
+          ]);
           continue; // Try next candidate
         }
         
@@ -226,7 +296,12 @@ export async function POST(request: Request) {
           redis.zrem('matching:waiting', candidateUserId),
           // Clear force-disconnect flags for both users
           redis.del(`force-disconnect:${userToMatch}`),
-          redis.del(`force-disconnect:${candidateUserId}`)
+          redis.del(`force-disconnect:${candidateUserId}`),
+          // Clean up locks
+          redis.del(lockKey),
+          redis.del(reverseLockKey),
+          // Clear matching in progress flag
+          redis.del(matchingInProgressKey)
         ]);
         
         return { matched: true, matchData, peerId: candidateUserId };
@@ -262,44 +337,42 @@ export async function POST(request: Request) {
         inCall: verifyNoInCall !== null
       });
       
+      // Clear matching in progress flag
+      await redis.del(matchingInProgressKey);
+      
       return { matched: false };
+      } catch (error) {
+        // Always clear the matching in progress flag on error
+        await redis.del(matchingInProgressKey);
+        throw error;
+      }
     }
     
-    // Try to match both users in parallel for efficiency
-    const matchPromises = [];
-    
-    // Match the skipper (exclude their previous partner)
+    // Match users SEQUENTIALLY to prevent race conditions
+    // First match the skipper
     console.log(`[Skip] Attempting to match skipper ${userId}, excluding ${otherUserId}`);
-    matchPromises.push(
-      tryMatchUser(userId, otherUserId || undefined)
-        .then(result => { 
-          matchResults.skipper = result;
-          console.log(`[Skip] Skipper ${userId} match result:`, result.matched ? 'matched' : 'queued');
-        })
-        .catch(error => {
-          console.error(`[Skip] Error matching skipper ${userId}:`, error);
-          matchResults.skipper = { matched: false };
-        })
-    );
-    
-    // Match the other user if they exist (exclude the skipper)
-    if (otherUserId) {
-      console.log(`[Skip] Attempting to match skipped user ${otherUserId}, excluding ${userId}`);
-      matchPromises.push(
-        tryMatchUser(otherUserId, userId)
-          .then(result => { 
-            matchResults.other = result;
-            console.log(`[Skip] Skipped user ${otherUserId} match result:`, result.matched ? 'matched' : 'queued');
-          })
-          .catch(error => {
-            console.error(`[Skip] Error matching other user ${otherUserId}:`, error);
-            matchResults.other = { matched: false };
-          })
-      );
+    try {
+      matchResults.skipper = await tryMatchUser(userId, otherUserId || undefined);
+      console.log(`[Skip] Skipper ${userId} match result:`, matchResults.skipper.matched ? 'matched' : 'queued');
+    } catch (error) {
+      console.error(`[Skip] Error matching skipper ${userId}:`, error);
+      matchResults.skipper = { matched: false };
     }
     
-    // Wait for both matching attempts to complete
-    await Promise.all(matchPromises);
+    // Then match the other user if they exist (exclude the skipper)
+    if (otherUserId) {
+      // Small delay to prevent exact same timing
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      console.log(`[Skip] Attempting to match skipped user ${otherUserId}, excluding ${userId}`);
+      try {
+        matchResults.other = await tryMatchUser(otherUserId, userId);
+        console.log(`[Skip] Skipped user ${otherUserId} match result:`, matchResults.other?.matched ? 'matched' : 'queued');
+      } catch (error) {
+        console.error(`[Skip] Error matching other user ${otherUserId}:`, error);
+        matchResults.other = { matched: false };
+      }
+    }
     
     // === VERIFY CLEANUP ===
     const [verifyWaiting, verifyInCall, verifyMatch, verifyHeartbeat] = await Promise.all([
