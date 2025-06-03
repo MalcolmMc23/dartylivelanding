@@ -47,6 +47,10 @@ interface SkipCallResponse {
     skipper?: SkipCallMatchResult;
     other?: SkipCallMatchResult;
   };
+  queueStatus?: {
+    skipperInQueue: boolean;
+    otherInQueue: boolean;
+  };
 }
 
 interface CustomVideoConferenceProps {
@@ -412,9 +416,19 @@ export default function RandomChatPage() {
       setSessionId("");
       setChatState("WAITING");
 
-      // Start heartbeat and polling for new match (we're already re-queued on backend)
-      startHeartbeat();
-      startPolling();
+      // Check if we're actually in the queue
+      const skipperInQueue = skipData?.queueStatus?.skipperInQueue;
+      console.log("[Skip] Skipper in queue after skip:", skipperInQueue);
+      
+      if (skipperInQueue) {
+        // We're already re-queued on backend, start polling
+        startHeartbeat();
+        startPolling();
+      } else {
+        // Not in queue, need to manually enqueue
+        console.log("[Skip] Not in queue after skip, manually enqueueing");
+        startMatching();
+      }
     }
 
     // Reset the flags after a short delay
@@ -422,7 +436,7 @@ export default function RandomChatPage() {
       isEndingCall.current = false;
       isSkipping.current = false;
     }, 100);
-  }, [userId, sessionId, chatState, startPolling, startHeartbeat]);
+  }, [userId, sessionId, chatState, startPolling, startHeartbeat, startMatching]);
 
   // Cancel waiting
   const cancelWaiting = async () => {

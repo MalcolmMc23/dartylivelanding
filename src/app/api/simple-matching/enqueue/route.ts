@@ -17,9 +17,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check if user is already in queue
-    const inQueue = await redis.zscore('matching:waiting', userId);
-    if (inQueue !== null) {
+    // Check if user is already in queue (but allow if they have requeue grace)
+    const [inQueue, hasGrace] = await Promise.all([
+      redis.zscore('matching:waiting', userId),
+      redis.get(`requeue-grace:${userId}`)
+    ]);
+    
+    if (inQueue !== null && !hasGrace) {
+      console.log('[Enqueue] User already in queue without grace period');
       return NextResponse.json(
         { success: false, error: 'Already in queue' },
         { status: 400 }
@@ -72,12 +77,22 @@ export async function POST(request: Request) {
       // Skip if it's the same user
       if (candidateUserId === userId) continue;
       
-      // Double-check the candidate isn't already in a call
-      const candidateMatch = await redis.get(`match:${candidateUserId}`);
+      // Double-check the candidate isn't already in a call or being re-queued
+      const [candidateMatch, candidateGrace] = await Promise.all([
+        redis.get(`match:${candidateUserId}`),
+        redis.get(`requeue-grace:${candidateUserId}`)
+      ]);
+      
       if (candidateMatch) {
         // User already matched, remove from queue
         await redis.zrem('matching:waiting', candidateUserId);
         console.log(`Candidate ${candidateUserId} already matched, removing from queue`);
+        continue;
+      }
+      
+      if (candidateGrace) {
+        // User is being re-queued after skip, skip them for now
+        console.log(`Candidate ${candidateUserId} is in requeue grace period, skipping`);
         continue;
       }
       
@@ -147,8 +162,11 @@ export async function POST(request: Request) {
         redis.zrem('matching:waiting', matchedUserId)
       ]);
       
-      // Clean up the lock
-      await redis.del(`matchlock:${userId}:${matchedUserId}`);
+      // Clean up the locks (both directions to be safe)
+      await Promise.all([
+        redis.del(`matchlock:${userId}:${matchedUserId}`),
+        redis.del(`matchlock:${matchedUserId}:${userId}`)
+      ]);
       
       console.log(`[Enqueue] Successfully matched users: ${userId} with ${matchedUserId} in room ${roomName}`);
       

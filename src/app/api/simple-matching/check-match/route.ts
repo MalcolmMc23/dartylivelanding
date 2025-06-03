@@ -22,17 +22,27 @@ export async function POST(request: Request) {
     if (matchData) {
       const match = JSON.parse(matchData);
       const peerId = match.user1 === userId ? match.user2 : match.user1;
-      console.log('[Check-match] Found match for user:', userId, 'with peer:', peerId, 'Match data:', match);
       
-      return NextResponse.json({
-        success: true,
-        matched: true,
-        data: {
-          sessionId: match.sessionId,
-          roomName: match.roomName,
-          peerId
-        }
-      });
+      // Verify the peer still exists in the match (they might have skipped)
+      const peerMatch = await redis.get(`match:${peerId}`);
+      if (!peerMatch) {
+        // Peer has left, clean up our match data
+        console.log('[Check-match] Peer has left, cleaning up stale match data');
+        await redis.del(matchKey);
+        await redis.zrem('matching:in_call', userId);
+      } else {
+        console.log('[Check-match] Found valid match for user:', userId, 'with peer:', peerId);
+        
+        return NextResponse.json({
+          success: true,
+          matched: true,
+          data: {
+            sessionId: match.sessionId,
+            roomName: match.roomName,
+            peerId
+          }
+        });
+      }
     }
 
     // Check if still in queue
