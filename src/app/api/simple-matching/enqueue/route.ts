@@ -77,6 +77,14 @@ export async function POST(request: Request) {
       // Skip if it's the same user
       if (candidateUserId === userId) continue;
       
+      // Check for skip cooldown between these users
+      const cooldownKey = `skip-cooldown:${userId}:${candidateUserId}`;
+      const hasCooldown = await redis.get(cooldownKey);
+      if (hasCooldown) {
+        console.log(`[Enqueue] Skip cooldown active between ${userId} and ${candidateUserId}`);
+        continue;
+      }
+      
       // Double-check the candidate isn't already in a call or being re-queued
       const [candidateMatch, candidateGrace] = await Promise.all([
         redis.get(`match:${candidateUserId}`),
@@ -159,7 +167,10 @@ export async function POST(request: Request) {
         redis.setex(`match:${matchedUserId}`, 300, matchDataStr),
         redis.zadd('matching:in_call', Date.now(), userId),
         redis.zadd('matching:in_call', Date.now(), matchedUserId),
-        redis.zrem('matching:waiting', matchedUserId)
+        redis.zrem('matching:waiting', matchedUserId),
+        // Clear force-disconnect flags for both users
+        redis.del(`force-disconnect:${userId}`),
+        redis.del(`force-disconnect:${matchedUserId}`)
       ]);
       
       // Clean up the locks (both directions to be safe)

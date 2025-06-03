@@ -33,6 +33,8 @@ export async function POST(request: Request) {
       } else {
         console.log('[Check-match] Found valid match for user:', userId, 'with peer:', peerId);
         
+        // Don't clear force-disconnect flag here - let the client handle it after acknowledging
+        
         return NextResponse.json({
           success: true,
           matched: true,

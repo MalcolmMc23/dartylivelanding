@@ -47,10 +47,17 @@ export async function POST(request: Request) {
       otherUserId = match.user1 === userId ? match.user2 : match.user1;
     }
 
-    // === DELETE LIVEKIT ROOM FIRST ===
-    // Delete the room before any cleanup to ensure users are disconnected
+    // === SET FORCE-DISCONNECT FLAG FIRST ===
+    // Set force-disconnect for the other user before deleting room
+    if (otherUserId) {
+      await redis.setex(`force-disconnect:${otherUserId}`, 120, 'true'); // 120 seconds to ensure detection
+      console.log(`[Skip] Set force-disconnect flag for ${otherUserId}`);
+    }
+
+    // === DELETE LIVEKIT ROOM ===
+    // Delete the room to disconnect both users
     if (roomName) {
-      console.log(`[Skip] Deleting LiveKit room first: ${roomName}`);
+      console.log(`[Skip] Deleting LiveKit room: ${roomName}`);
       try {
         await deleteRoom(roomName);
         console.log(`[Skip] LiveKit room deleted successfully`);
@@ -87,16 +94,11 @@ export async function POST(request: Request) {
     
     // Execute all cleanup operations in parallel
     await Promise.all(cleanupOps);
-    
-    // Set force-disconnect separately (different return type)
-    if (otherUserId) {
-      await redis.setex(`force-disconnect:${otherUserId}`, 30, 'true');
-    }
     console.log(`[Skip] Cleanup completed for both users`);
 
     // === WAIT FOR DISCONNECTION TO PROPAGATE ===
-    // Add a small delay to ensure LiveKit has processed the room deletion
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Add a longer delay to ensure LiveKit has fully processed the room deletion
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
     // === RESTORE HEARTBEATS BEFORE MATCHING ===
     // We need fresh heartbeats for the matching logic to work
@@ -120,6 +122,19 @@ export async function POST(request: Request) {
       if (!userHeartbeat || (currentTime - parseInt(userHeartbeat)) > 30000) {
         console.log(`[Skip] User ${userToMatch} heartbeat is stale, not re-queuing`);
         return { matched: false };
+      }
+      
+      // Set skip cooldown to prevent immediate re-matching with the same person
+      if (excludeUserId && excludeUserId !== userToMatch) {
+        const cooldownKey = `skip-cooldown:${userToMatch}:${excludeUserId}`;
+        const reverseCooldownKey = `skip-cooldown:${excludeUserId}:${userToMatch}`;
+        
+        // Set 30-second cooldown between these specific users
+        await Promise.all([
+          redis.setex(cooldownKey, 30, 'true'),
+          redis.setex(reverseCooldownKey, 30, 'true')
+        ]);
+        console.log(`[Skip] Set cooldown between ${userToMatch} and ${excludeUserId}`);
       }
       
       // Refresh heartbeat to prevent immediate cleanup
@@ -150,6 +165,14 @@ export async function POST(request: Request) {
       
       // Try to find a match from filtered list
       for (const candidateUserId of waitingUsers) {
+        // Check for skip cooldown between these users
+        const cooldownKey = `skip-cooldown:${userToMatch}:${candidateUserId}`;
+        const hasCooldown = await redis.get(cooldownKey);
+        if (hasCooldown) {
+          console.log(`[Skip] Cooldown active between ${userToMatch} and ${candidateUserId}, skipping`);
+          continue;
+        }
+        
         // Batch check heartbeat and existing match
         const [candidateHeartbeat, candidateMatch] = await Promise.all([
           redis.get(`heartbeat:${candidateUserId}`),
@@ -200,7 +223,10 @@ export async function POST(request: Request) {
           redis.setex(`match:${candidateUserId}`, 300, matchDataStr),
           redis.zadd('matching:in_call', currentTime, userToMatch),
           redis.zadd('matching:in_call', currentTime, candidateUserId),
-          redis.zrem('matching:waiting', candidateUserId)
+          redis.zrem('matching:waiting', candidateUserId),
+          // Clear force-disconnect flags for both users
+          redis.del(`force-disconnect:${userToMatch}`),
+          redis.del(`force-disconnect:${candidateUserId}`)
         ]);
         
         return { matched: true, matchData, peerId: candidateUserId };
@@ -215,6 +241,13 @@ export async function POST(request: Request) {
       
       // Now add to queue
       await redis.zadd('matching:waiting', currentTime, userToMatch);
+      
+      // If this is the other user (not the skipper), they need to know they were skipped
+      if (userToMatch !== userId && otherUserId && userToMatch === otherUserId) {
+        // Refresh the force-disconnect flag with longer TTL to ensure detection
+        await redis.setex(`force-disconnect:${userToMatch}`, 120, 'true');
+        console.log(`[Skip] Refreshed force-disconnect flag for ${userToMatch} (the skipped user)`);
+      }
       
       // Verify they were added and clean
       const [verifyInQueue, verifyNoMatch, verifyNoInCall] = await Promise.all([
@@ -236,9 +269,13 @@ export async function POST(request: Request) {
     const matchPromises = [];
     
     // Match the skipper (exclude their previous partner)
+    console.log(`[Skip] Attempting to match skipper ${userId}, excluding ${otherUserId}`);
     matchPromises.push(
       tryMatchUser(userId, otherUserId || undefined)
-        .then(result => { matchResults.skipper = result; })
+        .then(result => { 
+          matchResults.skipper = result;
+          console.log(`[Skip] Skipper ${userId} match result:`, result.matched ? 'matched' : 'queued');
+        })
         .catch(error => {
           console.error(`[Skip] Error matching skipper ${userId}:`, error);
           matchResults.skipper = { matched: false };
@@ -247,9 +284,13 @@ export async function POST(request: Request) {
     
     // Match the other user if they exist (exclude the skipper)
     if (otherUserId) {
+      console.log(`[Skip] Attempting to match skipped user ${otherUserId}, excluding ${userId}`);
       matchPromises.push(
         tryMatchUser(otherUserId, userId)
-          .then(result => { matchResults.other = result; })
+          .then(result => { 
+            matchResults.other = result;
+            console.log(`[Skip] Skipped user ${otherUserId} match result:`, result.matched ? 'matched' : 'queued');
+          })
           .catch(error => {
             console.error(`[Skip] Error matching other user ${otherUserId}:`, error);
             matchResults.other = { matched: false };
@@ -277,10 +318,29 @@ export async function POST(request: Request) {
     });
     
     // Check final queue status for both users
-    const [skipperInQueue, otherInQueue] = await Promise.all([
+    const [skipperInQueue, otherInQueue, skipperMatch, otherMatch, otherForceDisconnect] = await Promise.all([
       redis.zscore('matching:waiting', userId),
-      otherUserId ? redis.zscore('matching:waiting', otherUserId) : null
+      otherUserId ? redis.zscore('matching:waiting', otherUserId) : null,
+      redis.get(`match:${userId}`),
+      otherUserId ? redis.get(`match:${otherUserId}`) : null,
+      otherUserId ? redis.get(`force-disconnect:${otherUserId}`) : null
     ]);
+    
+    console.log(`[Skip] Final state summary:`, {
+      skipper: {
+        id: userId,
+        inQueue: skipperInQueue !== null,
+        hasMatch: skipperMatch !== null,
+        matchResult: matchResults.skipper?.matched ? 'matched' : 'queued'
+      },
+      skippedUser: {
+        id: otherUserId,
+        inQueue: otherInQueue !== null,
+        hasMatch: otherMatch !== null,
+        matchResult: matchResults.other?.matched ? 'matched' : 'queued',
+        forceDisconnectSet: otherForceDisconnect !== null
+      }
+    });
     
     return NextResponse.json({
       success: true,

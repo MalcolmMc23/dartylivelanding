@@ -97,6 +97,7 @@ export default function RandomChatPage() {
   const [token, setToken] = useState<string>("");
   const [sessionId, setSessionId] = useState<string>("");
   const [error, setError] = useState<string>("");
+  const [needsRequeue, setNeedsRequeue] = useState(false);
   const userIdRef = useRef<string | null>(null);
   if (userIdRef.current === null && typeof window !== "undefined") {
     userIdRef.current = `user_${Math.random().toString(36).substring(2, 11)}`;
@@ -192,6 +193,35 @@ export default function RandomChatPage() {
   const startPolling = useCallback(() => {
     pollingInterval.current = setInterval(async () => {
       try {
+        // CHECK FORCE DISCONNECT FIRST - this is critical!
+        const forceDisconnectResponse = await fetch(
+          "/api/simple-matching/check-disconnect",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId }),
+          }
+        );
+
+        const disconnectData = await forceDisconnectResponse.json();
+        if (disconnectData.shouldDisconnect) {
+          console.log("Force disconnect detected - handling immediately");
+          stopPolling();
+          setToken("");
+          setChatState("WAITING");
+          setSessionId("");
+          setError("Skipped by other user - finding new match...");
+          setNeedsRequeue(true);
+          
+          // Clear error after a few seconds
+          setTimeout(() => {
+            setError("");
+          }, 3000);
+          
+          return; // Exit early - don't check for matches
+        }
+
+        // Only check for matches if not force disconnected
         const response = await fetch("/api/simple-matching/check-match", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -228,24 +258,6 @@ export default function RandomChatPage() {
             setError("Failed to find match");
             setChatState("IDLE");
           }
-        }
-
-        // Check if we should force disconnect
-        const forceDisconnectResponse = await fetch(
-          "/api/simple-matching/check-disconnect",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ userId }),
-          }
-        );
-
-        const disconnectData = await forceDisconnectResponse.json();
-        if (disconnectData.shouldDisconnect) {
-          stopPolling();
-          setToken("");
-          setChatState("IDLE");
-          setError("Call ended by other user");
         }
       } catch (err) {
         console.error("Polling error:", err);
@@ -501,6 +513,14 @@ export default function RandomChatPage() {
     };
   }, [userId, sessionId, chatState, endCall, stopPolling]);
 
+  // Handle re-queuing when force disconnected
+  useEffect(() => {
+    if (needsRequeue && chatState === "WAITING") {
+      setNeedsRequeue(false);
+      startMatching();
+    }
+  }, [needsRequeue, chatState, startMatching]);
+
   // Periodic cleanup of stale users
   useEffect(() => {
     const cleanupInterval = setInterval(async () => {
@@ -519,6 +539,14 @@ export default function RandomChatPage() {
     let disconnectCheckInterval: NodeJS.Timeout | null = null;
 
     if (chatState === "IN_CALL") {
+      // Also check if we're stuck in IN_CALL with no token
+      if (!token) {
+        console.log("In call state but no token - recovering");
+        setChatState("IDLE");
+        setSessionId("");
+        return;
+      }
+      
       // Check every 2 seconds when in a call
       disconnectCheckInterval = setInterval(async () => {
         try {
@@ -533,9 +561,26 @@ export default function RandomChatPage() {
 
           const data = await response.json();
           if (data.shouldDisconnect) {
-            console.log("Force disconnect detected - ending call");
-            endCall();
-            setError("Skipped by other user");
+            console.log("Force disconnect detected - user was skipped");
+            // Don't call endCall, instead transition to re-queuing
+            isSkipping.current = true; // Prevent endCall from onDisconnected
+            stopPolling();
+            stopHeartbeat();
+            setToken("");
+            setChatState("WAITING");
+            setSessionId("");
+            setError("Skipped by other user - finding new match...");
+            
+            // Start re-queuing process
+            setTimeout(() => {
+              isSkipping.current = false;
+              setNeedsRequeue(true);
+            }, 500);
+            
+            // Clear error after a few seconds
+            setTimeout(() => {
+              setError("");
+            }, 3000);
           }
         } catch (err) {
           console.error("Disconnect check error:", err);
@@ -548,9 +593,80 @@ export default function RandomChatPage() {
         clearInterval(disconnectCheckInterval);
       }
     };
-  }, [chatState, userId, endCall]);
+  }, [chatState, userId, token, stopPolling, stopHeartbeat]);
 
   // Render based on state
+  // Create stable callback for onDisconnected
+  const handleLiveKitDisconnect = useCallback(async () => {
+    console.log("LiveKit disconnected");
+    
+    // Check if this was an unexpected disconnection (possible skip)
+    if (!isSkipping.current && !isEndingCall.current && chatState === "IN_CALL") {
+      console.log("Unexpected disconnection - checking if we were skipped");
+      console.log("Current state:", { userId, sessionId, chatState });
+      
+      // Check for force-disconnect flag immediately
+      try {
+        const response = await fetch("/api/simple-matching/check-disconnect", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId }),
+        });
+        
+        const data = await response.json();
+        if (data.shouldDisconnect) {
+          console.log("Confirmed: we were skipped");
+          
+          // Check if backend already found us a new match
+          const matchResponse = await fetch("/api/simple-matching/check-match", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId }),
+          });
+          
+          const matchData = await matchResponse.json();
+          if (matchData.matched) {
+            console.log("Already matched with someone new!");
+            await handleMatch(matchData.data);
+            return;
+          }
+          
+          // No new match yet - go to waiting state
+          setToken("");
+          setChatState("WAITING");
+          setSessionId("");
+          setError("Skipped by other user - finding new match...");
+          
+          // Start polling if in queue, or start matching
+          if (matchData.inQueue) {
+            console.log("Already in queue, starting polling");
+            startHeartbeat();
+            startPolling();
+          } else {
+            console.log("Not in queue, starting matching");
+            setTimeout(() => {
+              startMatching();
+            }, 500);
+          }
+          
+          setTimeout(() => {
+            setError("");
+          }, 3000);
+          
+          return;
+        }
+      } catch (err) {
+        console.error("Error checking disconnect status:", err);
+      }
+    }
+    
+    // Normal disconnection
+    if (!isSkipping.current) {
+      endCall();
+      setError("");
+    }
+  }, [chatState, userId, sessionId, handleMatch, startHeartbeat, startPolling, startMatching, endCall]);
+
   if (chatState === "IN_CALL" && token) {
     console.log(
       "Rendering LiveKit room with token:",
@@ -572,20 +688,23 @@ export default function RandomChatPage() {
           serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
           data-lk-theme="default"
           style={{ height: "100%" }}
-          onDisconnected={() => {
-            console.log("LiveKit disconnected");
-            // Only call endCall if we're not already skipping
-            if (!isSkipping.current) {
-              endCall();
-              setError("");
-            }
-          }}
+          onDisconnected={handleLiveKitDisconnect}
           onError={(error) => {
             console.error("LiveKit error:", error);
             setError("Connection error occurred");
           }}
-          onConnected={() => {
+          onConnected={async () => {
             console.log("LiveKit connected successfully!");
+            // Clear any lingering force-disconnect flag when successfully connected
+            try {
+              await fetch("/api/simple-matching/check-disconnect", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ userId }),
+              });
+            } catch (err) {
+              console.error("Error clearing disconnect flag:", err);
+            }
           }}
           connect={true}
           connectOptions={{
