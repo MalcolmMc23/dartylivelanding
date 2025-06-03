@@ -7,7 +7,6 @@ import {
   ParticipantTile,
   RoomAudioRenderer,
   useTracks,
-  useRoomContext,
 } from "@livekit/components-react";
 import "@livekit/components-styles";
 import { Button } from "@/components/ui/button";
@@ -59,7 +58,6 @@ interface CustomVideoConferenceProps {
 }
 
 function CustomVideoConference({ onSkip, onEnd }: CustomVideoConferenceProps) {
-  const room = useRoomContext();
   const tracks = useTracks(
     [
       { source: Track.Source.Camera, withPlaceholder: true },
@@ -69,20 +67,14 @@ function CustomVideoConference({ onSkip, onEnd }: CustomVideoConferenceProps) {
   );
 
   const handleSkip = useCallback(() => {
-    // Disconnect from LiveKit room first
-    if (room) {
-      room.disconnect();
-    }
+    // Just call onSkip - the parent component will handle disconnection
     onSkip();
-  }, [room, onSkip]);
+  }, [onSkip]);
 
   const handleEnd = useCallback(() => {
-    // Disconnect from LiveKit room first
-    if (room) {
-      room.disconnect();
-    }
+    // Just call onEnd - the parent component will handle disconnection
     onEnd();
-  }, [room, onEnd]);
+  }, [onEnd]);
 
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
@@ -116,7 +108,7 @@ export default function RandomChatPage() {
   const isSkipping = useRef(false);
 
   // Send heartbeat
-  const sendHeartbeat = async () => {
+  const sendHeartbeat = useCallback(async () => {
     if (!userId) {
       console.error("Cannot send heartbeat: userId is null");
       return;
@@ -131,7 +123,7 @@ export default function RandomChatPage() {
     } catch (err) {
       console.error("Heartbeat error:", err);
     }
-  };
+  }, [userId]);
 
   // Start heartbeat
   const startHeartbeat = useCallback(() => {
@@ -140,57 +132,20 @@ export default function RandomChatPage() {
   }, [sendHeartbeat]);
 
   // Stop heartbeat
-  const stopHeartbeat = () => {
+  const stopHeartbeat = useCallback(() => {
     if (heartbeatInterval.current) {
       clearInterval(heartbeatInterval.current);
       heartbeatInterval.current = null;
     }
-  };
+  }, []);
 
-  // Start matching
-  const startMatching = useCallback(async () => {
-    if (!userId) {
-      console.error("Cannot start matching: userId is null");
-      setError("User ID not initialized");
-      return;
+  // Stop polling
+  const stopPolling = useCallback(() => {
+    if (pollingInterval.current) {
+      clearInterval(pollingInterval.current);
+      pollingInterval.current = null;
     }
-
-    console.log("Starting matching with userId:", userId);
-    setChatState("WAITING");
-    setError("");
-
-    try {
-      // Start heartbeat when entering queue
-      startHeartbeat();
-
-      const response = await fetch("/api/simple-matching/enqueue", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId }),
-      });
-
-      const data = await response.json();
-      console.log("Enqueue response:", data);
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to start matching");
-      }
-
-      if (data.matched) {
-        // Immediate match found
-        console.log("Immediate match found!");
-        await handleMatch(data.data);
-      } else {
-        // Start polling for match
-        console.log("No immediate match, starting polling...");
-        startPolling();
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start matching");
-      setChatState("IDLE");
-      stopHeartbeat();
-    }
-  }, [userId]);
+  }, []);
 
   // Handle successful match
   const handleMatch = useCallback(
@@ -295,15 +250,53 @@ export default function RandomChatPage() {
       } catch (err) {
         console.error("Polling error:", err);
       }
-    }, 2000); // Poll every 2 seconds
-  }, [userId, handleMatch]);
+    }, 2000);
+  }, [userId, handleMatch, stopPolling]);
 
-  const stopPolling = () => {
-    if (pollingInterval.current) {
-      clearInterval(pollingInterval.current);
-      pollingInterval.current = null;
+  // Start matching
+  const startMatching = useCallback(async () => {
+    if (!userId) {
+      console.error("Cannot start matching: userId is null");
+      setError("User ID not initialized");
+      return;
     }
-  };
+
+    console.log("Starting matching with userId:", userId);
+    setChatState("WAITING");
+    setError("");
+
+    try {
+      // Start heartbeat when entering queue
+      startHeartbeat();
+
+      const response = await fetch("/api/simple-matching/enqueue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+
+      const data = await response.json();
+      console.log("Enqueue response:", data);
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to start matching");
+      }
+
+      if (data.matched) {
+        // Immediate match found
+        console.log("Immediate match found!");
+        await handleMatch(data.data);
+      } else {
+        // Start polling for match
+        console.log("No immediate match, starting polling...");
+        startPolling();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start matching");
+      setChatState("IDLE");
+      stopHeartbeat();
+    }
+  }, [userId, startHeartbeat, handleMatch, startPolling, stopHeartbeat]);
 
   // End call
   const endCall = useCallback(async () => {
@@ -316,8 +309,12 @@ export default function RandomChatPage() {
     stopPolling();
     stopHeartbeat();
 
+    // Clear token first to trigger disconnection
+    setToken("");
+    setChatState("IDLE");
+
     const currentSessionId = sessionId;
-    if (currentSessionId && chatState === "IN_CALL") {
+    if (currentSessionId) {
       try {
         console.log("Ending call for session:", currentSessionId);
         await fetch("/api/simple-matching/end", {
@@ -330,15 +327,13 @@ export default function RandomChatPage() {
       }
     }
 
-    setToken("");
     setSessionId("");
-    setChatState("IDLE");
 
     // Reset the flag after a delay
     setTimeout(() => {
       isEndingCall.current = false;
     }, 1000);
-  }, [userId, sessionId, chatState]);
+  }, [userId, sessionId, stopPolling, stopHeartbeat]);
 
   // Skip to next user
   const skipCall = useCallback(async () => {
@@ -352,9 +347,19 @@ export default function RandomChatPage() {
     stopPolling();
     stopHeartbeat();
 
-    let skipData: SkipCallResponse | null = null;
+    // First, clear the token to trigger LiveKit disconnection
+    const previousToken = token;
     const currentSessionId = sessionId;
-    if (currentSessionId && chatState === "IN_CALL") {
+
+    // Immediately update UI to show disconnected state
+    setToken("");
+    setChatState("WAITING");
+
+    // Wait a bit for LiveKit to process the disconnection
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    let skipData: SkipCallResponse | null = null;
+    if (currentSessionId && previousToken) {
       try {
         console.log("Skipping call for session:", currentSessionId);
         const response = await fetch("/api/simple-matching/skip", {
@@ -409,17 +414,15 @@ export default function RandomChatPage() {
       }
     }
 
-    // If we didn't get an immediate match, go to waiting state
+    // If we didn't get an immediate match, continue in waiting state
     if (!skipData || !skipData.matchResults?.skipper?.matched) {
-      // Clear the current call state - this will trigger LiveKit disconnection
-      setToken("");
+      // We already cleared token and set state to WAITING above
       setSessionId("");
-      setChatState("WAITING");
 
       // Check if we're actually in the queue
       const skipperInQueue = skipData?.queueStatus?.skipperInQueue;
       console.log("[Skip] Skipper in queue after skip:", skipperInQueue);
-      
+
       if (skipperInQueue) {
         // We're already re-queued on backend, start polling
         startHeartbeat();
@@ -436,7 +439,15 @@ export default function RandomChatPage() {
       isEndingCall.current = false;
       isSkipping.current = false;
     }, 100);
-  }, [userId, sessionId, chatState, startPolling, startHeartbeat, startMatching]);
+  }, [
+    userId,
+    sessionId,
+    token,
+    startPolling,
+    startHeartbeat,
+    startMatching,
+    stopPolling,
+  ]);
 
   // Cancel waiting
   const cancelWaiting = async () => {
@@ -488,7 +499,7 @@ export default function RandomChatPage() {
         }).catch(console.error);
       }
     };
-  }, [userId, sessionId, chatState, endCall]);
+  }, [userId, sessionId, chatState, endCall, stopPolling]);
 
   // Periodic cleanup of stale users
   useEffect(() => {

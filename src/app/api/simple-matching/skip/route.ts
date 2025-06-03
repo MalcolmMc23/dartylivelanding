@@ -47,6 +47,19 @@ export async function POST(request: Request) {
       otherUserId = match.user1 === userId ? match.user2 : match.user1;
     }
 
+    // === DELETE LIVEKIT ROOM FIRST ===
+    // Delete the room before any cleanup to ensure users are disconnected
+    if (roomName) {
+      console.log(`[Skip] Deleting LiveKit room first: ${roomName}`);
+      try {
+        await deleteRoom(roomName);
+        console.log(`[Skip] LiveKit room deleted successfully`);
+      } catch (error) {
+        console.error('[Skip] Error deleting LiveKit room:', error);
+        // Continue with cleanup even if room deletion fails
+      }
+    }
+
     // === CLEANUP BOTH USERS (Optimized with parallel operations) ===
     console.log(`[Skip] Cleaning up both users: ${userId} and ${otherUserId}`);
     
@@ -80,6 +93,10 @@ export async function POST(request: Request) {
       await redis.setex(`force-disconnect:${otherUserId}`, 30, 'true');
     }
     console.log(`[Skip] Cleanup completed for both users`);
+
+    // === WAIT FOR DISCONNECTION TO PROPAGATE ===
+    // Add a small delay to ensure LiveKit has processed the room deletion
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     // === RESTORE HEARTBEATS BEFORE MATCHING ===
     // We need fresh heartbeats for the matching logic to work
@@ -242,16 +259,6 @@ export async function POST(request: Request) {
     
     // Wait for both matching attempts to complete
     await Promise.all(matchPromises);
-
-    // === DELETE LIVEKIT ROOM ===
-    if (roomName) {
-      console.log(`[Skip] Deleting LiveKit room: ${roomName}`);
-      try {
-        await deleteRoom(roomName);
-      } catch (error) {
-        console.error('Error deleting LiveKit room:', error);
-      }
-    }
     
     // === VERIFY CLEANUP ===
     const [verifyWaiting, verifyInCall, verifyMatch, verifyHeartbeat] = await Promise.all([
