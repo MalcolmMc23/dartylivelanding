@@ -30,41 +30,36 @@ export async function POST(request: Request) {
       shouldCleanupOtherUser = sessionId && sessionId !== 'cancel' && sessionId !== 'cleanup';
     }
 
-    // === CLEANUP CURRENT USER ===
-    // 1. Remove from all Redis sets
-    await redis.zrem('matching:waiting', userId);
-    await redis.zrem('matching:in_call', userId);
+    // === CLEANUP USERS (Optimized with parallel operations) ===
+    const cleanupOps = [
+      // Cleanup current user
+      redis.zrem('matching:waiting', userId),
+      redis.zrem('matching:in_call', userId),
+      redis.del(`match:${userId}`),
+      redis.del(`heartbeat:${userId}`),
+      redis.del(`force-disconnect:${userId}`)
+    ];
     
-    // 2. Remove match data
-    await redis.del(`match:${userId}`);
-    
-    // 3. Remove heartbeat
-    await redis.del(`heartbeat:${userId}`);
-    
-    // 4. Clear any force-disconnect flags
-    await redis.del(`force-disconnect:${userId}`);
-
-    console.log(`[End] Cleaned up state for user ${userId}`);
-
-    // === CLEANUP OTHER USER (if in active call) ===
+    // Add other user cleanup if needed
     if (shouldCleanupOtherUser && otherUserId) {
       console.log(`[End] Also cleaning up other user: ${otherUserId}`);
-      
-      // 1. Remove from all Redis sets
-      await redis.zrem('matching:waiting', otherUserId);
-      await redis.zrem('matching:in_call', otherUserId);
-      
-      // 2. Remove match data
-      await redis.del(`match:${otherUserId}`);
-      
-      // 3. Remove heartbeat
-      await redis.del(`heartbeat:${otherUserId}`);
-      
-      // 4. Mark other user as force disconnected
-      await redis.setex(`force-disconnect:${otherUserId}`, 30, 'true');
-      
-      console.log(`[End] Cleaned up state for other user ${otherUserId}`);
+      cleanupOps.push(
+        redis.zrem('matching:waiting', otherUserId),
+        redis.zrem('matching:in_call', otherUserId),
+        redis.del(`match:${otherUserId}`),
+        redis.del(`heartbeat:${otherUserId}`)
+      );
     }
+    
+    // Execute all cleanup operations in parallel
+    await Promise.all(cleanupOps);
+    
+    // Set force-disconnect separately if needed
+    if (shouldCleanupOtherUser && otherUserId) {
+      await redis.setex(`force-disconnect:${otherUserId}`, 30, 'true');
+    }
+    
+    console.log(`[End] Cleanup completed for user(s)`);
 
     // === DELETE LIVEKIT ROOM ===
     if (roomName && shouldCleanupOtherUser) {

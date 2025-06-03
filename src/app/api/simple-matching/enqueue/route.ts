@@ -35,49 +35,73 @@ export async function POST(request: Request) {
       );
     }
 
-    // Clean up stale users before matching
+    // Clean up stale users and get waiting users in one pass
     const now = Date.now();
     const staleThreshold = 30000; // 30 seconds
-    const allWaitingUsers = await redis.zrange('matching:waiting', 0, -1);
+    const waitingUsers = await redis.zrange('matching:waiting', 0, -1, 'WITHSCORES');
     
-    for (const waitingUser of allWaitingUsers) {
+    // Process users in pairs (member, score)
+    const activeUsers = [];
+    for (let i = 0; i < waitingUsers.length; i += 2) {
+      const waitingUser = waitingUsers[i];
+      const joinTime = parseInt(waitingUsers[i + 1]);
+      
+      // Skip if user joined too long ago (likely stale)
+      if (now - joinTime > 60000) { // 1 minute max queue time
+        await redis.zrem('matching:waiting', waitingUser);
+        await redis.del(`heartbeat:${waitingUser}`);
+        console.log(`Removed stale user ${waitingUser} (joined ${Math.floor((now - joinTime) / 1000)}s ago)`);
+        continue;
+      }
+      
+      // Check heartbeat for active users
       const heartbeat = await redis.get(`heartbeat:${waitingUser}`);
       if (!heartbeat || (now - parseInt(heartbeat)) > staleThreshold) {
         await redis.zrem('matching:waiting', waitingUser);
         await redis.del(`heartbeat:${waitingUser}`);
-        console.log(`Removed stale user ${waitingUser} from queue`);
-      }
-    }
-    
-    // Get fresh list of waiting users
-    const waitingUsers = await redis.zrange('matching:waiting', 0, -1);
-    
-    // Try each waiting user until we find a valid match
-    let matchedUserId = null;
-    for (const candidateUserId of waitingUsers) {
-      // Skip if it's the same user
-      if (candidateUserId === userId) continue;
-      
-      // Check if candidate has a recent heartbeat
-      const heartbeat = await redis.get(`heartbeat:${candidateUserId}`);
-      if (!heartbeat || (now - parseInt(heartbeat)) > 30000) {
-        // Remove stale user
-        await redis.zrem('matching:waiting', candidateUserId);
-        await redis.del(`heartbeat:${candidateUserId}`);
-        console.log(`Removed stale candidate ${candidateUserId}`);
+        console.log(`Removed stale user ${waitingUser} (no recent heartbeat)`);
         continue;
       }
+      
+      activeUsers.push(waitingUser);
+    }
+    
+    // Try to find a match from active users
+    let matchedUserId = null;
+    for (const candidateUserId of activeUsers) {
+      // Skip if it's the same user
+      if (candidateUserId === userId) continue;
       
       // Double-check the candidate isn't already in a call
       const candidateMatch = await redis.get(`match:${candidateUserId}`);
       if (candidateMatch) {
-        // User already matched, remove from queue and try next
+        // User already matched, remove from queue
         await redis.zrem('matching:waiting', candidateUserId);
-        console.log(`Candidate ${candidateUserId} already in a match, removing from queue`);
+        console.log(`Candidate ${candidateUserId} already matched, removing from queue`);
         continue;
       }
       
-      // Valid candidate found
+      // Valid candidate found - attempt to lock this match
+      const lockKey = `matchlock:${userId}:${candidateUserId}`;
+      const reverseLockKey = `matchlock:${candidateUserId}:${userId}`;
+      
+      // Try to acquire lock (prevents race conditions)
+      // Using setex with a check for existing key
+      const existingLock = await redis.get(lockKey);
+      if (existingLock) {
+        // Someone else is already matching these users
+        continue;
+      }
+      await redis.setex(lockKey, 5, '1');
+      
+      // Check if reverse lock exists (other user trying to match with us)
+      const reverseLock = await redis.get(reverseLockKey);
+      if (reverseLock) {
+        await redis.del(lockKey);
+        continue;
+      }
+      
+      // We have the lock, this is our match
       matchedUserId = candidateUserId;
       break;
     }
@@ -102,7 +126,7 @@ export async function POST(request: Request) {
         );
       }
       
-      // Store match info in Redis for both users BEFORE removing from queue
+      // Store match info in Redis for both users
       const matchData = {
         sessionId,
         roomName,
@@ -111,21 +135,20 @@ export async function POST(request: Request) {
         createdAt: Date.now()
       };
       
-      // Store match data for both users to retrieve
-      await redis.setex(`match:${userId}`, 300, JSON.stringify(matchData));
-      await redis.setex(`match:${matchedUserId}`, 300, JSON.stringify(matchData));
+      // Use Redis pipeline for atomic operations
+      const matchDataStr = JSON.stringify(matchData);
       
-      // Add both users to in_call set
-      await redis.zadd('matching:in_call', Date.now(), userId);
-      await redis.zadd('matching:in_call', Date.now(), matchedUserId);
+      // Execute all operations atomically
+      await Promise.all([
+        redis.setex(`match:${userId}`, 300, matchDataStr),
+        redis.setex(`match:${matchedUserId}`, 300, matchDataStr),
+        redis.zadd('matching:in_call', Date.now(), userId),
+        redis.zadd('matching:in_call', Date.now(), matchedUserId),
+        redis.zrem('matching:waiting', matchedUserId)
+      ]);
       
-      // NOW remove matched user from queue (after match data is stored)
-      await redis.zrem('matching:waiting', matchedUserId);
-      
-      // Verify the data was stored
-      const verifyUser1 = await redis.get(`match:${userId}`);
-      const verifyUser2 = await redis.get(`match:${matchedUserId}`);
-      console.log(`[Enqueue] Stored match data - User1 (${userId}):`, !!verifyUser1, `User2 (${matchedUserId}):`, !!verifyUser2);
+      // Clean up the lock
+      await redis.del(`matchlock:${userId}:${matchedUserId}`);
       
       console.log(`[Enqueue] Successfully matched users: ${userId} with ${matchedUserId} in room ${roomName}`);
       

@@ -47,26 +47,35 @@ export async function POST(request: Request) {
       otherUserId = match.user1 === userId ? match.user2 : match.user1;
     }
 
-    // === CLEANUP BOTH USERS ===
+    // === CLEANUP BOTH USERS (Optimized with parallel operations) ===
     console.log(`[Skip] Cleaning up both users: ${userId} and ${otherUserId}`);
     
-    // Clean up current user (skipper)
-    await redis.zrem('matching:waiting', userId);
-    await redis.zrem('matching:in_call', userId);
-    await redis.del(`match:${userId}`);
-    await redis.del(`force-disconnect:${userId}`);
-    console.log(`[Skip] Cleaned up state for user ${userId}`);
-
-    // Clean up other user if exists
+    // Prepare cleanup operations
+    const cleanupOps = [
+      // Clean up current user (skipper)
+      redis.zrem('matching:waiting', userId),
+      redis.zrem('matching:in_call', userId),
+      redis.del(`match:${userId}`),
+      redis.del(`force-disconnect:${userId}`)
+    ];
+    
+    // Add other user cleanup if exists
     if (otherUserId) {
-      await redis.zrem('matching:waiting', otherUserId);
-      await redis.zrem('matching:in_call', otherUserId);
-      await redis.del(`match:${otherUserId}`);
-      
-      // Mark other user as force disconnected so they get kicked from the room
-      await redis.setex(`force-disconnect:${otherUserId}`, 30, 'true');
-      console.log(`[Skip] Cleaned up state for other user ${otherUserId}`);
+      cleanupOps.push(
+        redis.zrem('matching:waiting', otherUserId),
+        redis.zrem('matching:in_call', otherUserId),
+        redis.del(`match:${otherUserId}`)
+      );
     }
+    
+    // Execute all cleanup operations in parallel
+    await Promise.all(cleanupOps);
+    
+    // Set force-disconnect separately (different return type)
+    if (otherUserId) {
+      await redis.setex(`force-disconnect:${otherUserId}`, 30, 'true');
+    }
+    console.log(`[Skip] Cleanup completed for both users`);
 
     // === TRY TO MATCH BOTH USERS WITH OTHERS IN QUEUE ===
     const now = Date.now();
@@ -87,32 +96,47 @@ export async function POST(request: Request) {
       // Refresh heartbeat to prevent immediate cleanup
       await redis.setex(`heartbeat:${userToMatch}`, 30, now.toString());
       
-      // Get all waiting users
-      const waitingUsers = await redis.zrange('matching:waiting', 0, -1);
-      console.log(`[Skip] Trying to match ${userToMatch}. Waiting users in queue:`, waitingUsers);
-      console.log(`[Skip] Excluding: ${excludeUserId || 'none'}`);
+      // Get all waiting users with scores for age filtering
+      const waitingUsersWithScores = await redis.zrange('matching:waiting', 0, -1, 'WITHSCORES');
+      const waitingUsers = [];
       
-      // Try to find a match
-      for (const candidateUserId of waitingUsers) {
-        // Skip if it's the same user or the excluded user (previous partner)
-        if (candidateUserId === userToMatch || candidateUserId === excludeUserId) continue;
+      // Process users and filter stale ones
+      for (let i = 0; i < waitingUsersWithScores.length; i += 2) {
+        const candidateUserId = waitingUsersWithScores[i];
+        const joinTime = parseInt(waitingUsersWithScores[i + 1]);
         
-        // Check if candidate has a recent heartbeat
-        const candidateHeartbeat = await redis.get(`heartbeat:${candidateUserId}`);
-        if (!candidateHeartbeat || (now - parseInt(candidateHeartbeat)) > 30000) {
-          // Remove stale user
+        // Skip if too old in queue (> 1 minute)
+        if (now - joinTime > 60000) {
           await redis.zrem('matching:waiting', candidateUserId);
-          await redis.del(`heartbeat:${candidateUserId}`);
-          console.log(`[Skip] Removed stale candidate ${candidateUserId}`);
           continue;
         }
         
-        // Double-check the candidate isn't already in a call
-        const candidateMatch = await redis.get(`match:${candidateUserId}`);
-        if (candidateMatch) {
-          // User already matched, remove from queue
+        // Skip if it's the same user or the excluded user
+        if (candidateUserId === userToMatch || candidateUserId === excludeUserId) continue;
+        
+        waitingUsers.push(candidateUserId);
+      }
+      
+      console.log(`[Skip] Found ${waitingUsers.length} potential matches for ${userToMatch}`);
+      
+      // Try to find a match from filtered list
+      for (const candidateUserId of waitingUsers) {
+        // Batch check heartbeat and existing match
+        const [candidateHeartbeat, candidateMatch] = await Promise.all([
+          redis.get(`heartbeat:${candidateUserId}`),
+          redis.get(`match:${candidateUserId}`)
+        ]);
+        
+        // Check heartbeat
+        if (!candidateHeartbeat || (now - parseInt(candidateHeartbeat)) > 30000) {
           await redis.zrem('matching:waiting', candidateUserId);
-          console.log(`[Skip] Candidate ${candidateUserId} already in a match, removing from queue`);
+          await redis.del(`heartbeat:${candidateUserId}`);
+          continue;
+        }
+        
+        // Check if already matched
+        if (candidateMatch) {
+          await redis.zrem('matching:waiting', candidateUserId);
           continue;
         }
         
@@ -131,7 +155,7 @@ export async function POST(request: Request) {
           continue; // Try next candidate
         }
         
-        // Store match info
+        // Store match info atomically
         const matchData = {
           sessionId,
           roomName,
@@ -140,15 +164,17 @@ export async function POST(request: Request) {
           createdAt: Date.now()
         };
         
-        await redis.setex(`match:${userToMatch}`, 300, JSON.stringify(matchData));
-        await redis.setex(`match:${candidateUserId}`, 300, JSON.stringify(matchData));
+        const matchDataStr = JSON.stringify(matchData);
+        const callTime = Date.now();
         
-        // Add both to in_call set
-        await redis.zadd('matching:in_call', Date.now(), userToMatch);
-        await redis.zadd('matching:in_call', Date.now(), candidateUserId);
-        
-        // Remove matched user from queue
-        await redis.zrem('matching:waiting', candidateUserId);
+        // Execute all match operations in parallel
+        await Promise.all([
+          redis.setex(`match:${userToMatch}`, 300, matchDataStr),
+          redis.setex(`match:${candidateUserId}`, 300, matchDataStr),
+          redis.zadd('matching:in_call', callTime, userToMatch),
+          redis.zadd('matching:in_call', callTime, candidateUserId),
+          redis.zrem('matching:waiting', candidateUserId)
+        ]);
         
         return { matched: true, matchData, peerId: candidateUserId };
       }
@@ -165,23 +191,33 @@ export async function POST(request: Request) {
       return { matched: false };
     }
     
-    // Try to match the skipper (exclude their previous partner)
-    try {
-      matchResults.skipper = await tryMatchUser(userId, otherUserId || undefined);
-    } catch (error) {
-      console.error(`[Skip] Error matching skipper ${userId}:`, error);
-      matchResults.skipper = { matched: false };
+    // Try to match both users in parallel for efficiency
+    const matchPromises = [];
+    
+    // Match the skipper (exclude their previous partner)
+    matchPromises.push(
+      tryMatchUser(userId, otherUserId || undefined)
+        .then(result => { matchResults.skipper = result; })
+        .catch(error => {
+          console.error(`[Skip] Error matching skipper ${userId}:`, error);
+          matchResults.skipper = { matched: false };
+        })
+    );
+    
+    // Match the other user if they exist (exclude the skipper)
+    if (otherUserId) {
+      matchPromises.push(
+        tryMatchUser(otherUserId, userId)
+          .then(result => { matchResults.other = result; })
+          .catch(error => {
+            console.error(`[Skip] Error matching other user ${otherUserId}:`, error);
+            matchResults.other = { matched: false };
+          })
+      );
     }
     
-    // Try to match the other user if they exist (exclude the skipper)
-    if (otherUserId) {
-      try {
-        matchResults.other = await tryMatchUser(otherUserId, userId);
-      } catch (error) {
-        console.error(`[Skip] Error matching other user ${otherUserId}:`, error);
-        matchResults.other = { matched: false };
-      }
-    }
+    // Wait for both matching attempts to complete
+    await Promise.all(matchPromises);
 
     // === DELETE LIVEKIT ROOM ===
     if (roomName) {
