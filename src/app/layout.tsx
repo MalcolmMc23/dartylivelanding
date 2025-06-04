@@ -18,8 +18,8 @@ const geistMono = Geist_Mono({
 const bodyClassName = `${geistSans.variable} ${geistMono.variable} antialiased`;
 
 export const metadata: Metadata = {
-  title: "Darty Live",
-  description: "Darty Live - Connect and party",
+  title: "DormParty.live",
+  description: "DormParty - Call with College Students",
   icons: {
     icon: "/images/DormParty_cup.png",
     apple: "/images/DormParty_cup.png",
