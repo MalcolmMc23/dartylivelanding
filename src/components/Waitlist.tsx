@@ -15,11 +15,11 @@ export default function Waitlist() {
   const [targetDate, setTargetDate] = useState<Date | null>(null);
 
   useEffect(() => {
-    // Set to this Wednesday (June 4, 2025) at noon
-    const wednesday = new Date(2025, 5, 4); // Month is 0-indexed, so 5 = June
-    wednesday.setHours(12, 0, 0, 0); // Set to noon
+    // Set to June 8, 2025 at noon
+    const target = new Date(2025, 5, 8); // Month is 0-indexed, so 5 = June
+    target.setHours(12, 0, 0, 0); // Set to noon
 
-    setTargetDate(wednesday);
+    setTargetDate(target);
   }, []);
 
   const handleTryVideoChat = async (e: React.MouseEvent) => {
@@ -70,7 +70,7 @@ export default function Waitlist() {
           {/* Waitlist announcement */}
           <div className="mt-4 mb-2">
             <h2 className="text-2xl md:text-3xl font-bold text-white">
-              The second batch of the waitlist has gone out!
+              Welcome to the third batch of the waitlist!
             </h2>
             <p className="text-xl md:text-2xl mt-2 text-[#A259FF] font-semibold">
               Next batch in:
