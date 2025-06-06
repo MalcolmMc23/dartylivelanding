@@ -156,6 +156,16 @@ function createFakeRedis() {
       // No-op for fake implementation
       return 1;
     },
+    setex: async (key: string, ttl: number, value: string) => {
+      // Set the value (TTL not implemented in fake version)
+      data[key] = value;
+      return "OK";
+    },
+    zscore: async (key: string, member: string) => {
+      if (!zsets[key]) return null;
+      const score = zsets[key][member];
+      return score !== undefined ? score.toString() : null;
+    },
     on: () => {
       // No-op
       return;

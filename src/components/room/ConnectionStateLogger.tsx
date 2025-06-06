@@ -8,11 +8,6 @@ import {
   Participant,
   RemoteParticipant,
 } from "livekit-client";
-import { handleDisconnection } from "@/utils/disconnectionService";
-import {
-  updateRoomOccupancy,
-  removeUserFromRoom,
-} from "@/utils/redis/roomStateManager";
 
 interface ConnectionStateLoggerProps {
   onParticipantCountChange: (count: number) => void;
@@ -25,13 +20,6 @@ interface ConnectionStateLoggerProps {
 // Move this function outside of the component to fix the "async Client Component" error
 function triggerCleanupRoomTracking(username: string, roomName: string) {
   // Use a non-async wrapper that calls the async function
-  handleDisconnection({
-    username,
-    roomName,
-    reason: "component_cleanup",
-  }).catch((error) => {
-    console.error("Failed to send cleanup request:", error);
-  });
   console.log(`Sent cleanup request for user ${username} in room ${roomName}`);
 }
 
@@ -84,11 +72,6 @@ export function ConnectionStateLogger({
       ...participantList,
     ];
     console.log("Current participants:", allParticipants);
-
-    // Update room occupancy in Redis for state synchronization
-    updateRoomOccupancy(roomName, allParticipants).catch((error) => {
-      console.error("Error updating room occupancy:", error);
-    });
 
     onParticipantCountChange(participantCount);
 
@@ -147,7 +130,6 @@ export function ConnectionStateLogger({
     maxParticipants,
     onParticipantCountChange,
     username,
-    roomName,
     onOtherParticipantDisconnected,
   ]);
 
@@ -265,11 +247,6 @@ export function ConnectionStateLogger({
 
           // Clean up room tracking - use the non-async wrapper function
           triggerCleanupRoomTracking(participant.identity, room.name);
-
-          // Update room occupancy to reflect the participant leaving
-          removeUserFromRoom(participant.identity, room.name).catch((error) => {
-            console.error("Error removing user from room tracking:", error);
-          });
         }, 3000); // Give 3 seconds for potential reconnection
 
         // Return cleanup function to clear the timeout if component unmounts
