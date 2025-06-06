@@ -36,6 +36,10 @@ export async function POST(request: Request) {
 
     console.log(`[Skip] User ${userId} skipping session ${sessionId || 'unknown'}`);
 
+    // IMMEDIATE FIX: Set pre-skip state to prevent race conditions
+    await redis.setex(`pre-skip:${userId}`, 30, 'true');
+    console.log(`[Skip] Pre-skip flag set for ${userId}`);
+
     // Get match data to find the other user
     const matchData = await redis.get(`match:${userId}`);
     let roomName: string | null = null;
@@ -45,14 +49,29 @@ export async function POST(request: Request) {
       const match = JSON.parse(matchData);
       roomName = match.roomName;
       otherUserId = match.user1 === userId ? match.user2 : match.user1;
+    } else {
+      // Clear pre-skip flag if no match
+      await redis.del(`pre-skip:${userId}`);
+      return NextResponse.json({ success: true, message: 'No active match' });
     }
 
-    // === SET FORCE-DISCONNECT FLAG FIRST ===
-    // Set force-disconnect for the other user before deleting room
-    if (otherUserId) {
-      await redis.setex(`force-disconnect:${otherUserId}`, 120, 'true'); // 120 seconds to ensure detection
-      console.log(`[Skip] Set force-disconnect flag for ${otherUserId}`);
-    }
+    // === SET MULTIPLE FLAGS ATOMICALLY BEFORE ANY CLEANUP ===
+    // IMMEDIATE FIX: Set multiple flags for redundancy
+    const flagPromises = [
+      redis.setex(`skip-in-progress:${userId}`, 60, 'true'),
+      redis.setex(`skip-in-progress:${otherUserId}`, 60, 'true'),
+      redis.setex(`force-disconnect:${otherUserId}`, 300, 'true'), // 5 min TTL
+      redis.setex(`room-deleted:${roomName}`, 300, 'true'),
+      // Also set a skip notification for the other user
+      redis.setex(`skip-notification:${otherUserId}`, 300, JSON.stringify({
+        skippedBy: userId,
+        timestamp: Date.now(),
+        roomName
+      }))
+    ];
+    
+    await Promise.all(flagPromises);
+    console.log(`[Skip] All skip flags set for users ${userId} and ${otherUserId}`);
 
     // === DELETE LIVEKIT ROOM ===
     // Delete the room to disconnect both users

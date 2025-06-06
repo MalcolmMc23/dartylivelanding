@@ -12,16 +12,54 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check if user should be force disconnected
-    const forceDisconnect = await redis.get(`force-disconnect:${userId}`);
+    // Check multiple disconnect flags for redundancy
+    const [
+      forceDisconnect,
+      skipInProgress,
+      preSkip,
+      matchData
+    ] = await Promise.all([
+      redis.get(`force-disconnect:${userId}`),
+      redis.get(`skip-in-progress:${userId}`),
+      redis.get(`pre-skip:${userId}`),
+      redis.get(`match:${userId}`)
+    ]);
     
-    if (forceDisconnect) {
-      // Clear the flag
-      await redis.del(`force-disconnect:${userId}`);
+    // Also check if room was deleted
+    let roomDeleted = false;
+    if (matchData) {
+      const match = JSON.parse(matchData);
+      roomDeleted = await redis.get(`room-deleted:${match.roomName}`) !== null;
+    }
+    
+    const shouldDisconnect = !!(forceDisconnect || skipInProgress || preSkip || roomDeleted);
+    
+    if (shouldDisconnect) {
+      // Clear all flags atomically
+      const keysToDelete = [
+        `force-disconnect:${userId}`,
+        `skip-in-progress:${userId}`,
+        `pre-skip:${userId}`
+      ];
+      
+      if (keysToDelete.length > 0) {
+        await redis.del(...keysToDelete);
+      }
+      
+      console.log(`[CheckDisconnect] User ${userId} should disconnect. Flags:`, {
+        forceDisconnect: !!forceDisconnect,
+        skipInProgress: !!skipInProgress,
+        preSkip: !!preSkip,
+        roomDeleted
+      });
       
       return NextResponse.json({
         success: true,
-        shouldDisconnect: true
+        shouldDisconnect: true,
+        reason: forceDisconnect ? 'force-disconnect' : 
+                skipInProgress ? 'skip-in-progress' : 
+                preSkip ? 'pre-skip' :
+                roomDeleted ? 'room-deleted' : 'unknown'
       });
     }
     

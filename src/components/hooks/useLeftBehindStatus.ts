@@ -85,7 +85,7 @@ export function useLeftBehindStatus(username: string | null) {
     
     // Set up polling if needed
     if (username) {
-      const interval = setInterval(checkStatus, 2000); // Check every 2 seconds
+      const interval = setInterval(checkStatus, 500); // Check every 500ms for faster detection
       return () => clearInterval(interval);
     }
   }, [username, checkStatus]);
