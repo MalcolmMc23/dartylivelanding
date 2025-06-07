@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@livekit/components-react':
-        specifier: ^2.9.3
-        version: 2.9.3(livekit-client@2.11.3)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(tslib@2.8.1)
+        specifier: ^2.9.9
+        version: 2.9.9(livekit-client@2.13.3(@types/dom-mediacapture-record@1.0.22))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(tslib@2.8.1)
       '@livekit/components-styles':
         specifier: ^1.1.6
         version: 1.1.6
@@ -44,9 +44,6 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
-      darty_live_landing:
-        specifier: 'link:'
-        version: 'link:'
       dotenv:
         specifier: ^16.3.1
         version: 16.5.0
@@ -54,8 +51,8 @@ importers:
         specifier: ^5.6.1
         version: 5.6.1
       livekit-client:
-        specifier: ^2.11.3
-        version: 2.11.3
+        specifier: ^2.13.3
+        version: 2.13.3(@types/dom-mediacapture-record@1.0.22)
       livekit-server-sdk:
         specifier: ^2.12.0
         version: 2.12.0
@@ -195,8 +192,8 @@ packages:
     resolution: {integrity: sha512-ZAoA40rNMPwSm+AeHpCq8STiNAwzWLJuP8Xv4CHIc9wv/PSuExjMrmjfYNj682vW0OOiZ1HKxzvjQr9XZIisQA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
-  '@floating-ui/core@1.6.9':
-    resolution: {integrity: sha512-uMXCuQ3BItDUbAMhIXw7UPXRfAlOAvZzdK9BWpE60MCn+Svt3aLn9jsPTi/WNGlRUu2uI0v5S7JiIUsbsvh3fw==}
+  '@floating-ui/core@1.7.1':
+    resolution: {integrity: sha512-azI0DrjMMfIug/ExbBaeDVJXcY0a7EPvPjb2xAJPa4HeimBX+Z18HK8QQR3jb6356SnDDdxx+hinMLcJEDdOjw==}
 
   '@floating-ui/dom@1.6.13':
     resolution: {integrity: sha512-umqzocjDgNRGTuO7Q8CU32dkHkECqI8ZdMZ5Swb6QAM0t5rnlrN3lGo1hdpscRd3WS8T6DKYK4ephgIH9iRh3w==}
@@ -349,19 +346,19 @@ packages:
     resolution: {integrity: sha512-u3UPsIilWKOM3F9CXtrG8LEJmNxwoCQC/XVj4IKYXvvpx7QIi/Kg1LI5uDmDpKlac62NUtX7eLjRh+jVZcLOzw==}
     engines: {node: ^14.15.0 || ^16.10.0 || >=18.0.0}
 
-  '@livekit/components-core@0.12.4':
-    resolution: {integrity: sha512-a/GkK8XFULPhXoSKxuXEU62gwTAYJ83DP5/vlRzwESEY+rsoiw2NvvPZtDCU17yyd/5QBIF9VdDjB9ZZF0dOfQ==}
+  '@livekit/components-core@0.12.7':
+    resolution: {integrity: sha512-oxP2qlFy2Dqnu2u0ESQgcKF+5LfAMpOZ87FTMXyZ+RFogM3AkU0PWR31+j3tkAMPC9fCrgh4V1lZG3h6LjGTiw==}
     engines: {node: '>=18'}
     peerDependencies:
-      livekit-client: ^2.11.1
+      livekit-client: ^2.13.1
       tslib: ^2.6.2
 
-  '@livekit/components-react@2.9.3':
-    resolution: {integrity: sha512-gE1sEE57BkBz3+TQHrOXVDVwVMwV5wtIYokdrfd7vshh22/PtWWj3vON9wzYLFRKx98L6QyAzyh7W9EWu3Lj9Q==}
+  '@livekit/components-react@2.9.9':
+    resolution: {integrity: sha512-ZxiHSCNVxNG8XZdJkpJ7+ga/Wl6WRDkZocJGd+eh8F1JRjjqrBL9IesOPzOK0INX9lAaVCe9VqL41B+B5PVdrg==}
     engines: {node: '>=18'}
     peerDependencies:
       '@livekit/krisp-noise-filter': ^0.2.12
-      livekit-client: ^2.11.1
+      livekit-client: ^2.13.1
       react: '>=18'
       react-dom: '>=18'
       tslib: ^2.6.2
@@ -378,6 +375,9 @@ packages:
 
   '@livekit/protocol@1.36.1':
     resolution: {integrity: sha512-nN3QnITAQ5yXk7UKfotH7CRWIlEozNWeKVyFJ0/+dtSzvWP/ib+10l1DDnRYi3A1yICJOGAKFgJ5d6kmi1HCUA==}
+
+  '@livekit/protocol@1.38.0':
+    resolution: {integrity: sha512-XX6ulvsE1XCN18LVf3ydHN7Ri1Z1M1P5dQdjnm5nVDsSqUL12Vbo/4RKcRlCEXAg2qB62mKjcaVLXVwkfXggkg==}
 
   '@napi-rs/wasm-runtime@0.2.9':
     resolution: {integrity: sha512-OKRBiajrrxB9ATokgEQoG87Z25c67pCpYcCwmXYX8PBftC9pBfN18gnm/fh1wurSLEKIAt+QRFLFCQISrb66Jg==}
@@ -769,6 +769,9 @@ packages:
 
   '@types/bcrypt@5.0.2':
     resolution: {integrity: sha512-6atioO8Y75fNcbmj0G7UjI9lXN2pQ/IGJ2FWT4a/btd0Lk9lQalHLKhkgKVZ3r+spnmWUKfbMi1GEe9wyHQfNQ==}
+
+  '@types/dom-mediacapture-record@1.0.22':
+    resolution: {integrity: sha512-mUMZLK3NvwRLcAAT9qmcK+9p7tpU2FHdDsntR3YI4+GY88XrgG4XiE7u1Q2LAN2/FZOz/tdMDC3GQCR4T8nFuw==}
 
   '@types/estree@1.0.7':
     resolution: {integrity: sha512-w28IoSUCJpidD/TGviZwwMJckNESJZXFu7NBZ5YJ4mEUnNraUn9Pm8HSZm/jDF1pDWYKspWE7oVphigUPRakIQ==}
@@ -1775,8 +1778,10 @@ packages:
     resolution: {integrity: sha512-6b6gd/RUXKaw5keVdSEtqFVdzWnU5jMxTUjA2bVcMNPLwSQ08Sv/UodBVtETLCn7k4S1Ibxwh7k68IwLZPgKaA==}
     engines: {node: '>= 12.0.0'}
 
-  livekit-client@2.11.3:
-    resolution: {integrity: sha512-WEyn3PMi/nBA096VvNN8ZHqfoJ/+s0klCPdQzzYtyBT7A5B0zHfzDy5YgaxXD817LxJEKjpVFwgQ4ddNmTAL4A==}
+  livekit-client@2.13.3:
+    resolution: {integrity: sha512-5lX9bqN2ZKjt1RqJqO1Vz9uplrnCLIpbG3Y8h7z0ui2adk5oahohV0m1F2ZEaIJTfQgXhX1iVbSYrVNwTzwRDQ==}
+    peerDependencies:
+      '@types/dom-mediacapture-record': ^1
 
   livekit-server-sdk@2.12.0:
     resolution: {integrity: sha512-6i2l0Ja1yhYvCXqU9wZ3SlWPEm1pYXpSJbpmT3sN0UWS61+jF6qkVY4AeSRQ53w5zrgzLBIyDwooBEMxz7XyMw==}
@@ -2599,13 +2604,13 @@ snapshots:
       '@eslint/core': 0.13.0
       levn: 0.4.1
 
-  '@floating-ui/core@1.6.9':
+  '@floating-ui/core@1.7.1':
     dependencies:
       '@floating-ui/utils': 0.2.9
 
   '@floating-ui/dom@1.6.13':
     dependencies:
-      '@floating-ui/core': 1.6.9
+      '@floating-ui/core': 1.7.1
       '@floating-ui/utils': 0.2.9
 
   '@floating-ui/utils@0.2.9': {}
@@ -2720,19 +2725,19 @@ snapshots:
       '@types/yargs': 17.0.33
       chalk: 4.1.2
 
-  '@livekit/components-core@0.12.4(livekit-client@2.11.3)(tslib@2.8.1)':
+  '@livekit/components-core@0.12.7(livekit-client@2.13.3(@types/dom-mediacapture-record@1.0.22))(tslib@2.8.1)':
     dependencies:
       '@floating-ui/dom': 1.6.13
-      livekit-client: 2.11.3
+      livekit-client: 2.13.3(@types/dom-mediacapture-record@1.0.22)
       loglevel: 1.9.1
       rxjs: 7.8.2
       tslib: 2.8.1
 
-  '@livekit/components-react@2.9.3(livekit-client@2.11.3)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(tslib@2.8.1)':
+  '@livekit/components-react@2.9.9(livekit-client@2.13.3(@types/dom-mediacapture-record@1.0.22))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(tslib@2.8.1)':
     dependencies:
-      '@livekit/components-core': 0.12.4(livekit-client@2.11.3)(tslib@2.8.1)
+      '@livekit/components-core': 0.12.7(livekit-client@2.13.3(@types/dom-mediacapture-record@1.0.22))(tslib@2.8.1)
       clsx: 2.1.1
-      livekit-client: 2.11.3
+      livekit-client: 2.13.3(@types/dom-mediacapture-record@1.0.22)
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
       tslib: 2.8.1
@@ -2743,6 +2748,10 @@ snapshots:
   '@livekit/mutex@1.1.1': {}
 
   '@livekit/protocol@1.36.1':
+    dependencies:
+      '@bufbuild/protobuf': 1.10.1
+
+  '@livekit/protocol@1.38.0':
     dependencies:
       '@bufbuild/protobuf': 1.10.1
 
@@ -3053,6 +3062,8 @@ snapshots:
   '@types/bcrypt@5.0.2':
     dependencies:
       '@types/node': 20.17.31
+
+  '@types/dom-mediacapture-record@1.0.22': {}
 
   '@types/estree@1.0.7': {}
 
@@ -4246,10 +4257,11 @@ snapshots:
       lightningcss-win32-arm64-msvc: 1.29.2
       lightningcss-win32-x64-msvc: 1.29.2
 
-  livekit-client@2.11.3:
+  livekit-client@2.13.3(@types/dom-mediacapture-record@1.0.22):
     dependencies:
       '@livekit/mutex': 1.1.1
-      '@livekit/protocol': 1.36.1
+      '@livekit/protocol': 1.38.0
+      '@types/dom-mediacapture-record': 1.0.22
       events: 3.3.0
       loglevel: 1.9.2
       sdp-transform: 2.15.0
