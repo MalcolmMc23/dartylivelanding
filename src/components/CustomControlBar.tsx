@@ -1,7 +1,7 @@
 "use client";
 
 import { ControlBarProps } from "@livekit/components-react";
-import { ControlBarContainer } from "./ControlBarContainer";
+import { ControlBarContainer } from "./video/ControlBarContainer";
 import { MediaControls } from "./room/MediaControls";
 import { ChatButton } from "./room/ChatButton";
 import { CallActionButtons } from "./room/CallActionButtons";
