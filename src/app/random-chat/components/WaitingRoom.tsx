@@ -62,13 +62,13 @@ export function WaitingRoom({
           <div className="flex gap-2 justify-center">
             <button
               onClick={onCheckStatus}
-              className="text-xs text-gray-400 underline"
+              className="text-xs text-gray-400 underline hover:cursor-pointer"
             >
               Check Status
             </button>
             <button
               onClick={onForceCleanup}
-              className="text-xs text-gray-400 underline"
+              className="text-xs text-gray-400 underline hover:cursor-pointer"
             >
               Force Cleanup
             </button>
@@ -87,7 +87,7 @@ export function WaitingRoom({
             <Button
               onClick={onStart}
               size="lg"
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+              className="w-full bg-blue-600 hover:bg-blue-700 hover:cursor-pointer text-white"
             >
               Start Chat
             </Button>
@@ -97,7 +97,7 @@ export function WaitingRoom({
             <Button
               onClick={onCancel}
               variant="outline"
-              className="w-full border-gray-600 text-gray-300 hover:bg-gray-800"
+              className="w-full border-gray-600 text-gray-300 hover:bg-gray-800 hover:cursor-pointer"
             >
               Cancel
             </Button>
