@@ -39,8 +39,6 @@ export default function RandomChatPage() {
     setSessionId,
     connectToRoom,
     disconnectFromRoom,
-    handleLiveKitError,
-    handleLiveKitConnected,
   } = useLiveKit(userId, setError);
 
   // Handle successful match
@@ -103,7 +101,7 @@ export default function RandomChatPage() {
       setChatState("IDLE");
       setError("");
     }
-  }, [chatState, userId, handleMatch, startHeartbeat, startMatching, disconnectFromRoom]);
+  }, [chatState, userId, handleMatch, startHeartbeat, startMatching, disconnectFromRoom, isSkipping, isEndingCall, setChatState, setError]);
 
   // Handle skip call
   const skipCall = useCallback(async () => {
@@ -158,7 +156,7 @@ export default function RandomChatPage() {
       isEndingCall.current = false;
       isSkipping.current = false;
     }, 100);
-  }, [userId, sessionId, connectToRoom, startMatching, stopPolling, stopHeartbeat]);
+  }, [userId, sessionId, connectToRoom, startMatching, stopPolling, stopHeartbeat, isEndingCall, isSkipping, setChatState, setSessionId]);
 
   // Handle end call
   const endCall = useCallback(async () => {
@@ -177,7 +175,7 @@ export default function RandomChatPage() {
     setTimeout(() => {
       isEndingCall.current = false;
     }, 1000);
-  }, [disconnectFromRoom, stopPolling, stopHeartbeat]);
+  }, [disconnectFromRoom, stopPolling, stopHeartbeat, isEndingCall, setChatState]);
 
   // Handle re-queuing when force disconnected
   useEffect(() => {
@@ -185,7 +183,7 @@ export default function RandomChatPage() {
       setNeedsRequeue(false);
       startMatching();
     }
-  }, [needsRequeue, chatState, startMatching]);
+  }, [needsRequeue, chatState, startMatching, setNeedsRequeue]);
 
   // Periodic cleanup of stale users
   useEffect(() => {
@@ -243,7 +241,7 @@ export default function RandomChatPage() {
         clearInterval(disconnectCheckInterval);
       }
     };
-  }, [chatState, userId, token, stopPolling, stopHeartbeat]);
+  }, [chatState, userId, token, stopPolling, stopHeartbeat, isSkipping, setChatState, setError, setNeedsRequeue, setSessionId]);
 
   // Handle debug actions
   const handleCheckStatus = async () => {

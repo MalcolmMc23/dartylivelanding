@@ -5,10 +5,9 @@ import {
   ParticipantTile,
   RoomAudioRenderer,
   useTracks,
-  useRoomContext,
 } from "@livekit/components-react";
 import "@livekit/components-styles";
-import { Track, RoomEvent } from "livekit-client";
+import { Track} from "livekit-client";
 import { CustomControlBar } from "@/components/CustomControlBar";
 import { VideoConferenceProps } from "../types";
 
