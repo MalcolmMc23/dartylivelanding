@@ -1,5 +1,5 @@
 import { SystemResetDebugger } from "@/components/debug/SystemResetDebugger";
-import { CooldownDebugger } from "@/components/CooldownDebugger";
+import { CooldownDebugger } from "@/components/debug/CooldownDebugger";
 
 export default function SystemDebugPage() {
   return (

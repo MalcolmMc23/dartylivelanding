@@ -5,8 +5,8 @@ import {
   MicrophoneOffIcon,
   CameraOnIcon,
   CameraOffIcon,
-} from "../LiveKitIcons";
-import { ControlButton } from "../ControlButton";
+} from "../video/LiveKitIcons";
+import { ControlButton } from "../video/ControlButton";
 import { useMediaControls } from "../hooks/useMediaControls";
 
 interface MediaControlsProps {

@@ -1,7 +1,7 @@
 "use client";
 
 import { LucideMessageSquareMore } from "lucide-react";
-import { ControlButton } from "../ControlButton";
+import { ControlButton } from "../video/ControlButton";
 
 interface ChatButtonProps {
   onChatClick: () => void;

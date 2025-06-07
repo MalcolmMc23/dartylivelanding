@@ -1,6 +1,6 @@
 "use client";
 
-import { ControlButton } from "../ControlButton";
+import { ControlButton } from "../video/ControlButton";
 
 interface CallActionButtonsProps {
   onSkip: () => void;

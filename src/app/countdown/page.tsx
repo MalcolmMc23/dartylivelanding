@@ -1,7 +1,6 @@
 "use client";
-
 import { Suspense } from "react";
-import CountdownDisplay from "@/components/CountdownDisplay";
+import CountdownDisplay from "@/app/countdown/components/CountdownDisplay";
 import AnimatedStars from "@/components/AnimatedStars";
 
 export default function CountdownPage() {
