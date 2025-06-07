@@ -5,6 +5,15 @@ import { createRoom } from '@/lib/livekitService';
 
 export async function POST(request: Request) {
   try {
+    // Validate Redis connection
+    if (!redis) {
+      console.error('[Enqueue] Redis client not initialized');
+      return NextResponse.json(
+        { success: false, error: 'Database connection error' },
+        { status: 500 }
+      );
+    }
+
     const body = await request.json();
     const { userId } = body;
     console.log('[Enqueue] Request received:', { userId, body });
@@ -18,10 +27,19 @@ export async function POST(request: Request) {
     }
 
     // Check if user is already in queue (but allow if they have requeue grace)
-    const [inQueue, hasGrace] = await Promise.all([
-      redis.zscore('matching:waiting', userId),
-      redis.get(`requeue-grace:${userId}`)
-    ]);
+    let inQueue, hasGrace;
+    try {
+      [inQueue, hasGrace] = await Promise.all([
+        redis.zscore('matching:waiting', userId),
+        redis.get(`requeue-grace:${userId}`)
+      ]);
+    } catch (error) {
+      console.error('[Enqueue] Redis error checking queue status:', error);
+      return NextResponse.json(
+        { success: false, error: 'Database error checking queue status' },
+        { status: 500 }
+      );
+    }
     
     if (inQueue !== null && !hasGrace) {
       console.log('[Enqueue] User already in queue without grace period');
@@ -32,7 +50,17 @@ export async function POST(request: Request) {
     }
 
     // Check if user is already in a match
-    const existingMatch = await redis.get(`match:${userId}`);
+    let existingMatch;
+    try {
+      existingMatch = await redis.get(`match:${userId}`);
+    } catch (error) {
+      console.error('[Enqueue] Redis error checking existing match:', error);
+      return NextResponse.json(
+        { success: false, error: 'Database error checking existing match' },
+        { status: 500 }
+      );
+    }
+
     if (existingMatch) {
       return NextResponse.json(
         { success: false, error: 'Already in a match' },
@@ -43,7 +71,16 @@ export async function POST(request: Request) {
     // Clean up stale users and get waiting users in one pass
     const now = Date.now();
     const staleThreshold = 30000; // 30 seconds
-    const waitingUsers = await redis.zrange('matching:waiting', 0, -1, 'WITHSCORES');
+    let waitingUsers;
+    try {
+      waitingUsers = await redis.zrange('matching:waiting', 0, -1, 'WITHSCORES');
+    } catch (error) {
+      console.error('[Enqueue] Redis error getting waiting users:', error);
+      return NextResponse.json(
+        { success: false, error: 'Database error getting waiting users' },
+        { status: 500 }
+      );
+    }
     
     // Process users in pairs (member, score)
     const activeUsers = [];
@@ -53,18 +90,39 @@ export async function POST(request: Request) {
       
       // Skip if user joined too long ago (likely stale)
       if (now - joinTime > 60000) { // 1 minute max queue time
-        await redis.zrem('matching:waiting', waitingUser);
-        await redis.del(`heartbeat:${waitingUser}`);
-        console.log(`Removed stale user ${waitingUser} (joined ${Math.floor((now - joinTime) / 1000)}s ago)`);
+        try {
+          await Promise.all([
+            redis.zrem('matching:waiting', waitingUser),
+            redis.del(`heartbeat:${waitingUser}`)
+          ]);
+          console.log(`Removed stale user ${waitingUser} (joined ${Math.floor((now - joinTime) / 1000)}s ago)`);
+        } catch (error) {
+          console.error(`[Enqueue] Redis error removing stale user ${waitingUser}:`, error);
+          // Continue processing other users even if this fails
+        }
         continue;
       }
       
       // Check heartbeat for active users
-      const heartbeat = await redis.get(`heartbeat:${waitingUser}`);
+      let heartbeat;
+      try {
+        heartbeat = await redis.get(`heartbeat:${waitingUser}`);
+      } catch (error) {
+        console.error(`[Enqueue] Redis error checking heartbeat for ${waitingUser}:`, error);
+        continue;
+      }
+
       if (!heartbeat || (now - parseInt(heartbeat)) > staleThreshold) {
-        await redis.zrem('matching:waiting', waitingUser);
-        await redis.del(`heartbeat:${waitingUser}`);
-        console.log(`Removed stale user ${waitingUser} (no recent heartbeat)`);
+        try {
+          await Promise.all([
+            redis.zrem('matching:waiting', waitingUser),
+            redis.del(`heartbeat:${waitingUser}`)
+          ]);
+          console.log(`Removed stale user ${waitingUser} (no recent heartbeat)`);
+        } catch (error) {
+          console.error(`[Enqueue] Redis error removing stale user ${waitingUser}:`, error);
+          // Continue processing other users even if this fails
+        }
         continue;
       }
       
@@ -78,23 +136,40 @@ export async function POST(request: Request) {
       if (candidateUserId === userId) continue;
       
       // Check for skip cooldown between these users
-      const cooldownKey = `skip-cooldown:${userId}:${candidateUserId}`;
-      const hasCooldown = await redis.get(cooldownKey);
+      let hasCooldown;
+      try {
+        const cooldownKey = `skip-cooldown:${userId}:${candidateUserId}`;
+        hasCooldown = await redis.get(cooldownKey);
+      } catch (error) {
+        console.error(`[Enqueue] Redis error checking cooldown for ${userId}:${candidateUserId}:`, error);
+        continue;
+      }
+
       if (hasCooldown) {
         console.log(`[Enqueue] Skip cooldown active between ${userId} and ${candidateUserId}`);
         continue;
       }
       
       // Double-check the candidate isn't already in a call or being re-queued
-      const [candidateMatch, candidateGrace] = await Promise.all([
-        redis.get(`match:${candidateUserId}`),
-        redis.get(`requeue-grace:${candidateUserId}`)
-      ]);
+      let candidateMatch, candidateGrace;
+      try {
+        [candidateMatch, candidateGrace] = await Promise.all([
+          redis.get(`match:${candidateUserId}`),
+          redis.get(`requeue-grace:${candidateUserId}`)
+        ]);
+      } catch (error) {
+        console.error(`[Enqueue] Redis error checking candidate status for ${candidateUserId}:`, error);
+        continue;
+      }
       
       if (candidateMatch) {
         // User already matched, remove from queue
-        await redis.zrem('matching:waiting', candidateUserId);
-        console.log(`Candidate ${candidateUserId} already matched, removing from queue`);
+        try {
+          await redis.zrem('matching:waiting', candidateUserId);
+          console.log(`Candidate ${candidateUserId} already matched, removing from queue`);
+        } catch (error) {
+          console.error(`[Enqueue] Redis error removing matched candidate ${candidateUserId}:`, error);
+        }
         continue;
       }
       
@@ -110,37 +185,60 @@ export async function POST(request: Request) {
       const lockId = uuidv4();
       
       // Check if forward lock exists
-      const existingLock = await redis.get(lockKey);
+      let existingLock, reverseLock;
+      try {
+        [existingLock, reverseLock] = await Promise.all([
+          redis.get(lockKey),
+          redis.get(reverseLockKey)
+        ]);
+      } catch (error) {
+        console.error(`[Enqueue] Redis error checking locks for ${userId}:${candidateUserId}:`, error);
+        continue;
+      }
+
       if (existingLock) {
         console.log(`[Enqueue] Lock already exists for ${userId} -> ${candidateUserId}`);
         continue;
       }
       
-      // Check if reverse lock exists
-      const reverseLock = await redis.get(reverseLockKey);
       if (reverseLock) {
         console.log(`[Enqueue] Reverse lock exists, someone else is matching these users`);
         continue;
       }
       
       // Set both locks atomically
-      await Promise.all([
-        redis.setex(lockKey, 10, lockId),
-        redis.setex(reverseLockKey, 10, lockId)
-      ]);
+      try {
+        await Promise.all([
+          redis.setex(lockKey, 10, lockId),
+          redis.setex(reverseLockKey, 10, lockId)
+        ]);
+      } catch (error) {
+        console.error(`[Enqueue] Redis error setting locks for ${userId}:${candidateUserId}:`, error);
+        continue;
+      }
       
       // Double-check candidate is still available after acquiring locks
-      const [stillInQueue, stillNoMatch] = await Promise.all([
-        redis.zscore('matching:waiting', candidateUserId),
-        redis.get(`match:${candidateUserId}`)
-      ]);
+      let stillInQueue, stillNoMatch;
+      try {
+        [stillInQueue, stillNoMatch] = await Promise.all([
+          redis.zscore('matching:waiting', candidateUserId),
+          redis.get(`match:${candidateUserId}`)
+        ]);
+      } catch (error) {
+        console.error(`[Enqueue] Redis error checking candidate availability after lock:`, error);
+        await Promise.all([
+          redis.del(lockKey),
+          redis.del(reverseLockKey)
+        ]).catch(e => console.error(`[Enqueue] Redis error cleaning up locks:`, e));
+        continue;
+      }
       
       if (!stillInQueue || stillNoMatch) {
         console.log(`[Enqueue] Candidate ${candidateUserId} no longer available after lock`);
         await Promise.all([
           redis.del(lockKey),
           redis.del(reverseLockKey)
-        ]);
+        ]).catch(e => console.error(`[Enqueue] Redis error cleaning up locks:`, e));
         continue;
       }
       
@@ -163,6 +261,11 @@ export async function POST(request: Request) {
         console.log(`Created LiveKit room: ${roomName}`);
       } catch (error) {
         console.error('Failed to create LiveKit room:', error);
+        // Clean up locks if room creation fails
+        await Promise.all([
+          redis.del(`matchlock:${userId}:${matchedUserId}`),
+          redis.del(`matchlock:${matchedUserId}:${userId}`)
+        ]).catch(e => console.error(`[Enqueue] Redis error cleaning up locks after room creation failure:`, e));
         return NextResponse.json(
           { success: false, error: 'Failed to create video room' },
           { status: 500 }
@@ -182,22 +285,35 @@ export async function POST(request: Request) {
       const matchDataStr = JSON.stringify(matchData);
       
       // Execute all operations atomically
-      await Promise.all([
-        redis.setex(`match:${userId}`, 300, matchDataStr),
-        redis.setex(`match:${matchedUserId}`, 300, matchDataStr),
-        redis.zadd('matching:in_call', Date.now(), userId),
-        redis.zadd('matching:in_call', Date.now(), matchedUserId),
-        redis.zrem('matching:waiting', matchedUserId),
-        // Clear force-disconnect flags for both users
-        redis.del(`force-disconnect:${userId}`),
-        redis.del(`force-disconnect:${matchedUserId}`)
-      ]);
+      try {
+        await Promise.all([
+          redis.setex(`match:${userId}`, 300, matchDataStr),
+          redis.setex(`match:${matchedUserId}`, 300, matchDataStr),
+          redis.zadd('matching:in_call', Date.now(), userId),
+          redis.zadd('matching:in_call', Date.now(), matchedUserId),
+          redis.zrem('matching:waiting', matchedUserId),
+          // Clear force-disconnect flags for both users
+          redis.del(`force-disconnect:${userId}`),
+          redis.del(`force-disconnect:${matchedUserId}`)
+        ]);
+      } catch (error) {
+        console.error('[Enqueue] Redis error storing match data:', error);
+        // Clean up locks if match storage fails
+        await Promise.all([
+          redis.del(`matchlock:${userId}:${matchedUserId}`),
+          redis.del(`matchlock:${matchedUserId}:${userId}`)
+        ]).catch(e => console.error(`[Enqueue] Redis error cleaning up locks after match storage failure:`, e));
+        return NextResponse.json(
+          { success: false, error: 'Failed to store match data' },
+          { status: 500 }
+        );
+      }
       
       // Clean up the locks (both directions to be safe)
       await Promise.all([
         redis.del(`matchlock:${userId}:${matchedUserId}`),
         redis.del(`matchlock:${matchedUserId}:${userId}`)
-      ]);
+      ]).catch(e => console.error(`[Enqueue] Redis error cleaning up locks after successful match:`, e));
       
       console.log(`[Enqueue] Successfully matched users: ${userId} with ${matchedUserId} in room ${roomName}`);
       
@@ -212,8 +328,16 @@ export async function POST(request: Request) {
       });
     } else {
       // No match available, add to queue
-      await redis.zadd('matching:waiting', Date.now(), userId);
-      console.log(`User ${userId} added to waiting queue`);
+      try {
+        await redis.zadd('matching:waiting', Date.now(), userId);
+        console.log(`User ${userId} added to waiting queue`);
+      } catch (error) {
+        console.error('[Enqueue] Redis error adding user to queue:', error);
+        return NextResponse.json(
+          { success: false, error: 'Failed to add user to queue' },
+          { status: 500 }
+        );
+      }
       
       return NextResponse.json({
         success: true,
@@ -222,7 +346,7 @@ export async function POST(request: Request) {
       });
     }
   } catch (error) {
-    console.error('Error in enqueue:', error);
+    console.error('[Enqueue] Unhandled error:', error);
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
       { status: 500 }
