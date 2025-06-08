@@ -6,6 +6,9 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { LoginDialog } from "@/components/auth/LoginDialog";
 
+// Debug flag to bypass authentication
+const BYPASS_AUTH = process.env.NEXT_PUBLIC_BYPASS_AUTH === 'true';
+
 interface WaitingRoomProps {
   chatState: ChatState;
   error: string;
@@ -34,7 +37,7 @@ export function WaitingRoom({
   }, []);
 
   const handleStartChat = () => {
-    if (session) {
+    if (BYPASS_AUTH || session) {
       onStart();
     } else {
       setShowLogin(true);
