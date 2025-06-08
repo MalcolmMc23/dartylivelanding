@@ -88,8 +88,8 @@ export function RegisterDialog({ open, onOpenChange, onShowLogin, onSuccess }: P
         description: "Please check your email to verify your account",
       });
       if (onSuccess) onSuccess();
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "An error occurred during registration";
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "An error occurred during registration";
       setError(errorMessage);
       toast.error("Registration failed", {
         description: errorMessage,
@@ -135,8 +135,10 @@ export function RegisterDialog({ open, onOpenChange, onShowLogin, onSuccess }: P
         description: "Please check your inbox",
       });
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "An error occurred while resending";
+      setError(errorMessage);
       toast.error("Failed to resend", {
-        description: "Please try again later",
+        description: errorMessage,
       });
     } finally {
       setIsResending(false);

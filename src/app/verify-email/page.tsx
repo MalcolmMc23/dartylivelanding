@@ -50,7 +50,7 @@ function VerifyEmailContent() {
         }
       } catch (error) {
         setStatus('error');
-        setMessage('An error occurred during verification');
+        setMessage(error instanceof Error ? error.message : 'An error occurred during verification');
       }
     };
 
