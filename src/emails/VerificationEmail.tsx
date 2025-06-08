@@ -39,7 +39,7 @@ import {
               Verify Email Address
             </Button>
             <Text style={text}>
-              This link will expire in 24 hours. If you didn't create an account with DormParty, you can safely ignore this email.
+              This link will expire in 24 hours. If you didn&apos;t create an account with DormParty, you can safely ignore this email.
             </Text>
             <Text style={text}>
               Best regards,<br />

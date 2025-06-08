@@ -103,9 +103,9 @@ export async function POST(request: Request) {
       } catch (dbError) {
         console.error('Database error details:', {
           error: dbError,
-          code: (dbError as any)?.code,
-          message: (dbError as any)?.message,
-          detail: (dbError as any)?.detail
+          code: (dbError as { code?: string })?.code,
+          message: (dbError as { message?: string })?.message,
+          detail: (dbError as { detail?: string })?.detail
         });
 
         if (typeof dbError === 'object' && dbError !== null && 'code' in dbError) {

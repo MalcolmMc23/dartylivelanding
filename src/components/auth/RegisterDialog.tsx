@@ -16,10 +16,9 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onShowLogin: () => void;
-  onSuccess?: () => void;
 }
 
-export function RegisterDialog({ open, onOpenChange, onShowLogin, onSuccess }: Props) {
+export function RegisterDialog({ open, onOpenChange, onShowLogin }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
