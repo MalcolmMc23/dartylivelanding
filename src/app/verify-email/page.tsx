@@ -40,9 +40,9 @@ function VerifyEmailContent() {
             redirect: false,
           });
           
-          // Redirect to home after 2 seconds
+          // Redirect to random-chat after 2 seconds
           setTimeout(() => {
-            router.push('/');
+            router.push('/random-chat');
           }, 2000);
         } else {
           setStatus('error');
