@@ -1,4 +1,3 @@
-// components/LoginPromptDialog.tsx
 "use client";
 
 import {
