@@ -3,6 +3,11 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ChatState } from "../types";
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
+import { LoginDialog } from "@/components/auth/LoginDialog";
+
+// Debug flag to bypass authentication
+const BYPASS_AUTH = process.env.NEXT_PUBLIC_BYPASS_AUTH === 'true';
 
 interface WaitingRoomProps {
   chatState: ChatState;
@@ -24,10 +29,20 @@ export function WaitingRoom({
   onForceCleanup,
 }: WaitingRoomProps) {
   const [mounted, setMounted] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const { data: session } = useSession();
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const handleStartChat = () => {
+    if (BYPASS_AUTH || session) {
+      onStart();
+    } else {
+      setShowLogin(true);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 flex items-center justify-center">
@@ -85,7 +100,7 @@ export function WaitingRoom({
 
           {chatState === "IDLE" && (
             <Button
-              onClick={onStart}
+              onClick={handleStartChat}
               size="lg"
               className="w-full bg-blue-600 hover:bg-blue-700 hover:cursor-pointer text-white"
             >
@@ -104,6 +119,14 @@ export function WaitingRoom({
           )}
         </div>
       </Card>
+
+      <LoginDialog 
+        open={showLogin} 
+        onOpenChange={setShowLogin}
+        onSuccess={() => {
+          onStart();
+        }}
+      />
     </div>
   );
 } 
