@@ -14,7 +14,7 @@ export async function POST(request: Request) {
 
     // Update user's heartbeat timestamp
     const timestamp = Date.now();
-    await redis.setex(`heartbeat:${userId}`, 30, timestamp.toString()); // 30 second TTL
+    await redis.setex(`heartbeat:${userId}`, 10, timestamp.toString()); // 10 second TTL
 
     // Check if user is in queue and update their score (timestamp)
     const inQueue = await redis.zscore('matching:waiting', userId);

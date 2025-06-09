@@ -19,7 +19,7 @@ export const useHeartbeat = (userId: string | null) => {
 
   const startHeartbeat = useCallback(() => {
     sendHeartbeat(); // Send immediately
-    heartbeatInterval.current = setInterval(sendHeartbeat, 10000); // Every 10 seconds
+    heartbeatInterval.current = setInterval(sendHeartbeat, 5000); // Every 5 seconds
   }, [sendHeartbeat]);
 
   const stopHeartbeat = useCallback(() => {

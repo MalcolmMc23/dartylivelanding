@@ -87,7 +87,7 @@ export const useCallEffects = ({
         } catch (err) {
           console.error("Disconnect check error:", err);
         }
-      }, 2000);
+      }, 1000); // Reduced from 2000ms to 1000ms for faster detection
     }
 
     return () => {

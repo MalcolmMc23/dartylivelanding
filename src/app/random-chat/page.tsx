@@ -10,6 +10,7 @@ import { MatchData } from "./types";
 import { createCallHandlers } from "./handlers/callHandlers";
 import { createDebugHandlers } from "./handlers/debugHandlers";
 import { useCallEffects } from "./hooks/useCallEffects";
+import { useAloneDetection } from "./hooks/useAloneDetection";
 
 export default function RandomChatPage() {
   // Generate stable user ID
@@ -89,6 +90,18 @@ export default function RandomChatPage() {
     setError,
     setNeedsRequeue,
     startMatching,
+    stopPolling,
+    stopHeartbeat,
+  });
+
+  // Detect and handle being alone in a call
+  useAloneDetection({
+    userId,
+    chatState,
+    isSkipping,
+    setChatState,
+    setError,
+    setNeedsRequeue,
     stopPolling,
     stopHeartbeat,
   });

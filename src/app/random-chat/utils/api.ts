@@ -94,5 +94,25 @@ export const api = {
     });
 
     return response.json();
+  },
+
+  async checkAlone(userId: string): Promise<{ isAlone: boolean; reason: string }> {
+    const response = await fetch("/api/simple-matching/check-alone", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId }),
+    });
+
+    return response.json();
+  },
+
+  async kickAlone(userId: string, reason: string): Promise<{ requeued: boolean }> {
+    const response = await fetch("/api/simple-matching/kick-alone", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, reason }),
+    });
+
+    return response.json();
   }
 }; 

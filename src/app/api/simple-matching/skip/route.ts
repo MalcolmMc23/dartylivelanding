@@ -131,7 +131,7 @@ export async function POST(request: Request) {
         // Check if user has recent heartbeat (use current time for check)
         const currentTime = Date.now();
         const userHeartbeat = await redis.get(`heartbeat:${userToMatch}`);
-        if (!userHeartbeat || (currentTime - parseInt(userHeartbeat)) > 30000) {
+        if (!userHeartbeat || (currentTime - parseInt(userHeartbeat)) > 15000) {
           console.log(`[Skip] User ${userToMatch} heartbeat is stale, not re-queuing`);
           await redis.del(matchingInProgressKey);
           return { matched: false };
@@ -200,7 +200,7 @@ export async function POST(request: Request) {
         ]);
         
         // Check heartbeat
-        if (!candidateHeartbeat || (currentTime - parseInt(candidateHeartbeat)) > 30000) {
+        if (!candidateHeartbeat || (currentTime - parseInt(candidateHeartbeat)) > 15000) {
           await redis.zrem('matching:waiting', candidateUserId);
           await redis.del(`heartbeat:${candidateUserId}`);
           continue;

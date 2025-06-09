@@ -108,4 +108,17 @@ export async function listParticipants(roomName: string) {
     console.error('Error listing participants:', error);
     return [];
   }
+}
+
+/**
+ * List all active rooms
+ */
+export async function listAllRooms() {
+  try {
+    const rooms = await roomService.listRooms();
+    return rooms;
+  } catch (error) {
+    console.error('Error listing all rooms:', error);
+    return [];
+  }
 } 
