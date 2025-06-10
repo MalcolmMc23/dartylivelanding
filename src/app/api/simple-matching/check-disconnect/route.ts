@@ -1,74 +1,63 @@
-import { NextResponse } from 'next/server';
-import redis from '@/lib/redis';
+import { NextRequest, NextResponse } from 'next/server';
+import { validateApiRequest, logRequestCompletion } from '@/lib/apiMiddleware';
+import { stateManager } from '@/lib/stateManager';
+import { userMetadataManager } from '@/lib/userMetadata';
 
-export async function POST(request: Request) {
+export async function GET(request: NextRequest) {
+  const {
+    valid,
+    response,
+    requestId,
+    userId,
+    startTime
+  } = await validateApiRequest(request, '/api/simple-matching/check-disconnect');
+
+  if (!valid) {
+    return response;
+  }
+
+  const validatedUserId = userId!;
+  const currentState = await stateManager.getUserCurrentState(validatedUserId);
+
   try {
-    const { userId } = await request.json();
+    const metadata = await userMetadataManager.getUserMetadata(validatedUserId);
 
-    if (!userId) {
-      return NextResponse.json(
-        { success: false, error: 'User ID required' },
-        { status: 400 }
-      );
-    }
-
-    // Check multiple disconnect flags for redundancy
-    const [
-      forceDisconnect,
-      skipInProgress,
-      preSkip,
-      matchData
-    ] = await Promise.all([
-      redis.get(`force-disconnect:${userId}`),
-      redis.get(`skip-in-progress:${userId}`),
-      redis.get(`pre-skip:${userId}`),
-      redis.get(`match:${userId}`)
-    ]);
-    
-    // Also check if room was deleted
-    let roomDeleted = false;
-    if (matchData) {
-      const match = JSON.parse(matchData);
-      roomDeleted = await redis.get(`room-deleted:${match.roomName}`) !== null;
-    }
-    
-    const shouldDisconnect = !!(forceDisconnect || skipInProgress || preSkip || roomDeleted);
-    
-    if (shouldDisconnect) {
-      // Clear all flags atomically
-      const keysToDelete = [
-        `force-disconnect:${userId}`,
-        `skip-in-progress:${userId}`,
-        `pre-skip:${userId}`
-      ];
+    // If user is in DISCONNECTING state, it's a confirmed disconnect
+    if (metadata?.state === 'DISCONNECTING') {
+      const disconnectInfo = {
+        reason: metadata.lastAction, // 'skip' or 'end'
+        initiatedBy: metadata.lastAction === 'skip' ? 'peer' : (metadata.lastAction === 'end' ? 'peer' : 'system'),
+      };
       
-      if (keysToDelete.length > 0) {
-        await redis.del(...keysToDelete);
+      logRequestCompletion(requestId, '/api/simple-matching/check-disconnect', 'GET', validatedUserId, currentState, startTime, true, undefined, { disconnected: true, ...disconnectInfo });
+      
+      // Once notified, we can potentially move them to the final state (IDLE or WAITING)
+      // This could be handled here or in a separate cleanup job
+      if (disconnectInfo.reason === 'skip') {
+        await stateManager.moveUserBetweenStates(validatedUserId, 'DISCONNECTING', 'WAITING');
+      } else {
+        await stateManager.moveUserBetweenStates(validatedUserId, 'DISCONNECTING', 'IDLE');
       }
-      
-      console.log(`[CheckDisconnect] User ${userId} should disconnect. Flags:`, {
-        forceDisconnect: !!forceDisconnect,
-        skipInProgress: !!skipInProgress,
-        preSkip: !!preSkip,
-        roomDeleted
-      });
-      
+
       return NextResponse.json({
         success: true,
-        shouldDisconnect: true,
-        reason: forceDisconnect ? 'force-disconnect' : 
-                skipInProgress ? 'skip-in-progress' : 
-                preSkip ? 'pre-skip' :
-                roomDeleted ? 'room-deleted' : 'unknown'
+        disconnected: true,
+        ...disconnectInfo
       });
     }
     
-    return NextResponse.json({
-      success: true,
-      shouldDisconnect: false
-    });
-  } catch (error) {
-    console.error('Error checking disconnect:', error);
+    // If user is not IN_CALL or CONNECTING anymore, they were likely disconnected
+    if (currentState !== 'IN_CALL' && currentState !== 'CONNECTING') {
+        logRequestCompletion(requestId, '/api/simple-matching/check-disconnect', 'GET', validatedUserId, currentState, startTime, true, undefined, { disconnected: true, reason: 'state_change' });
+        return NextResponse.json({ success: true, disconnected: true, reason: 'state_change' });
+    }
+
+    logRequestCompletion(requestId, '/api/simple-matching/check-disconnect', 'GET', validatedUserId, currentState, startTime, true, undefined, { disconnected: false });
+    return NextResponse.json({ success: true, disconnected: false });
+
+  } catch (error: any) {
+    console.error('[CheckDisconnect] Unhandled error:', error);
+    logRequestCompletion(requestId, '/api/simple-matching/check-disconnect', 'GET', validatedUserId, currentState, startTime, false, error.message);
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
       { status: 500 }

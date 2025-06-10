@@ -1,31 +1,37 @@
-import { NextResponse } from 'next/server';
-import redis from '@/lib/redis';
+import { NextRequest, NextResponse } from 'next/server';
+import { validateApiRequest, logRequestCompletion } from '@/lib/apiMiddleware';
+import { userMetadataManager } from '@/lib/userMetadata';
+import { stateManager } from '@/lib/stateManager';
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const {
+    valid,
+    response,
+    requestId,
+    userId,
+    startTime
+  } = await validateApiRequest(request, '/api/simple-matching/heartbeat');
+
+  if (!valid) {
+    return response;
+  }
+
+  const validatedUserId = userId!;
+  const currentState = await stateManager.getUserCurrentState(validatedUserId);
+
   try {
-    const { userId } = await request.json();
+    // Update last heartbeat and last activity timestamp in user metadata
+    await userMetadataManager.updateUserMetadata(validatedUserId, {
+      lastHeartbeat: Date.now(),
+      lastActivity: Date.now(),
+    });
 
-    if (!userId) {
-      return NextResponse.json(
-        { success: false, error: 'User ID required' },
-        { status: 400 }
-      );
-    }
+    logRequestCompletion(requestId, '/api/simple-matching/heartbeat', 'POST', validatedUserId, currentState, startTime, true);
+    return NextResponse.json({ success: true, message: 'Heartbeat received' });
 
-    // Update user's heartbeat timestamp
-    const timestamp = Date.now();
-    await redis.setex(`heartbeat:${userId}`, 30, timestamp.toString()); // 30 second TTL
-
-    // Check if user is in queue and update their score (timestamp)
-    const inQueue = await redis.zscore('matching:waiting', userId);
-    if (inQueue !== null) {
-      // Keep their original position but update heartbeat
-      await redis.zadd('matching:waiting', parseInt(inQueue), userId);
-    }
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Error in heartbeat:', error);
+  } catch (error: any) {
+    console.error('[Heartbeat] Unhandled error:', error);
+    logRequestCompletion(requestId, '/api/simple-matching/heartbeat', 'POST', validatedUserId, currentState, startTime, false, error.message);
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
       { status: 500 }
