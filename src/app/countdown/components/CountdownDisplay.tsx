@@ -23,7 +23,7 @@ export default function CountdownDisplay() {
       {/* Message */}
       <div className="mt-4 mb-2">
         <h2 className="text-2xl md:text-3xl font-bold text-white">
-          You're on the waitlist!
+          You&apos;re on the waitlist!
         </h2>
         <p className="text-xl md:text-2xl mt-2 text-[#A259FF] font-semibold">
           Next batch in:
