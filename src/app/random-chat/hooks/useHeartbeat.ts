@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useEffect } from "react";
 import { api } from "../utils/api";
 
 export const useHeartbeat = (userId: string | null) => {
@@ -44,6 +44,37 @@ export const useHeartbeat = (userId: string | null) => {
       secondaryInterval.current = null;
     }
   }, []);
+
+  // Handle client-side disconnection signals
+  useEffect(() => {
+    if (!userId) return;
+
+    const handleBeforeUnload = () => {
+      console.log("Before unload event detected, signaling disconnect...");
+      // Send a disconnect signal using keepalive to ensure it goes through
+      api.signalDisconnect(userId);
+      // Note: We don't await here as the browser might close before it resolves
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        console.log("Tab hidden, signaling disconnect...");
+        api.signalDisconnect(userId);
+      } else if (document.visibilityState === 'visible') {
+        console.log("Tab visible, restarting heartbeats...");
+        // Optionally restart heartbeats if they were stopped for hidden state
+        // (though current design keeps them running)
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [userId]); // Only re-run if userId changes
 
   return {
     startHeartbeat,

@@ -86,6 +86,15 @@ export const api = {
     await fetch("/api/simple-matching/cleanup", { method: "POST" });
   },
 
+  async signalDisconnect(userId: string): Promise<void> {
+    await fetch("/api/simple-matching/heartbeat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, isDisconnecting: true }),
+      keepalive: true, // Important for beforeunload/pagehide
+    });
+  },
+
   async forceCleanup(userId: string): Promise<{ allClean: boolean }> {
     const response = await fetch("/api/simple-matching/force-cleanup", {
       method: "POST",
