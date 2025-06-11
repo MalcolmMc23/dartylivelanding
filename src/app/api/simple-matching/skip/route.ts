@@ -307,6 +307,7 @@ export async function POST(request: Request) {
           redis.del(matchingInProgressKey)
         ]);
         
+        console.log(`[Match] ${userToMatch} connected with ${candidateUserId}`);
         return { matched: true, matchData, peerId: candidateUserId };
       }
       

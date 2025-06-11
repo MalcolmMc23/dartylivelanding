@@ -26,6 +26,13 @@ export async function POST(request: Request) {
       );
     }
 
+    // Do not allow matching while user still has an un-acknowledged force-disconnect flag
+    const pendingForceDisconnect = await redis.get(`force-disconnect:${userId}`);
+    if (pendingForceDisconnect) {
+      console.log(`[Enqueue] User ${userId} still has force-disconnect flag – waiting for acknowledgement`);
+      return NextResponse.json({ success: true, matched: false, reason: 'awaiting_force_disconnect_ack' });
+    }
+
     // Check if user is already in queue (but allow if they have requeue grace)
     let inQueue, hasGrace;
     try {
@@ -170,12 +177,13 @@ export async function POST(request: Request) {
         continue;
       }
       
-      // Double-check the candidate isn't already in a call or being re-queued
-      let candidateMatch, candidateGrace;
+      // Double-check the candidate isn't already in a call, being re-queued, or force-disconnected
+      let candidateMatch, candidateGrace, candidateForceFlag;
       try {
-        [candidateMatch, candidateGrace] = await Promise.all([
+        [candidateMatch, candidateGrace, candidateForceFlag] = await Promise.all([
           redis.get(`match:${candidateUserId}`),
-          redis.get(`requeue-grace:${candidateUserId}`)
+          redis.get(`requeue-grace:${candidateUserId}`),
+          redis.get(`force-disconnect:${candidateUserId}`)
         ]);
       } catch (error) {
         console.error(`[Enqueue] Redis error checking candidate status for ${candidateUserId}:`, error);
@@ -196,6 +204,11 @@ export async function POST(request: Request) {
       if (candidateGrace) {
         // User is being re-queued after skip, skip them for now
         console.log(`Candidate ${candidateUserId} is in requeue grace period, skipping`);
+        continue;
+      }
+      
+      if (candidateForceFlag) {
+        console.log(`Candidate ${candidateUserId} has pending force-disconnect flag, skipping`);
         continue;
       }
       
@@ -312,9 +325,7 @@ export async function POST(request: Request) {
           redis.zadd('matching:in_call', Date.now(), userId),
           redis.zadd('matching:in_call', Date.now(), matchedUserId),
           redis.del(`matching:waiting_${matchedUserId}`),
-          // Clear force-disconnect flags for both users
-          redis.del(`force-disconnect:${userId}`),
-          redis.del(`force-disconnect:${matchedUserId}`)
+          redis.del(`matching:waiting_${userId}`)
         ]);
       } catch (error) {
         console.error('[Enqueue] Redis error storing match data:', error);
@@ -335,7 +346,7 @@ export async function POST(request: Request) {
         redis.del(`matchlock:${matchedUserId}:${userId}`)
       ]).catch(e => console.error(`[Enqueue] Redis error cleaning up locks after successful match:`, e));
       
-      console.log(`[Enqueue] Successfully matched users: ${userId} with ${matchedUserId} in room ${roomName}`);
+      console.log(`[Match] ${userId} connected with ${matchedUserId}`);
       
       return NextResponse.json({
         success: true,
