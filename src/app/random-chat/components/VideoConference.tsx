@@ -1,17 +1,25 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
   LiveKitRoom,
   GridLayout,
   ParticipantTile,
   RoomAudioRenderer,
   useTracks,
+  useParticipants,
+  useRoomContext,
 } from "@livekit/components-react";
 import "@livekit/components-styles";
-import { Track} from "livekit-client";
+import { Track } from "livekit-client";
 import { CustomControlBar } from "@/components/CustomControlBar";
 import { VideoConferenceProps } from "../types";
 
-function VideoContent({ onSkip, onEnd }: { onSkip: () => void; onEnd: () => void }) {
+function VideoContent({
+  onSkip,
+  onEnd,
+}: {
+  onSkip: () => void;
+  onEnd: () => void;
+}) {
   const tracks = useTracks(
     [
       { source: Track.Source.Camera, withPlaceholder: true },
@@ -44,7 +52,15 @@ function VideoContent({ onSkip, onEnd }: { onSkip: () => void; onEnd: () => void
   );
 }
 
-export function VideoConference({ onSkip, onEnd, token, sessionId, userId, onDisconnected }: VideoConferenceProps) {
+export function VideoConference({
+  onSkip,
+  onEnd,
+  token,
+  sessionId,
+  userId,
+  onDisconnected,
+  onAlone,
+}: VideoConferenceProps & { onAlone?: () => void }) {
   return (
     <div style={{ height: "100vh" }}>
       <div className="absolute top-4 left-4 z-50 bg-black/80 text-white p-2 rounded text-xs">
@@ -70,6 +86,7 @@ export function VideoConference({ onSkip, onEnd, token, sessionId, userId, onDis
           peerConnectionTimeout: 10000,
         }}
       >
+        <AloneDetector onAlone={onAlone} />
         <VideoContent onSkip={onSkip} onEnd={onEnd} />
         <style jsx global>{`
           .lk-disconnect-button {
@@ -79,4 +96,38 @@ export function VideoConference({ onSkip, onEnd, token, sessionId, userId, onDis
       </LiveKitRoom>
     </div>
   );
-} 
+}
+
+function AloneDetector({ onAlone }: { onAlone?: () => void }) {
+  const participants = useParticipants();
+  const room = useRoomContext();
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (!onAlone) return;
+
+    const remoteCount = room ? room.remoteParticipants.size : 0;
+
+    if (remoteCount === 0) {
+      if (!timeoutRef.current) {
+        timeoutRef.current = setTimeout(() => {
+          onAlone();
+        }, 3000); // 3-second grace period
+      }
+    } else {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    }
+
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
+  }, [participants, room, onAlone]);
+
+  return null;
+}

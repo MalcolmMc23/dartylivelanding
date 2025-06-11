@@ -42,4 +42,5 @@ export interface VideoConferenceProps {
   sessionId: string;
   userId: string;
   onDisconnected: () => void;
+  onAlone?: () => void;
 } 

@@ -147,7 +147,8 @@ export const createCallHandlers = ({
     
     if (!isSkipping.current) {
       await disconnectFromRoom();
-      setChatState("IDLE");
+      setChatState("WAITING");
+      startMatching();
       setError("");
     }
   };

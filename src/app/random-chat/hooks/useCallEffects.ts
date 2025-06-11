@@ -15,6 +15,7 @@ interface UseCallEffectsProps {
   startMatching: () => void;
   stopPolling: () => void;
   stopHeartbeat: () => void;
+  disconnectFromRoom: () => Promise<void>;
 }
 
 export const useCallEffects = ({
@@ -30,6 +31,7 @@ export const useCallEffects = ({
   startMatching,
   stopPolling,
   stopHeartbeat,
+  disconnectFromRoom,
 }: UseCallEffectsProps) => {
   // Handle re-queuing when force disconnected
   useEffect(() => {
@@ -70,6 +72,7 @@ export const useCallEffects = ({
           if (data.shouldDisconnect) {
             console.log("Force disconnect detected - user was skipped");
             isSkipping.current = true;
+            await disconnectFromRoom();
             stopPolling();
             stopHeartbeat();
             setChatState("WAITING");
@@ -95,5 +98,5 @@ export const useCallEffects = ({
         clearInterval(disconnectCheckInterval);
       }
     };
-  }, [chatState, userId, token, stopPolling, stopHeartbeat, isSkipping, setChatState, setError, setNeedsRequeue, setSessionId]);
+  }, [chatState, userId, token, stopPolling, stopHeartbeat, isSkipping, setChatState, setError, setNeedsRequeue, setSessionId, disconnectFromRoom]);
 }; 

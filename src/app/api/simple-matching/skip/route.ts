@@ -130,11 +130,11 @@ export async function POST(request: Request) {
       try {
         // Check if user has recent heartbeat (use current time for check)
         const currentTime = Date.now();
-        const userHeartbeat = await redis.get(`heartbeat:${userToMatch}`);
+        let userHeartbeat = await redis.get(`heartbeat:${userToMatch}`);
         if (!userHeartbeat || (currentTime - parseInt(userHeartbeat)) > 30000) {
-          console.log(`[Skip] User ${userToMatch} heartbeat is stale, not re-queuing`);
-          await redis.del(matchingInProgressKey);
-          return { matched: false };
+          console.log(`[Skip] User ${userToMatch} heartbeat is stale or missing – refreshing and continuing`);
+          await redis.setex(`heartbeat:${userToMatch}`, 30, currentTime.toString());
+          userHeartbeat = currentTime.toString();
         }
       
       // Set skip cooldown to prevent immediate re-matching with the same person

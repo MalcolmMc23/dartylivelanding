@@ -35,13 +35,8 @@ export default function RandomChatPage() {
     stopPolling,
   } = useMatching(userId, handleMatch, startHeartbeat, stopHeartbeat);
 
-  const {
-    token,
-    sessionId,
-    setSessionId,
-    connectToRoom,
-    disconnectFromRoom,
-  } = useLiveKit(userId, setError);
+  const { token, sessionId, setSessionId, connectToRoom, disconnectFromRoom } =
+    useLiveKit(userId, setError);
 
   // Handle successful match
   async function handleMatch(matchData: MatchData) {
@@ -91,6 +86,7 @@ export default function RandomChatPage() {
     startMatching,
     stopPolling,
     stopHeartbeat,
+    disconnectFromRoom,
   });
 
   // Render based on state
@@ -103,6 +99,7 @@ export default function RandomChatPage() {
         sessionId={sessionId}
         userId={userId}
         onDisconnected={() => handleLiveKitDisconnect(chatState, handleMatch)}
+        onAlone={() => handleLiveKitDisconnect(chatState, handleMatch)}
       />
     );
   }
