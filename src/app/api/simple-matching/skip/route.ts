@@ -321,13 +321,6 @@ export async function POST(request: Request) {
       // Now add to queue
       await redis.setex(`matching:waiting_${userToMatch}`, 300, currentTime.toString());
       
-      // If this is the other user (not the skipper), they need to know they were skipped
-      if (userToMatch !== userId && otherUserId && userToMatch === otherUserId) {
-        // Refresh the force-disconnect flag with longer TTL to ensure detection
-        await redis.setex(`force-disconnect:${userToMatch}`, 120, 'true');
-        console.log(`[Skip] Refreshed force-disconnect flag for ${userToMatch} (the skipped user)`);
-      }
-      
       // Verify they were added and clean
       const [verifyInQueue, verifyNoMatch, verifyNoInCall] = await Promise.all([
         redis.get(`matching:waiting_${userToMatch}`),
