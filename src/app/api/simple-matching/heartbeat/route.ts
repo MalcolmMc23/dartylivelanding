@@ -75,16 +75,16 @@ export async function POST(request: Request) {
 }
 
 // Helper function to check if a user is active
-async function isUserActive(userId: string): Promise<boolean> {
-  try {
-    const [primaryHeartbeat, secondaryHeartbeat] = await Promise.all([
-      redis.get(`heartbeat:primary:${userId}`),
-      redis.get(`heartbeat:secondary:${userId}`)
-    ]);
+// async function isUserActive(userId: string): Promise<boolean> {
+//   try {
+//     const [primaryHeartbeat, secondaryHeartbeat] = await Promise.all([
+//       redis.get(`heartbeat:primary:${userId}`),
+//       redis.get(`heartbeat:secondary:${userId}`)
+//     ]);
 
-    return !!(primaryHeartbeat && secondaryHeartbeat);
-  } catch (error) {
-    console.error('Error checking user activity:', error);
-    return false;
-  }
-}
+//     return !!(primaryHeartbeat && secondaryHeartbeat);
+//   } catch (error) {
+//     console.error('Error checking user activity:', error);
+//     return false;
+//   }
+// }
