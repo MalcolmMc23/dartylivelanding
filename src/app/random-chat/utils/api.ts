@@ -74,11 +74,11 @@ export const api = {
     });
   },
 
-  async sendHeartbeat(userId: string): Promise<void> {
+  async sendHeartbeat(userId: string, isPrimary: boolean = true): Promise<void> {
     await fetch("/api/simple-matching/heartbeat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify({ userId, isPrimary }),
     });
   },
 
