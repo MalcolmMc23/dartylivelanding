@@ -73,7 +73,7 @@ export async function POST(request: Request) {
     // Prepare cleanup operations
     const cleanupOps = [
       // Clean up current user (skipper)
-      redis.zrem('matching:waiting', userId),
+      redis.del(`matching:waiting_${userId}`),
       redis.zrem('matching:in_call', userId),
       redis.del(`match:${userId}`),
       redis.del(`force-disconnect:${userId}`),
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
     // Add other user cleanup if exists
     if (otherUserId) {
       cleanupOps.push(
-        redis.zrem('matching:waiting', otherUserId),
+        redis.del(`matching:waiting_${otherUserId}`),
         redis.zrem('matching:in_call', otherUserId),
         redis.del(`match:${otherUserId}`),
         redis.del(`heartbeat:${otherUserId}`),
@@ -154,17 +154,17 @@ export async function POST(request: Request) {
       await redis.setex(`heartbeat:${userToMatch}`, 30, currentTime.toString());
       
       // Get all waiting users with scores for age filtering
-      const waitingUsersWithScores = await redis.zrange('matching:waiting', 0, -1, 'WITHSCORES');
+      const waitingKeys = await redis.keys('matching:waiting_*');
       const waitingUsers = [];
       
       // Process users and filter stale ones
-      for (let i = 0; i < waitingUsersWithScores.length; i += 2) {
-        const candidateUserId = waitingUsersWithScores[i];
-        const joinTime = parseInt(waitingUsersWithScores[i + 1]);
+      for (const key of waitingKeys) {
+        const candidateUserId = key.replace('matching:waiting_', '');
+        const joinTime = parseInt(await redis.get(key) || '0');
         
         // Skip if too old in queue (> 1 minute)
         if (currentTime - joinTime > 60000) {
-          await redis.zrem('matching:waiting', candidateUserId);
+          await redis.del(`matching:waiting_${candidateUserId}`);
           continue;
         }
         
@@ -201,14 +201,14 @@ export async function POST(request: Request) {
         
         // Check heartbeat
         if (!candidateHeartbeat || (currentTime - parseInt(candidateHeartbeat)) > 30000) {
-          await redis.zrem('matching:waiting', candidateUserId);
+          await redis.del(`matching:waiting_${candidateUserId}`);
           await redis.del(`heartbeat:${candidateUserId}`);
           continue;
         }
         
         // Check if already matched
         if (candidateMatch) {
-          await redis.zrem('matching:waiting', candidateUserId);
+          await redis.del(`matching:waiting_${candidateUserId}`);
           continue;
         }
         
@@ -244,7 +244,7 @@ export async function POST(request: Request) {
         
         // Double-check candidate is still available
         const [stillInQueue, alreadyMatched] = await Promise.all([
-          redis.zscore('matching:waiting', candidateUserId),
+          redis.get(`matching:waiting_${candidateUserId}`),
           redis.get(`match:${candidateUserId}`)
         ]);
         
@@ -291,9 +291,10 @@ export async function POST(request: Request) {
         await Promise.all([
           redis.setex(`match:${userToMatch}`, 300, matchDataStr),
           redis.setex(`match:${candidateUserId}`, 300, matchDataStr),
-          redis.zadd('matching:in_call', currentTime, userToMatch),
-          redis.zadd('matching:in_call', currentTime, candidateUserId),
-          redis.zrem('matching:waiting', candidateUserId),
+          redis.setex(`matching:waiting_${userToMatch}`, 300, currentTime.toString()),
+          redis.setex(`matching:waiting_${candidateUserId}`, 300, currentTime.toString()),
+          redis.zrem('matching:in_call', userToMatch),
+          redis.zrem('matching:in_call', candidateUserId),
           // Clear force-disconnect flags for both users
           redis.del(`force-disconnect:${userToMatch}`),
           redis.del(`force-disconnect:${candidateUserId}`),
@@ -315,7 +316,7 @@ export async function POST(request: Request) {
       await new Promise(resolve => setTimeout(resolve, 100));
       
       // Now add to queue
-      await redis.zadd('matching:waiting', currentTime, userToMatch);
+      await redis.setex(`matching:waiting_${userToMatch}`, 300, currentTime.toString());
       
       // If this is the other user (not the skipper), they need to know they were skipped
       if (userToMatch !== userId && otherUserId && userToMatch === otherUserId) {
@@ -326,9 +327,9 @@ export async function POST(request: Request) {
       
       // Verify they were added and clean
       const [verifyInQueue, verifyNoMatch, verifyNoInCall] = await Promise.all([
-        redis.zscore('matching:waiting', userToMatch),
+        redis.get(`matching:waiting_${userToMatch}`),
         redis.get(`match:${userToMatch}`),
-        redis.zscore('matching:in_call', userToMatch)
+        redis.get(`matching:in_call_${userToMatch}`)
       ]);
       
       console.log(`[Skip] No match found for ${userToMatch}, added to waiting queue. Status:`, {
@@ -376,8 +377,8 @@ export async function POST(request: Request) {
     
     // === VERIFY CLEANUP ===
     const [verifyWaiting, verifyInCall, verifyMatch, verifyHeartbeat] = await Promise.all([
-      redis.zscore('matching:waiting', userId),
-      redis.zscore('matching:in_call', userId),
+      redis.get(`matching:waiting_${userId}`),
+      redis.get(`matching:in_call_${userId}`),
       redis.get(`match:${userId}`),
       redis.get(`heartbeat:${userId}`)
     ]);
@@ -392,8 +393,8 @@ export async function POST(request: Request) {
     
     // Check final queue status for both users
     const [skipperInQueue, otherInQueue, skipperMatch, otherMatch, otherForceDisconnect] = await Promise.all([
-      redis.zscore('matching:waiting', userId),
-      otherUserId ? redis.zscore('matching:waiting', otherUserId) : null,
+      redis.get(`matching:waiting_${userId}`),
+      otherUserId ? redis.get(`matching:waiting_${otherUserId}`) : null,
       redis.get(`match:${userId}`),
       otherUserId ? redis.get(`match:${otherUserId}`) : null,
       otherUserId ? redis.get(`force-disconnect:${otherUserId}`) : null

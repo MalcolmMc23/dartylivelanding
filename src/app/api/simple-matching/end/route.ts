@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     // === CLEANUP USERS (Optimized with parallel operations) ===
     const cleanupOps = [
       // Cleanup current user
-      redis.zrem('matching:waiting', userId),
+      redis.del(`matching:waiting_${userId}`),
       redis.zrem('matching:in_call', userId),
       redis.del(`match:${userId}`),
       redis.del(`heartbeat:${userId}`),
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     if (shouldCleanupOtherUser && otherUserId) {
       console.log(`[End] Also cleaning up other user: ${otherUserId}`);
       cleanupOps.push(
-        redis.zrem('matching:waiting', otherUserId),
+        redis.del(`matching:waiting_${otherUserId}`),
         redis.zrem('matching:in_call', otherUserId),
         redis.del(`match:${otherUserId}`),
         redis.del(`heartbeat:${otherUserId}`)
@@ -72,7 +72,7 @@ export async function POST(request: Request) {
     }
     
     // === VERIFY CLEANUP ===
-    const verifyWaiting = await redis.zscore('matching:waiting', userId);
+    const verifyWaiting = await redis.get(`matching:waiting_${userId}`);
     const verifyInCall = await redis.zscore('matching:in_call', userId);
     const verifyMatch = await redis.get(`match:${userId}`);
     

@@ -48,7 +48,7 @@ export async function POST(request: Request) {
     }
 
     // Check if still in queue
-    const inQueue = await redis.zscore('matching:waiting', userId);
+    const inQueue = await redis.get(`matching:waiting_${userId}`);
     
     // Also check if user is in call
     const inCall = await redis.zscore('matching:in_call', userId);

@@ -8,13 +8,12 @@ export async function POST() {
     const secondaryStaleThreshold = 30000; // 30 seconds
     
     // Get all users in the waiting queue
-    const waitingUsers = await redis.zrange('matching:waiting', 0, -1, 'WITHSCORES');
-    
+    const waitingKeys = await redis.keys('matching:waiting_*');
     let removedCount = 0;
     
     // Check each user's heartbeats
-    for (let i = 0; i < waitingUsers.length; i += 2) {
-      const userId = waitingUsers[i];
+    for (const key of waitingKeys) {
+      const userId = key.replace('matching:waiting_', '');
       const [primaryHeartbeat, secondaryHeartbeat] = await Promise.all([
         redis.get(`heartbeat:primary:${userId}`),
         redis.get(`heartbeat:secondary:${userId}`)
@@ -30,7 +29,7 @@ export async function POST() {
         // Remove stale user from queue
         console.log(`[Cleanup] Removing stale user ${userId} from waiting queue (primary: ${isPrimaryStale}, secondary: ${isSecondaryStale})`);
         await Promise.all([
-          redis.zrem('matching:waiting', userId),
+          redis.del(`matching:waiting_${userId}`),
           redis.del(`heartbeat:primary:${userId}`),
           redis.del(`heartbeat:secondary:${userId}`)
         ]);
