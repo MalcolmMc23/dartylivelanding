@@ -70,7 +70,8 @@ export async function POST(request: Request) {
 
     // Clean up stale users and get waiting users in one pass
     const now = Date.now();
-    const staleThreshold = 30000; // 30 seconds
+    const PRIMARY_HEARTBEAT_TTL = 10000; // 10 seconds
+    const SECONDARY_HEARTBEAT_TTL = 30000; // 30 seconds
     let waitingUsers;
     try {
       waitingUsers = await redis.zrange('matching:waiting', 0, -1, 'WITHSCORES');
@@ -93,7 +94,8 @@ export async function POST(request: Request) {
         try {
           await Promise.all([
             redis.zrem('matching:waiting', waitingUser),
-            redis.del(`heartbeat:${waitingUser}`)
+            redis.del(`heartbeat:primary:${waitingUser}`),
+            redis.del(`heartbeat:secondary:${waitingUser}`)
           ]);
           console.log(`Removed stale user ${waitingUser} (joined ${Math.floor((now - joinTime) / 1000)}s ago)`);
         } catch (error) {
@@ -103,22 +105,29 @@ export async function POST(request: Request) {
         continue;
       }
       
-      // Check heartbeat for active users
-      let heartbeat;
+      // Check heartbeats for active users
+      let primaryHeartbeat, secondaryHeartbeat;
       try {
-        heartbeat = await redis.get(`heartbeat:${waitingUser}`);
+        [primaryHeartbeat, secondaryHeartbeat] = await Promise.all([
+          redis.get(`heartbeat:primary:${waitingUser}`),
+          redis.get(`heartbeat:secondary:${waitingUser}`)
+        ]);
       } catch (error) {
-        console.error(`[Enqueue] Redis error checking heartbeat for ${waitingUser}:`, error);
+        console.error(`[Enqueue] Redis error checking heartbeats for ${waitingUser}:`, error);
         continue;
       }
 
-      if (!heartbeat || (now - parseInt(heartbeat)) > staleThreshold) {
+      const isPrimaryStale = !primaryHeartbeat || (now - parseInt(primaryHeartbeat)) > PRIMARY_HEARTBEAT_TTL;
+      const isSecondaryStale = !secondaryHeartbeat || (now - parseInt(secondaryHeartbeat)) > SECONDARY_HEARTBEAT_TTL;
+
+      if (isPrimaryStale || isSecondaryStale) {
         try {
           await Promise.all([
             redis.zrem('matching:waiting', waitingUser),
-            redis.del(`heartbeat:${waitingUser}`)
+            redis.del(`heartbeat:primary:${waitingUser}`),
+            redis.del(`heartbeat:secondary:${waitingUser}`)
           ]);
-          console.log(`Removed stale user ${waitingUser} (no recent heartbeat)`);
+          console.log(`Removed stale user ${waitingUser} (primary stale: ${isPrimaryStale}, secondary stale: ${isSecondaryStale})`);
         } catch (error) {
           console.error(`[Enqueue] Redis error removing stale user ${waitingUser}:`, error);
           // Continue processing other users even if this fails

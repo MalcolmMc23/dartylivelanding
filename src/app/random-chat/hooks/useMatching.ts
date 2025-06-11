@@ -14,12 +14,14 @@ export const useMatching = (
   const pollingInterval = useRef<NodeJS.Timeout | null>(null);
   const isEndingCall = useRef(false);
   const isSkipping = useRef(false);
+  const notInQueueCount = useRef(0);
 
   const stopPolling = useCallback(() => {
     if (pollingInterval.current) {
       clearInterval(pollingInterval.current);
       pollingInterval.current = null;
     }
+    notInQueueCount.current = 0;
   }, []);
 
   const startPolling = useCallback(() => {
@@ -50,19 +52,34 @@ export const useMatching = (
           stopPolling();
           await onMatch(data.data!);
         } else if (!data.inQueue) {
-          console.log("Not in queue - checking for match one more time...");
+          // Increment counter for consecutive "not in queue" responses
+          notInQueueCount.current++;
+          console.log(`Not in queue (attempt ${notInQueueCount.current}/3)`);
 
-          const finalData = await api.checkMatch(userId);
-          if (finalData.matched) {
-            console.log("Found match on final check!");
+          if (notInQueueCount.current >= 3) {
+            // Only stop after 3 consecutive "not in queue" responses
+            console.log("Consistently not in queue, attempting to re-queue");
             stopPolling();
-            await onMatch(finalData.data!);
-          } else {
-            console.log("No match found, stopping");
-            stopPolling();
-            setError("Failed to find match");
-            setChatState("IDLE");
+            
+            // Try to re-queue the user
+            try {
+              const reQueueData = await api.enqueue(userId);
+              if (reQueueData.matched) {
+                console.log("Found match while re-queuing!");
+                await onMatch(reQueueData.data!);
+              } else {
+                console.log("Re-queued successfully, starting polling again");
+                startPolling();
+              }
+            } catch (err) {
+              console.error("Error re-queuing:", err);
+              setError("Failed to find match");
+              setChatState("IDLE");
+            }
           }
+        } else {
+          // Reset counter if we're in queue
+          notInQueueCount.current = 0;
         }
       } catch (err) {
         console.error("Polling error:", err);
@@ -80,6 +97,7 @@ export const useMatching = (
     console.log("Starting matching with userId:", userId);
     setChatState("WAITING");
     setError("");
+    notInQueueCount.current = 0;
 
     try {
       startHeartbeat();

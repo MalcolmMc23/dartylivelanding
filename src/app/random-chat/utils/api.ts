@@ -74,16 +74,25 @@ export const api = {
     });
   },
 
-  async sendHeartbeat(userId: string): Promise<void> {
+  async sendHeartbeat(userId: string, isPrimary: boolean = true): Promise<void> {
     await fetch("/api/simple-matching/heartbeat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify({ userId, isPrimary }),
     });
   },
 
   async cleanup(): Promise<void> {
     await fetch("/api/simple-matching/cleanup", { method: "POST" });
+  },
+
+  async signalDisconnect(userId: string): Promise<void> {
+    await fetch("/api/simple-matching/heartbeat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, isDisconnecting: true }),
+      keepalive: true, // Important for beforeunload/pagehide
+    });
   },
 
   async forceCleanup(userId: string): Promise<{ allClean: boolean }> {

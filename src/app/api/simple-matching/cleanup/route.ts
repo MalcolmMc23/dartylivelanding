@@ -4,26 +4,36 @@ import redis from '@/lib/redis';
 export async function POST() {
   try {
     const now = Date.now();
-    const staleThreshold = 30000; // 30 seconds
+    const primaryStaleThreshold = 10000; // 10 seconds
+    const secondaryStaleThreshold = 30000; // 30 seconds
     
     // Get all users in the waiting queue
     const waitingUsers = await redis.zrange('matching:waiting', 0, -1, 'WITHSCORES');
     
     let removedCount = 0;
     
-    // Check each user's heartbeat
+    // Check each user's heartbeats
     for (let i = 0; i < waitingUsers.length; i += 2) {
       const userId = waitingUsers[i];
-      const heartbeat = await redis.get(`heartbeat:${userId}`);
+      const [primaryHeartbeat, secondaryHeartbeat] = await Promise.all([
+        redis.get(`heartbeat:primary:${userId}`),
+        redis.get(`heartbeat:secondary:${userId}`)
+      ]);
       
       // Check if user has a grace period (just requeued)
       const hasGracePeriod = await redis.get(`requeue-grace:${userId}`);
       
-      if (!hasGracePeriod && (!heartbeat || (now - parseInt(heartbeat)) > staleThreshold)) {
+      const isPrimaryStale = !primaryHeartbeat || (now - parseInt(primaryHeartbeat)) > primaryStaleThreshold;
+      const isSecondaryStale = !secondaryHeartbeat || (now - parseInt(secondaryHeartbeat)) > secondaryStaleThreshold;
+      
+      if (!hasGracePeriod && (isPrimaryStale || isSecondaryStale)) {
         // Remove stale user from queue
-        console.log(`[Cleanup] Removing stale user ${userId} from waiting queue`);
-        await redis.zrem('matching:waiting', userId);
-        await redis.del(`heartbeat:${userId}`);
+        console.log(`[Cleanup] Removing stale user ${userId} from waiting queue (primary: ${isPrimaryStale}, secondary: ${isSecondaryStale})`);
+        await Promise.all([
+          redis.zrem('matching:waiting', userId),
+          redis.del(`heartbeat:primary:${userId}`),
+          redis.del(`heartbeat:secondary:${userId}`)
+        ]);
         removedCount++;
       } else if (hasGracePeriod) {
         console.log(`[Cleanup] Skipping ${userId} - has grace period after requeue`);
@@ -34,12 +44,21 @@ export async function POST() {
     const inCallUsers = await redis.zrange('matching:in_call', 0, -1);
     
     for (const userId of inCallUsers) {
-      const heartbeat = await redis.get(`heartbeat:${userId}`);
+      const [primaryHeartbeat, secondaryHeartbeat] = await Promise.all([
+        redis.get(`heartbeat:primary:${userId}`),
+        redis.get(`heartbeat:secondary:${userId}`)
+      ]);
       
-      if (!heartbeat || (now - parseInt(heartbeat)) > staleThreshold) {
-        await redis.zrem('matching:in_call', userId);
-        await redis.del(`match:${userId}`);
-        await redis.del(`heartbeat:${userId}`);
+      const isPrimaryStale = !primaryHeartbeat || (now - parseInt(primaryHeartbeat)) > primaryStaleThreshold;
+      const isSecondaryStale = !secondaryHeartbeat || (now - parseInt(secondaryHeartbeat)) > secondaryStaleThreshold;
+      
+      if (isPrimaryStale || isSecondaryStale) {
+        await Promise.all([
+          redis.zrem('matching:in_call', userId),
+          redis.del(`match:${userId}`),
+          redis.del(`heartbeat:primary:${userId}`),
+          redis.del(`heartbeat:secondary:${userId}`)
+        ]);
         removedCount++;
       }
     }
