@@ -193,11 +193,18 @@ export async function POST(request: Request) {
           continue;
         }
         
-        // Batch check heartbeat and existing match
-        const [candidateHeartbeat, candidateMatch] = await Promise.all([
+        // Batch check heartbeat, existing match, and requeue-grace flag
+        const [candidateHeartbeat, candidateMatch, candidateGrace] = await Promise.all([
           redis.get(`heartbeat:${candidateUserId}`),
-          redis.get(`match:${candidateUserId}`)
+          redis.get(`match:${candidateUserId}`),
+          redis.get(`requeue-grace:${candidateUserId}`)
         ]);
+        
+        if (candidateGrace) {
+          // Candidate has just been re-queued after a skip; give them a moment before pairing
+          console.log(`[Skip] Candidate ${candidateUserId} is in requeue grace period, skipping`);
+          continue;
+        }
         
         // Check heartbeat
         if (!candidateHeartbeat || (currentTime - parseInt(candidateHeartbeat)) > 30000) {
