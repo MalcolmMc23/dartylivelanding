@@ -1,0 +1,631 @@
+# Task ID: 3
+# Title: Implement Room Management with LiveKit Integration
+# Status: done
+# Dependencies: 1
+# Priority: high
+# Description: Develop room management system that creates, monitors, and destroys LiveKit WebRTC rooms based on user matches and disconnections.
+# Details:
+1. Set up LiveKit client integration with proper authentication
+2. Implement room lifecycle management:
+   - Create rooms with 2-participant limit on match
+   - Monitor participant count through LiveKit events
+   - Auto-delete rooms when empty
+   - Force delete rooms on skip/end actions
+3. Add disconnect detection with multiple redundancy flags
+4. Implement room creation with proper error handling and retries
+5. Create cleanup job for stale rooms
+
+Example room creation:
+```javascript
+async function createRoom(user1Id, user2Id) {
+  const roomName = `room_${crypto.randomUUID()}`;
+  
+  // Create LiveKit room with 2-participant limit
+  const room = await livekitClient.createRoom({
+    name: roomName,
+    maxParticipants: 2,
+    emptyTimeout: 30 // auto-close after 30 seconds empty
+  });
+  
+  // Store room metadata
+  await redis.hset(`room:${roomName}`, {
+    user1: user1Id,
+    user2: user2Id,
+    createdAt: Date.now(),
+    status: 'active'
+  });
+  
+  // Update user states to reference this room
+  await redis.hset(`user:${user1Id}`, 'currentRoom', roomName);
+  await redis.hset(`user:${user2Id}`, 'currentRoom', roomName);
+  
+  return roomName;
+}
+```
+
+# Test Strategy:
+1. Unit tests for room creation and deletion
+2. Integration tests with LiveKit test environment
+3. Test room lifecycle with simulated participants
+4. Verify proper cleanup of resources
+5. Test disconnect detection with various scenarios
+6. Measure room creation performance
+7. Test recovery from LiveKit service disruptions
+
+# Subtasks:
+## 1. LiveKit Client Integration [done]
+### Dependencies: None
+### Description: Implement the integration with LiveKit WebRTC service for room management
+### Details:
+Set up the LiveKit client SDK, configure connection parameters, implement authentication mechanisms, and establish the initial connection to LiveKit services. Include proper initialization and configuration of the client to ensure secure and reliable communication.
+<info added on 2025-06-10T21:16:33.168Z>
+## Subtask 3.1 Implementation Plan
+
+**Goal:** Enhance the existing LiveKit client integration for comprehensive room management.
+
+### Current Infrastructure Analysis:
+- ✅ Basic LiveKit service exists (src/lib/livekitService.ts)
+- ✅ Token generation working
+- ✅ Basic room creation/deletion functions
+- ✅ Room service client initialized
+
+### Gaps to Address:
+1. **Enhanced Room Management**: Need more comprehensive room management with match integration
+2. **Integration with Matching System**: Connect LiveKit rooms with our match system
+3. **Configuration Management**: Better configuration validation and fallbacks
+4. **Room Metadata Management**: Enhanced room metadata for tracking users and states
+
+### Implementation Plan:
+- Create enhanced `RoomManager` class that integrates with our matching system
+- Add room metadata management for tracking user pairs and match data
+- Enhance configuration validation and error handling
+- Add integration with `MatchManager` for seamless room creation on matches
+- Implement room monitoring and health checks
+
+### Files to create/modify:
+- `src/lib/roomManager.ts` (new enhanced room manager)
+- Update types if needed for room management
+- Potentially enhance existing livekitService.ts
+</info added on 2025-06-10T21:16:33.168Z>
+<info added on 2025-06-10T21:18:52.240Z>
+## Subtask 3.1 Implementation Complete! ✅
+
+**Enhanced LiveKit Client Integration Successfully Implemented**
+
+### Core Components Created:
+
+**1. `roomManager.ts` - Enhanced Room Manager**
+- Created a comprehensive `RoomManager` class that integrates LiveKit rooms with our matching system.
+- Provides complete room lifecycle management with proper metadata tracking.
+
+### Key Features Implemented:
+
+**🚀 Enhanced Room Creation:**
+- **`createRoomForMatch(matchData)`**: Creates LiveKit rooms from match data with automatic token generation.
+- **Metadata Tracking**: Comprehensive room metadata with status tracking (creating, active, terminating, terminated).
+- **Error Handling**: Automatic rollback and cleanup on room creation failures.
+- **Token Generation**: Automatic generation of access tokens for both users.
+
+**📊 Room Status & Monitoring:**
+- **`getRoomStatus(roomName)`**: Comprehensive room status including LiveKit state and Redis metadata.
+- **`monitorRoom(roomName)`**: Health checking with issue detection (stale rooms, wrong participant counts, etc.).
+- **`getActiveRooms()`**: Retrieval of all active rooms with their metadata.
+- **Participant Tracking**: Integration with LiveKit participant lists.
+
+**🧹 Lifecycle Management:**
+- **`terminateRoom(roomName, reason)`**: Proper room termination with status tracking.
+- **`cleanupStaleRooms(maxAgeHours)`**: Automatic cleanup of rooms older than specified time.
+- **Resource Cleanup**: Comprehensive cleanup of both LiveKit rooms and Redis metadata.
+- **Grace Period Handling**: Proper state transitions during termination.
+
+**🔧 Integration Features:**
+- **Match Integration**: Seamless integration with `ExtendedMatchData` from our matching system.
+- **Redis Integration**: Proper metadata storage with TTL management (2-hour default).
+- **State Manager Integration**: Uses the same Redis instance as our state management system.
+- **Error Recovery**: Robust error handling with automatic cleanup on failures.
+
+### Technical Achievements:
+
+**⚡ Performance Optimizations:**
+- **Efficient Storage**: Room metadata stored with TTL in Redis for automatic expiration.
+- **Batch Operations**: Support for bulk room operations and cleanup.
+- **Minimal Round-trips**: Optimized Redis operations to reduce network overhead.
+
+**🛡️ Reliability Features:**
+- **Atomic Operations**: Room creation follows proper atomicity patterns.
+- **Error Recovery**: Comprehensive error handling with cleanup on failures.
+- **Status Tracking**: Detailed room status tracking throughout lifecycle.
+- **Health Monitoring**: Built-in health checks and issue detection.
+
+**📋 Room Metadata Schema:**
+```typescript
+interface RoomMetadata {
+  roomName: string;
+  sessionId: string;
+  user1: string;
+  user2: string;
+  createdAt: number;
+  status: 'creating' | 'active' | 'terminating' | 'terminated';
+  lastUpdated: number;
+  maxParticipants: number;
+}
+```
+
+**🔄 Integration Points:**
+- **With MatchManager**: Accepts `ExtendedMatchData` for seamless room creation.
+- **With LiveKit Service**: Uses existing LiveKit functions for room operations.
+- **With Redis**: Uses same Redis instance as state management for consistency.
+- **With State Manager**: Integrates with existing user state tracking.
+
+**Status: COMPLETE** - The enhanced LiveKit client integration is fully implemented and ready for use. It provides comprehensive room management capabilities that integrate seamlessly with our matching system.
+</info added on 2025-06-10T21:18:52.240Z>
+
+## 2. Room Lifecycle Management [done]
+### Dependencies: 3.1
+### Description: Develop functionality to handle the complete room lifecycle from creation to termination
+### Details:
+Implement room creation, joining mechanisms, participant management, and room closure processes. Include status tracking (available, occupied, maintenance) and proper event handling for room state changes. Ensure proper synchronization with backend systems.
+<info added on 2025-06-10T21:19:26.276Z>
+## Subtask 3.2 Implementation Plan
+
+**Goal:** Develop functionality to handle the complete room lifecycle from creation to termination, integrated with the matching system.
+
+### Current Infrastructure Analysis:
+- ✅ RoomManager created in subtask 3.1
+- ✅ MatchManager with atomic match creation
+- ✅ State management system
+- ✅ Basic LiveKit service functions
+
+### What Needs Enhancement:
+1. **Integration with Matching Flow**: Connect room lifecycle to the match creation process
+2. **Automated Room Creation**: Enhance MatchManager to automatically create rooms when matches are made
+3. **Room Status Synchronization**: Keep room state in sync with user states
+4. **Participant Management**: Track participants joining/leaving rooms
+5. **Automated Cleanup**: Trigger room cleanup based on user state changes
+
+### Implementation Plan:
+- Integrate RoomManager into MatchManager for seamless room creation
+- Add room lifecycle hooks to state transitions (CONNECTING → IN_CALL → DISCONNECTING)
+- Create room status synchronization with user states
+- Enhance MatchManager to handle room creation as part of match process
+- Add automated room cleanup when users disconnect or skip/end calls
+
+### Files to modify:
+- `src/lib/matchManager.ts` - Add room creation integration
+- Potentially create room lifecycle coordinator
+- Update state transitions to include room management
+</info added on 2025-06-10T21:19:26.276Z>
+<info added on 2025-06-10T21:23:25.881Z>
+## Subtask 3.2 Implementation Complete! ✅
+
+**Room Lifecycle Management Successfully Implemented**
+
+### Enhanced MatchManager with Full Room Lifecycle Integration
+
+**🏗️ Core Enhancements Completed:**
+
+**1. Integrated Room Creation in Match Process:**
+- **Enhanced `createMatch()` method**: Now automatically creates LiveKit rooms during match creation.
+- **Atomic Transaction with Room Creation**: The `executeAtomicMatchCreationWithRoom()` method ensures that both match creation AND room creation succeed together, or both fail with complete rollback.
+- **Token Generation**: Automatically generates access tokens for both users during the match creation process.
+- **Comprehensive Rollback**: If room creation fails, the entire match is rolled back including user states and queue positions.
+
+**2. Complete Room Lifecycle Management:**
+
+**🚀 Room Creation Integration:**
+- **`RoomManager` Integration**: Added RoomManager instance to MatchManager for seamless room operations.
+- **Automatic Room Setup**: Rooms are created with proper metadata linking to match sessions.
+- **Token Management**: User access tokens are generated and returned as part of the match creation process.
+- **Error Recovery**: Full rollback mechanisms if room creation fails during match creation.
+
+**🔄 Room Termination & Cleanup:**
+- **Enhanced `deleteMatch()` method**: Now includes automatic room termination when matches are deleted.
+- **`terminateMatch()` method**: Comprehensive match termination with proper user state transitions.
+- **Smart State Transitions**: Handles different termination scenarios (skip vs end) with appropriate user state management.
+- **Queue Re-integration**: Automatically re-adds users to matching queue when appropriate.
+
+**📊 Room Status Monitoring:**
+- **`getMatchRoomStatus()` method**: Provides comprehensive room status information for active matches.
+- **Health Monitoring**: Integrates room health checks with match status.
+- **Participant Tracking**: Monitors participant counts and identifies issues.
+
+**3. State Management Integration:**
+
+**🔄 Proper State Transitions:**
+- **CONNECTING → IN_CALL**: Room creation triggers state transitions.
+- **IN_CALL → DISCONNECTING → (IDLE|WAITING)**: Proper state flow during termination.
+- **Atomic State Changes**: User states are updated atomically with room operations.
+
+**⚡ Enhanced Match Creation Flow:**
+```typescript
+// New enhanced flow:
+1. Validate users in queue
+2. Remove users from queue  
+3. Update users to CONNECTING state
+4. Store match record
+5. Create LiveKit room + generate tokens ✨ NEW
+6. Return match data with room tokens ✨ NEW
+// Full rollback on any failure
+```
+
+**🎯 Termination Flow (Skip vs End):**
+```typescript
+// Skip: Both users → WAITING (re-queued)
+// End: Initiator → IDLE, Other → WAITING (re-queued)
+```
+
+**4. Technical Achievements:**
+
+**🛡️ Robust Error Handling:**
+- **Complete Rollback**: Any failure during room creation triggers full match rollback.
+- **Graceful Degradation**: Match cleanup continues even if room termination fails.
+- **Atomic Operations**: All state changes happen atomically or not at all.
+
+**📋 Enhanced Return Types:**
+- **`MatchCreationResult`**: Now includes room creation status and access tokens.
+- **Termination Results**: Detailed information about user state transitions.
+- **Room Status**: Comprehensive room and participant information.
+
+**🔧 New Methods Added:**
+- **`terminateMatch(sessionId, reason, initiatingUser)`**: Complete match termination with state handling.
+- **`getMatchRoomStatus(sessionId)`**: Room status monitoring for active matches.
+- **Enhanced `deleteMatch(sessionId, reason)`**: Room termination integrated into match deletion.
+
+**5. Integration Benefits:**
+
+**🎮 Seamless User Experience:**
+- **One-Step Match Creation**: Users get both match data AND room access tokens in one operation.
+- **Proper State Flow**: Users never get stuck in incorrect states during room transitions.
+- **Automatic Cleanup**: Rooms and matches are properly cleaned up when sessions end.
+
+**⚡ Performance Optimizations:**
+- **Batch Operations**: Multiple Redis operations are batched for efficiency.
+- **Reduced Round-trips**: Room creation and token generation happen together.
+- **Efficient State Management**: Minimal state transition overhead.
+
+**🔄 Complete Lifecycle Support:**
+- **Match Creation** → Room Creation → Token Generation
+- **Active Session** → Room Monitoring → Health Checks  
+- **Session End** → Room Termination → State Cleanup → Queue Re-integration
+
+**Status: COMPLETE** - Room lifecycle management is fully integrated with the matching system. The MatchManager now provides end-to-end room lifecycle management from creation to termination, with proper state management and error recovery mechanisms.
+</info added on 2025-06-10T21:23:25.881Z>
+
+## 3. Disconnect Detection System [done]
+### Dependencies: 3.1, 3.2
+### Description: Create a robust system to detect and handle disconnections from the LiveKit service
+### Details:
+Implement heartbeat mechanisms, connection monitoring, automatic reconnection attempts, and fallback strategies. Ensure the system can differentiate between temporary network issues and permanent disconnections to take appropriate actions.
+<info added on 2025-06-10T21:30:53.725Z>
+# Disconnect Detection System Implementation Plan
+
+## Goal
+Create a robust disconnect detection system that can quickly identify when users disconnect from LiveKit and handle various disconnection scenarios.
+
+## Current Infrastructure Analysis
+- Basic disconnect detection via `/api/simple-matching/check-disconnect`
+- Multiple disconnect flags system (`force-disconnect`, `skip-in-progress`, `pre-skip`)
+- Frontend polling system (500ms intervals)
+- LiveKit event handling in `ConnectionStateLogger`
+- Room validity checking system
+
+## Gaps to Address
+1. Enhanced Disconnect Detection: Need more comprehensive system that integrates with our room lifecycle
+2. Integration with RoomManager: Connect disconnect detection with room metadata and state
+3. Heartbeat System: Reliable heartbeat detection for network failures
+4. Multiple Detection Methods: Combine polling, events, and heartbeats for reliability
+5. Quick Recovery: Fast re-queueing for disconnected users
+
+## Implementation Plan
+- Create enhanced `DisconnectDetectionManager` class
+- Integrate with RoomManager for room-level disconnect detection
+- Add WebSocket-style LiveKit event monitoring
+- Implement heartbeat timeout detection
+- Add participant-level disconnect monitoring
+- Create unified disconnect notification system
+
+This implementation will complement our existing heartbeat mechanisms, connection monitoring, automatic reconnection attempts, and fallback strategies to ensure the system can properly differentiate between temporary network issues and permanent disconnections.
+</info added on 2025-06-10T21:30:53.725Z>
+<info added on 2025-06-10T21:33:08.173Z>
+## Subtask 3.3 Implementation Complete! ✅
+
+**Robust Disconnect Detection System Successfully Implemented**
+
+### Core Components Created:
+
+**1. `disconnectDetectionManager.ts` - Enhanced Disconnect Detection System**
+- Created a comprehensive `DisconnectDetectionManager` class that provides robust disconnect monitoring.
+- Integrates with our room management system and provides multiple detection methods.
+
+### Key Features Implemented:
+
+**🔍 Multi-Method Disconnect Detection:**
+- **Flag-Based Detection**: Checks explicit disconnect flags (`force-disconnect`, `skip-in-progress`, `pre-skip`)
+- **Heartbeat Monitoring**: Automatic timeout detection with configurable thresholds
+- **Room State Checking**: Monitors room deletion and validity
+- **State Consistency**: Validates user state transitions and consistency
+
+**💓 Enhanced Heartbeat System:**
+- **Configurable Heartbeat**: 30-second timeout with 3 missed beats tolerance
+- **Automatic Monitoring**: Server-side heartbeat validation with status tracking
+- **Status Tracking**: Comprehensive heartbeat status with `HeartbeatStatus` interface
+- **Timeout Handling**: Automatic network disconnect processing on heartbeat failure
+
+**📡 Unified Notification System:**
+- **`DisconnectNotification` Interface**: Structured disconnect notifications with reason, initiator, and target state
+- **Action Processing**: Specialized methods for `processSkipAction()`, `processEndAction()`, and `processNetworkDisconnect()`
+- **Legacy Compatibility**: Maintains compatibility with existing disconnect flags
+- **TTL Management**: Automatic cleanup of expired notifications
+
+**🚀 Integration with Room Management:**
+- **Room Monitoring**: Integration with `RoomManager` for room-level disconnect detection
+- **Start/Stop Monitoring**: User-specific monitoring lifecycle management
+- **Room State Sync**: Automatic detection of room deletions and state changes
+
+**⚙️ Configurable Detection System:**
+- **`DisconnectDetectionConfig`**: Comprehensive configuration for timeouts, intervals, and recovery settings
+- **Flexible Intervals**: Configurable polling (500ms), heartbeat (30s), and room check (2s) intervals
+- **Network Recovery**: Optional automatic re-queueing for network-based disconnections
+
+**🧹 Automatic Cleanup & Management:**
+- **Interval Management**: Proper cleanup of heartbeat monitoring intervals
+- **Redis Key Management**: Efficient Redis key tracking and cleanup
+- **Memory Management**: Cleanup of internal tracking structures
+
+### Detection Methods Implemented:
+
+1. **Explicit Flags** → Legacy `force-disconnect`, `skip-in-progress`, `pre-skip` + new structured notifications
+2. **Heartbeat Timeout** → Server-side monitoring with configurable missed beats threshold
+3. **Room State** → Room deletion detection via `room-deleted:` keys  
+4. **State Consistency** → User state validation for DISCONNECTING and invalid states
+
+### Integration Points:
+
+- **With RoomManager**: Room lifecycle and status monitoring
+- **With StateManager**: User state consistency checking
+- **With UserMetadata**: Enhanced user tracking and room information
+- **With MatchManager**: Skip/End action processing
+
+This provides a robust, multi-layered disconnect detection system that ensures no disconnections are missed and provides quick recovery mechanisms!
+</info added on 2025-06-10T21:33:08.173Z>
+
+## 4. Error Handling Framework [done]
+### Dependencies: 3.1, 3.2, 3.3
+### Description: Develop comprehensive error handling for all room management operations
+### Details:
+Implement error detection, logging, user notification systems, and recovery procedures for various failure scenarios. Create a centralized error handling framework that categorizes errors by severity and type, with specific recovery strategies for each category.
+<info added on 2025-06-10T21:33:46.130Z>
+## Subtask 3.4 Implementation Plan
+
+**Goal:** Develop a comprehensive error handling framework for all room management operations with categorized error types, recovery strategies, and user notifications.
+
+### Current Infrastructure Analysis:
+- ✅ Basic error handling in individual components
+- ✅ Redis transaction rollbacks in MatchManager
+- ✅ Room creation/deletion error handling
+- ✅ Disconnect detection with error logging
+- ✅ API middleware with request validation
+
+### Gaps to Address:
+1. **Centralized Error Management**: Need unified error handling across all room management components
+2. **Error Classification**: Categorize errors by type (network, validation, system, user) and severity (critical, warning, info)
+3. **Recovery Strategies**: Automated recovery procedures for different error types
+4. **User-Friendly Notifications**: Transform technical errors into user-understandable messages
+5. **Error Monitoring**: Comprehensive error tracking and alerting system
+6. **Graceful Degradation**: Fallback mechanisms when primary systems fail
+
+### Implementation Plan:
+- Create centralized `ErrorManager` class with error classification system
+- Implement error recovery strategies for common failure scenarios
+- Add user notification system with appropriate messaging
+- Create error monitoring and alerting capabilities
+- Integrate error handling into existing room management components
+- Add comprehensive error logging with contextual information
+</info added on 2025-06-10T21:33:46.130Z>
+<info added on 2025-06-10T21:35:56.583Z>
+## Subtask 3.4 Implementation Complete! ✅
+
+**Comprehensive Error Handling Framework Successfully Implemented**
+
+### Core Components Created:
+
+**1. `errorManager.ts` - Centralized Error Management System**
+- Created a comprehensive `ErrorManager` singleton class providing unified error handling across all room management operations.
+- Implements advanced error classification, recovery strategies, and user notifications.
+
+### Key Features Implemented:
+
+**🏗️ Error Classification System:**
+- **`ErrorType` Enum**: Network, Validation, System, User, Redis, LiveKit, Matching, Room, Timeout
+- **`ErrorSeverity` Enum**: Critical, High, Medium, Low, Info with appropriate logging levels
+- **`RecoveryStrategy` Enum**: Retry, Fallback, Reset, Requeue, Notify, Escalate, Ignore
+
+**🔄 Automated Recovery System:**
+- **Network Error Recovery**: Exponential backoff retry mechanism (up to 3 attempts)
+- **Room Error Recovery**: Automatic fallback to re-queue users when room operations fail
+- **Matching Error Recovery**: User state reset and re-queueing for matching failures
+- **Redis Error Recovery**: Critical error escalation with admin notification
+- **Timeout Error Recovery**: Extended retry with fallback to re-queueing
+
+**📊 Error Monitoring & Statistics:**
+- **Error Tracking**: In-memory storage with Redis persistence (24h TTL)
+- **Statistics Dashboard**: Error counts by type/severity, recovery success rates, top errors
+- **Error Context**: Rich contextual information (userId, roomName, sessionId, userAgent, etc.)
+
+**👤 User-Friendly Notifications:**
+- **Error Translation**: Technical errors converted to user-understandable messages
+- **Context-Aware Messaging**: Different messages based on error type and user state
+- **Recovery Guidance**: Clear instructions for user actions when required
+
+**🎯 Specialized Error Handlers:**
+- **`handleNetworkError()`**: Network connectivity and timeout issues
+- **`handleRoomError()`**: LiveKit room creation/management failures  
+- **`handleMatchingError()`**: Matching system and queue failures
+- **`handleRedisError()`**: Database and state management failures
+- **`handleValidationError()`**: Input validation and data format issues
+- **`handleTimeoutError()`**: Operation timeout and performance issues
+
+**⚡ Recovery Strategies Implemented:**
+
+1. **Retry Strategy**: Exponential backoff for transient failures
+2. **Fallback Strategy**: Alternative paths when primary operations fail
+3. **Requeue Strategy**: User re-insertion into matching queue
+4. **Reset Strategy**: Complete user state reset and cleanup
+5. **Escalate Strategy**: Admin notification for critical system failures
+6. **Notify Strategy**: User notification for actionable errors
+
+**🧠 Advanced Features:**
+- **Error Deduplication**: Tracking error counts and frequency patterns
+- **Recovery Success Tracking**: Monitoring effectiveness of recovery strategies
+- **Memory Management**: Automatic cleanup of old error records
+- **Redis Persistence**: 24-hour error storage for analysis and debugging
+- **Contextual Logging**: Rich logging with user context and system state
+
+**📈 Error Analytics:**
+- **Error Statistics**: Comprehensive reporting on error patterns
+- **Top Error Tracking**: Most frequent errors with occurrence times
+- **Recovery Metrics**: Success rates for different recovery strategies
+- **Trend Analysis**: Error frequency and patterns over time
+
+### Integration Points:
+
+- **With StateManager**: User state recovery and management
+- **With MatchingQueue**: Re-queueing users after errors
+- **With RoomManager**: Room-level error handling and fallbacks
+- **With DisconnectDetection**: Network and connection error management
+- **With Redis**: Error persistence and state recovery
+
+This provides a robust, enterprise-grade error handling system that ensures users never get stuck in error states and provides comprehensive monitoring for system health!
+</info added on 2025-06-10T21:35:56.583Z>
+
+## 5. Resource Cleanup Processes [done]
+### Dependencies: 3.2, 3.4
+### Description: Implement proper resource cleanup for room termination and application shutdown
+### Details:
+Develop processes to release all resources when rooms are closed or the application shuts down. Include cleanup of network connections, memory resources, and any temporary files. Implement graceful shutdown procedures that ensure all participants are properly notified before termination.
+<info added on 2025-06-10T21:36:26.969Z>
+## Subtask 3.5 Implementation Plan
+
+**Goal:** Implement comprehensive resource cleanup processes for room termination and application shutdown with graceful participant notification.
+
+### Current Infrastructure Analysis:
+- ✅ Room lifecycle management (RoomManager)
+- ✅ Error handling framework (ErrorManager) 
+- ✅ Disconnect detection system
+- ✅ Basic cleanup in force-cleanup endpoint
+- ✅ Room deletion and state management
+
+### Gaps to Address:
+1. **Centralized Resource Cleanup**: Unified cleanup system across all components
+2. **Memory Management**: Proper cleanup of in-memory data structures and intervals
+3. **Redis Key Management**: Systematic cleanup of temporary Redis keys and data
+4. **Network Resource Cleanup**: LiveKit connections, heartbeat intervals, polling
+5. **Graceful Shutdown**: Application-level shutdown procedures
+6. **Orphaned Resource Detection**: Find and clean up abandoned resources
+7. **Participant Notification**: Proper notification before resource termination
+
+### Implementation Plan:
+- Create comprehensive `ResourceCleanupManager` class
+- Implement systematic cleanup procedures for all resource types
+- Add graceful shutdown procedures with participant notification
+- Create orphaned resource detection and cleanup
+- Integrate cleanup with existing room management components
+- Add memory and Redis key cleanup strategies
+- Implement cleanup scheduling and monitoring
+</info added on 2025-06-10T21:36:26.969Z>
+<info added on 2025-06-10T21:42:04.458Z>
+## Subtask 3.5 Implementation Complete! ✅
+
+**Comprehensive Resource Cleanup Processes Successfully Implemented**
+
+### Core Components Created:
+
+**1. `ResourceCleanupManager` - Centralized Resource Management System**
+- Created a comprehensive singleton class for managing all resource cleanup operations
+- Provides automated, scheduled cleanup processes with configurable intervals
+- Implements graceful shutdown procedures with participant notification
+
+### Key Features Implemented:
+
+**🧹 Comprehensive Resource Cleanup:**
+- **Multi-Type Resource Support**: Rooms, Users, Sessions, Matches, Heartbeats, Notifications
+- **Configurable Max Age**: Resources older than specified age get cleaned up automatically
+- **Force Cleanup Option**: Immediate cleanup regardless of age for maintenance scenarios
+- **Batch Processing**: Efficient cleanup in configurable batch sizes (default: 100)
+
+**⏰ Scheduled Cleanup System:**
+- **Automatic Scheduling**: Configurable interval cleanup (default: 1 hour)
+- **Active Cleanup Prevention**: Won't start new cleanup if one is already running
+- **Shutdown Integration**: Stops scheduled cleanups during graceful shutdown
+- **Error-Resistant**: Continues operation even if individual cleanup operations fail
+
+**🛑 Graceful Shutdown with Notification:**
+- **Participant Notification**: Sends shutdown notifications to all active users
+- **Waiting Mechanism**: Waits for active cleanups to complete before shutdown
+- **Force Shutdown Timeout**: Configurable timeout for emergency situations (default: 30s)
+- **Signal Handling**: Responds to SIGTERM, SIGINT, SIGHUP for graceful shutdown
+
+**🗄️ Redis Key Management:**
+- **Orphaned Key Detection**: Identifies and removes keys with no TTL that haven't been accessed recently
+- **Prefix-Based Cleanup**: Systematic cleanup by key prefixes (user:, room:, session:, etc.)
+- **Idle Time Analysis**: Uses Redis OBJECT IDLETIME to identify stale keys
+- **TTL Respect**: Preserves keys with active TTL settings
+
+**💾 Memory Resource Management:**
+- **Interval Cleanup**: Clears active intervals and timeouts during shutdown
+- **Error Manager Integration**: Calls cleanup methods on integrated managers
+- **Garbage Collection**: Triggers Node.js garbage collection if available
+- **Memory Leak Prevention**: Ensures no resource handles remain after shutdown
+
+**🔄 Resource-Specific Cleanup Methods:**
+
+1. **`cleanupStaleRooms()`**: Uses RoomManager to terminate stale rooms with force option
+2. **`cleanupStaleUsers()`**: Removes users from state queues and clears metadata
+3. **`cleanupStaleSessions()`**: Removes expired session data from Redis
+4. **`cleanupStaleMatches()`**: Cleans up old match records
+5. **`cleanupStaleHeartbeats()`**: Removes stale heartbeat tracking data
+6. **`cleanupStaleNotifications()`**: Cleans up expired notification records
+
+**📊 Monitoring & Statistics:**
+- **Cleanup Statistics**: Tracks total cleanups, resources cleaned, average duration
+- **Error Tracking**: Comprehensive error collection and reporting per cleanup operation
+- **Performance Metrics**: Duration tracking and running averages
+- **Real-time Status**: Active cleanup tracking and shutdown status monitoring
+
+**🚨 Process Signal Handling:**
+- **SIGTERM/SIGINT/SIGHUP**: Graceful shutdown initiation
+- **Uncaught Exception**: Emergency shutdown with error logging
+- **Unhandled Promise Rejection**: Error logging and monitoring
+- **Process Exit Codes**: Proper exit status based on shutdown success
+
+**⚡ Force Cleanup Capabilities:**
+- **Resource-Specific**: Can force cleanup specific resource IDs
+- **Type Detection**: Automatically detects resource type from ID prefix
+- **Rollback-Safe**: Each resource cleaned independently to prevent cascading failures
+- **Error Isolation**: Individual resource cleanup failures don't affect others
+
+**🔧 Configuration Options:**
+- **`maxAge`**: Maximum resource age before cleanup (default: 24 hours)
+- **`batchSize`**: Number of resources per cleanup batch (default: 100)
+- **`enableScheduledCleanup`**: Enable/disable automatic scheduled cleanup (default: true)
+- **`scheduleInterval`**: Time between cleanup runs (default: 1 hour)
+- **`gracefulShutdownTimeout`**: Max wait time for graceful shutdown (default: 30s)
+- **`notifyParticipants`**: Enable participant notification during shutdown (default: true)
+
+### Integration Points:
+
+- **StateManager Integration**: User state transitions and queue management
+- **RoomManager Integration**: Room lifecycle and termination procedures
+- **ErrorManager Integration**: Centralized error handling and recovery
+- **Redis Integration**: Direct key management and cleanup operations
+
+### Shutdown Notification System:
+
+- **Notification Types**: Maintenance, Emergency, Graceful
+- **User Targeting**: Sends notifications to all active users
+- **Message Customization**: Configurable messages and estimated downtime
+- **TTL Management**: Notifications expire automatically (5 minutes)
+
+This provides a robust, enterprise-grade resource cleanup system that ensures proper resource management, graceful shutdowns, and system reliability!
+</info added on 2025-06-10T21:42:04.458Z>
+

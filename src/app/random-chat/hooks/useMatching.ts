@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, useEffect } from "react";
 import { ChatState, MatchData } from "../types";
 import { api } from "../utils/api";
 

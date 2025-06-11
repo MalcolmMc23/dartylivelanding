@@ -58,12 +58,9 @@ export const useHeartbeat = (userId: string | null) => {
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
-        console.log("Tab hidden, signaling disconnect...");
-        api.signalDisconnect(userId);
-      } else if (document.visibilityState === 'visible') {
-        console.log("Tab visible, restarting heartbeats...");
-        // Optionally restart heartbeats if they were stopped for hidden state
-        // (though current design keeps them running)
+        console.log("Tab hidden – keeping user in queue (no disconnect)");
+        // Send a secondary heartbeat immediately to refresh TTL while browser may throttle timers
+        api.sendHeartbeat(userId, false);
       }
     };
 

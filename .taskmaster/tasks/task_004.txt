@@ -1,0 +1,85 @@
+# Task ID: 4
+# Title: Develop Skip Button Functionality
+# Status: done
+# Dependencies: 1, 2, 3
+# Priority: medium
+# Description: Implement the Skip button functionality that immediately disconnects both users and returns them to the matching queue with a cooldown period.
+# Details:
+1. Create `/api/simple-matching/skip` endpoint that:
+   - Validates user is in IN_CALL state
+   - Sets disconnection flags for both users
+   - Deletes the LiveKit room
+   - Moves both users to WAITING state
+   - Re-adds both to queue with cooldown
+2. Implement client-side skip button UI and logic
+3. Add cooldown tracking to prevent immediate re-matching
+4. Create disconnect notification with 'skip' reason
+5. Add logging for skip actions
+
+Example implementation:
+```javascript
+async function handleSkip(userId) {
+  // Get current user data
+  const userData = await redis.hgetall(`user:${userId}`);
+  if (userData.state !== 'IN_CALL') {
+    throw new Error('User not in call');
+  }
+  
+  // Get room data
+  const roomData = await redis.hgetall(`room:${userData.currentRoom}`);
+  const otherUserId = roomData.user1 === userId ? roomData.user2 : roomData.user1;
+  
+  // Create transaction for atomic operations
+  const multi = redis.multi();
+  
+  // Set disconnect flags
+  multi.hset(`user:${userId}`, {
+    state: 'DISCONNECTING',
+    disconnectReason: 'skip',
+    lastStateChange: Date.now()
+  });
+  
+  multi.hset(`user:${otherUserId}`, {
+    state: 'DISCONNECTING',
+    disconnectReason: 'skip',
+    lastStateChange: Date.now()
+  });
+  
+  // Add cooldown for this pair
+  const pairKey = [userId, otherUserId].sort().join(':');
+  multi.set(`cooldown:${pairKey}`, '1', 'EX', 30); // 30 second cooldown
+  
+  // Execute transaction
+  await multi.exec();
+  
+  // Delete LiveKit room
+  await livekitClient.deleteRoom(userData.currentRoom);
+  
+  // Move both users to WAITING state
+  await moveToWaiting(userId);
+  await moveToWaiting(otherUserId);
+  
+  return { success: true };
+}
+```
+
+# Test Strategy:
+1. Unit tests for skip functionality
+2. Integration tests with simulated users
+3. Test cooldown functionality
+4. Verify both users properly return to queue
+5. Test edge cases like concurrent skips
+6. Verify LiveKit room is properly deleted
+7. Test with network latency and disconnections
+
+# Subtasks:
+## 1. Backend: Enhance /skip Endpoint Integration [done]
+### Dependencies: None
+### Description: Integrate Skip functionality with MatchManager, RoomManager, DisconnectDetectionManager and simplify response format.
+### Details:
+- Validate user state
+- Determine sessionId via MatchManager
+- Notify users via DisconnectDetectionManager.processSkipAction
+- Terminate match via MatchManager.terminateMatch('skip')
+- Return queueStatus and matchResults for frontend compatibility
+

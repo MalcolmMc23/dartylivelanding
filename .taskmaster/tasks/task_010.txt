@@ -1,0 +1,104 @@
+# Task ID: 10
+# Title: Implement Frontend Integration and User Experience
+# Status: pending
+# Dependencies: 4, 5, 6, 7
+# Priority: medium
+# Description: Develop frontend components for the redesigned matching system, including UI for state transitions, skip/end buttons, and user feedback.
+# Details:
+1. Create UI components for different user states:
+   - Landing page (IDLE state)
+   - Waiting screen with queue animation
+   - Connecting screen with progress indicator
+   - Video call interface with skip/end buttons
+   - Disconnecting screen with reason
+2. Implement polling logic for state changes
+3. Add clear visual differentiation between skip and end actions
+4. Implement proper error handling and retry UI
+5. Add user feedback for actions (skip cooldown, etc.)
+6. Ensure responsive design for all screen sizes
+7. Implement Beacon API for cleanup on browser close/refresh
+
+Example React component:
+```javascript
+function VideoChat() {
+  const [state, setState] = useState('IDLE');
+  const [matchData, setMatchData] = useState(null);
+  const [error, setError] = useState(null);
+  
+  // Poll for matches when in WAITING state
+  useEffect(() => {
+    let intervalId;
+    if (state === 'WAITING') {
+      intervalId = setInterval(async () => {
+        try {
+          const response = await fetch('/api/simple-matching/check-match');
+          const data = await response.json();
+          if (data.matched) {
+            setMatchData(data);
+            setState('CONNECTING');
+          }
+        } catch (err) {
+          setError('Failed to check for matches');
+        }
+      }, 1000);
+    }
+    return () => clearInterval(intervalId);
+  }, [state]);
+  
+  // Handle skip button click
+  const handleSkip = async () => {
+    try {
+      setState('DISCONNECTING');
+      await fetch('/api/simple-matching/skip', { method: 'POST' });
+      setState('WAITING');
+    } catch (err) {
+      setError('Failed to skip');
+      setState('IN_CALL'); // Revert on error
+    }
+  };
+  
+  // Handle end button click
+  const handleEnd = async () => {
+    try {
+      setState('DISCONNECTING');
+      await fetch('/api/simple-matching/end', { method: 'POST' });
+      setState('IDLE');
+    } catch (err) {
+      setError('Failed to end call');
+      setState('IN_CALL'); // Revert on error
+    }
+  };
+  
+  // Render appropriate UI based on state
+  switch (state) {
+    case 'IDLE':
+      return <LandingPage onStart={() => startMatching()} />;
+    case 'WAITING':
+      return <WaitingScreen />;
+    case 'CONNECTING':
+      return <ConnectingScreen matchData={matchData} />;
+    case 'IN_CALL':
+      return (
+        <VideoCallScreen
+          matchData={matchData}
+          onSkip={handleSkip}
+          onEnd={handleEnd}
+        />
+      );
+    case 'DISCONNECTING':
+      return <DisconnectingScreen />;
+    default:
+      return <ErrorScreen error={error} />;
+  }
+}
+```
+
+# Test Strategy:
+1. Unit tests for UI components
+2. Integration tests with API mocks
+3. End-to-end tests for user flows
+4. Test responsive design across devices
+5. Verify proper error handling and recovery
+6. Test with simulated network issues
+7. Usability testing with real users
+8. Verify Beacon API functionality on page close

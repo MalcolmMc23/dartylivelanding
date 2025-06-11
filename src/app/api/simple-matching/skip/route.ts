@@ -291,10 +291,12 @@ export async function POST(request: Request) {
         await Promise.all([
           redis.setex(`match:${userToMatch}`, 300, matchDataStr),
           redis.setex(`match:${candidateUserId}`, 300, matchDataStr),
-          redis.setex(`matching:waiting_${userToMatch}`, 300, currentTime.toString()),
-          redis.setex(`matching:waiting_${candidateUserId}`, 300, currentTime.toString()),
-          redis.zrem('matching:in_call', userToMatch),
-          redis.zrem('matching:in_call', candidateUserId),
+          // Remove any stale waiting-queue entries (they are now in a call)
+          redis.del(`matching:waiting_${userToMatch}`),
+          redis.del(`matching:waiting_${candidateUserId}`),
+          // Mark both users as actively in a call
+          redis.zadd('matching:in_call', currentTime, userToMatch),
+          redis.zadd('matching:in_call', currentTime, candidateUserId),
           // Clear force-disconnect flags for both users
           redis.del(`force-disconnect:${userToMatch}`),
           redis.del(`force-disconnect:${candidateUserId}`),
@@ -329,7 +331,7 @@ export async function POST(request: Request) {
       const [verifyInQueue, verifyNoMatch, verifyNoInCall] = await Promise.all([
         redis.get(`matching:waiting_${userToMatch}`),
         redis.get(`match:${userToMatch}`),
-        redis.get(`matching:in_call_${userToMatch}`)
+        redis.zscore('matching:in_call', userToMatch)
       ]);
       
       console.log(`[Skip] No match found for ${userToMatch}, added to waiting queue. Status:`, {
@@ -378,7 +380,7 @@ export async function POST(request: Request) {
     // === VERIFY CLEANUP ===
     const [verifyWaiting, verifyInCall, verifyMatch, verifyHeartbeat] = await Promise.all([
       redis.get(`matching:waiting_${userId}`),
-      redis.get(`matching:in_call_${userId}`),
+      redis.zscore('matching:in_call', userId),
       redis.get(`match:${userId}`),
       redis.get(`heartbeat:${userId}`)
     ]);

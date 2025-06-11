@@ -1,0 +1,68 @@
+# Task ID: 6
+# Title: Implement Enqueue and Check-Match API Endpoints
+# Status: pending
+# Dependencies: 1, 2
+# Priority: medium
+# Description: Develop API endpoints for adding users to the matching queue and polling for match availability.
+# Details:
+1. Create `/api/simple-matching/enqueue` endpoint that:
+   - Adds user to waiting queue
+   - Updates user state to WAITING
+   - Returns queued status
+   - Cleans up stale users
+2. Create `/api/simple-matching/check-match` endpoint that:
+   - Polls for match availability
+   - Returns match data when found
+   - Handles state transitions
+3. Implement polling mechanism with appropriate backoff
+4. Add rate limiting to prevent abuse
+5. Implement stale user cleanup
+
+Example implementation:
+```javascript
+async function enqueueUser(userId) {
+  // Clean up any existing state
+  await cleanupUserState(userId);
+  
+  // Add to waiting queue with current timestamp
+  await redis.zadd('matching:waiting', Date.now(), userId);
+  
+  // Update user state
+  await redis.hset(`user:${userId}`, {
+    state: 'WAITING',
+    lastHeartbeat: Date.now(),
+    lastStateChange: Date.now()
+  });
+  
+  return { status: 'queued' };
+}
+
+async function checkMatch(userId) {
+  // Get current user data
+  const userData = await redis.hgetall(`user:${userId}`);
+  
+  // If user is in CONNECTING or IN_CALL state, return match data
+  if (userData.state === 'CONNECTING' || userData.state === 'IN_CALL') {
+    const roomData = await redis.hgetall(`room:${userData.currentRoom}`);
+    return {
+      matched: true,
+      roomName: userData.currentRoom,
+      otherUser: roomData.user1 === userId ? roomData.user2 : roomData.user1
+    };
+  }
+  
+  // Update heartbeat
+  await redis.hset(`user:${userId}`, 'lastHeartbeat', Date.now());
+  
+  return { matched: false };
+}
+```
+
+# Test Strategy:
+1. Unit tests for enqueue and check-match endpoints
+2. Test polling behavior with various scenarios
+3. Verify proper state transitions
+4. Test stale user cleanup
+5. Benchmark performance under load
+6. Test rate limiting functionality
+7. Verify proper error handling and recovery
