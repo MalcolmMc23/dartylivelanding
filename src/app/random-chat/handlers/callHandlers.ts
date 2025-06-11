@@ -95,8 +95,25 @@ export const createCallHandlers = ({
     stopPolling();
     stopHeartbeat();
 
-    await disconnectFromRoom();
+    // Flip UI state first so LiveKitRoom unmounts before we close the connection
     setChatState("IDLE");
+
+    // Give React one tick to unmount VideoConference
+    await new Promise((res) => setTimeout(res, 0));
+
+    // Inform the backend that we are ending the session so it can clean up
+    try {
+      if (sessionId) {
+        await api.endCall(userId, sessionId);
+      } else {
+        // Fallback – sessionId missing (should be rare)
+        await api.endCall(userId, "cleanup");
+      }
+    } catch (err) {
+      console.error("Error notifying backend of end call:", err);
+    }
+
+    await disconnectFromRoom();
 
     setTimeout(() => {
       isEndingCall.current = false;
