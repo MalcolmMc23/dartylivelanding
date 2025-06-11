@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     if (isDisconnecting) {
       console.log(`[Heartbeat] User ${userId} is disconnecting. Cleaning up...`);
       await Promise.all([
-        redis.zrem('matching:waiting', userId),
+        redis.del(`matching:waiting_${userId}`),
         redis.zrem('matching:in_call', userId), // Also remove from in_call if they were there
         redis.del(`heartbeat:primary:${userId}`),
         redis.del(`heartbeat:secondary:${userId}`),
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     }
 
     // Check if user is in queue
-    const inQueue = await redis.zscore('matching:waiting', userId);
+    const inQueue = await redis.get(`matching:waiting_${userId}`);
     if (inQueue !== null) {
       // Verify both heartbeats are active before keeping in queue
       const [primaryHeartbeat, secondaryHeartbeat] = await Promise.all([
@@ -52,10 +52,10 @@ export async function POST(request: Request) {
 
       if (primaryHeartbeat && secondaryHeartbeat) {
         // Both heartbeats are active, update queue position
-        await redis.zadd('matching:waiting', parseInt(inQueue), userId);
+        await redis.setex(`matching:waiting_${userId}`, 300, timestamp.toString());
       } else {
         // One or both heartbeats are inactive, remove from queue
-        await redis.zrem('matching:waiting', userId);
+        await redis.del(`matching:waiting_${userId}`);
         return NextResponse.json({ 
           success: true, 
           removedFromQueue: true,

@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     let inQueue, hasGrace;
     try {
       [inQueue, hasGrace] = await Promise.all([
-        redis.zscore('matching:waiting', userId),
+        redis.get(`matching:waiting_${userId}`),
         redis.get(`requeue-grace:${userId}`)
       ]);
     } catch (error) {
@@ -74,7 +74,18 @@ export async function POST(request: Request) {
     const SECONDARY_HEARTBEAT_TTL = 30000; // 30 seconds
     let waitingUsers;
     try {
-      waitingUsers = await redis.zrange('matching:waiting', 0, -1, 'WITHSCORES');
+      // Get all keys matching the pattern matching:waiting_*
+      const waitingKeys = await redis.keys('matching:waiting_*');
+      waitingUsers = [];
+      
+      // For each key, get the user ID and timestamp
+      for (const key of waitingKeys) {
+        const userId = key.replace('matching:waiting_', '');
+        const timestamp = await redis.get(key);
+        if (timestamp) {
+          waitingUsers.push(userId, timestamp);
+        }
+      }
     } catch (error) {
       console.error('[Enqueue] Redis error getting waiting users:', error);
       return NextResponse.json(
@@ -93,7 +104,7 @@ export async function POST(request: Request) {
       if (now - joinTime > 60000) { // 1 minute max queue time
         try {
           await Promise.all([
-            redis.zrem('matching:waiting', waitingUser),
+            redis.del(`matching:waiting_${waitingUser}`),
             redis.del(`heartbeat:primary:${waitingUser}`),
             redis.del(`heartbeat:secondary:${waitingUser}`)
           ]);
@@ -123,7 +134,7 @@ export async function POST(request: Request) {
       if (isPrimaryStale || isSecondaryStale) {
         try {
           await Promise.all([
-            redis.zrem('matching:waiting', waitingUser),
+            redis.del(`matching:waiting_${waitingUser}`),
             redis.del(`heartbeat:primary:${waitingUser}`),
             redis.del(`heartbeat:secondary:${waitingUser}`)
           ]);
@@ -174,7 +185,7 @@ export async function POST(request: Request) {
       if (candidateMatch) {
         // User already matched, remove from queue
         try {
-          await redis.zrem('matching:waiting', candidateUserId);
+          await redis.del(`matching:waiting_${candidateUserId}`);
           console.log(`Candidate ${candidateUserId} already matched, removing from queue`);
         } catch (error) {
           console.error(`[Enqueue] Redis error removing matched candidate ${candidateUserId}:`, error);
@@ -230,7 +241,7 @@ export async function POST(request: Request) {
       let stillInQueue, stillNoMatch;
       try {
         [stillInQueue, stillNoMatch] = await Promise.all([
-          redis.zscore('matching:waiting', candidateUserId),
+          redis.get(`matching:waiting_${candidateUserId}`),
           redis.get(`match:${candidateUserId}`)
         ]);
       } catch (error) {
@@ -300,7 +311,7 @@ export async function POST(request: Request) {
           redis.setex(`match:${matchedUserId}`, 300, matchDataStr),
           redis.zadd('matching:in_call', Date.now(), userId),
           redis.zadd('matching:in_call', Date.now(), matchedUserId),
-          redis.zrem('matching:waiting', matchedUserId),
+          redis.del(`matching:waiting_${matchedUserId}`),
           // Clear force-disconnect flags for both users
           redis.del(`force-disconnect:${userId}`),
           redis.del(`force-disconnect:${matchedUserId}`)
@@ -338,7 +349,7 @@ export async function POST(request: Request) {
     } else {
       // No match available, add to queue
       try {
-        await redis.zadd('matching:waiting', Date.now(), userId);
+        await redis.setex(`matching:waiting_${userId}`, 300, Date.now().toString());
         console.log(`User ${userId} added to waiting queue`);
       } catch (error) {
         console.error('[Enqueue] Redis error adding user to queue:', error);
