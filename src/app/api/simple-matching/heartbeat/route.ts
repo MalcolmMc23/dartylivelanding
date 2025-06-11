@@ -75,7 +75,7 @@ export async function POST(request: Request) {
 }
 
 // Helper function to check if a user is active
-export async function isUserActive(userId: string): Promise<boolean> {
+async function isUserActive(userId: string): Promise<boolean> {
   try {
     const [primaryHeartbeat, secondaryHeartbeat] = await Promise.all([
       redis.get(`heartbeat:primary:${userId}`),
