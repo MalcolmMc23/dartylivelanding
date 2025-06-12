@@ -21,7 +21,6 @@ export function ControlButton({
   ariaLabel,
   activeIcon,
   inactiveIcon,
-  variant = "default",
 }: ControlButtonProps) {
   return (
     <div className="relative group">
