@@ -1,5 +1,4 @@
 import { Video, Users, AlertCircle, Sparkles } from "lucide-react";
-import { ChatState } from "../types";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { LoginDialog } from "@/components/auth/LoginDialog";
