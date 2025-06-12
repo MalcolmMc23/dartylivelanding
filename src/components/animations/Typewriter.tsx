@@ -46,12 +46,10 @@ export default function Typewriter({
 
   return (
     <div className={className}>
-        Welcome to
       <div className="text-lg md:text-xl font-medium mb-1">
         {displayed[0]}
         {lineIdx === 0 && <span className="animate-pulse">|</span>}
       </div>
-        DormParty.live
       <div className="text-2xl md:text-3xl font-bold tracking-tight">
         <span className="text-white">
           {displayed[1]}
