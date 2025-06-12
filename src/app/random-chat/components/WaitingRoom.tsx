@@ -1,6 +1,4 @@
 import { Video, Users, AlertCircle, Sparkles } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { ChatState } from "../types";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
