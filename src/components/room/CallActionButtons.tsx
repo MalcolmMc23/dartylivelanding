@@ -20,8 +20,8 @@ export function CallActionButtons({
         onClick={onSkip}
         disabled={isRedirecting}
         active={false}
-        activeColor="bg-gradient-to-br from-red-600 via-red-500 to-red-700 shadow-lg hover:scale-110"
-        inactiveColor="bg-gradient-to-br from-red-600 via-red-500 to-red-700 shadow-lg hover:scale-110"
+        activeColor="bg-gradient-to-br from-green-600 via-green-500 to-green-700 shadow-lg hover:scale-110"
+        inactiveColor="bg-gradient-to-br from-green-600 via-green-500 to-green-700 shadow-lg hover:scale-110"
         ariaLabel="Leave call"
         activeIcon={
           <span
@@ -46,8 +46,8 @@ export function CallActionButtons({
         onClick={onEnd}
         disabled={isRedirecting}
         active={false}
-        activeColor="bg-gradient-to-br from-gray-800 via-gray-700 to-gray-900 shadow-lg hover:scale-110"
-        inactiveColor="bg-gradient-to-br from-gray-800 via-gray-700 to-gray-900 shadow-lg hover:scale-110"
+        activeColor="bg-gradient-to-br from-red-800 via-red-700 to-red-900 shadow-lg hover:scale-110"
+        inactiveColor="bg-gradient-to-br from-red-800 via-red-700 to-red-900 shadow-lg hover:scale-110"
         ariaLabel="End call"
         activeIcon={
           <span
