@@ -5,6 +5,7 @@ import { ChatState } from "../types";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { LoginDialog } from "@/components/auth/LoginDialog";
+import { DebugButtons } from "./DebugButtons";
 
 // Debug flag to bypass authentication
 const BYPASS_AUTH = process.env.NEXT_PUBLIC_BYPASS_AUTH === 'true';
@@ -17,6 +18,7 @@ interface WaitingRoomProps {
   onCancel: () => void;
   onCheckStatus: () => void;
   onForceCleanup: () => void;
+  showDebug?: boolean;
 }
 
 export function WaitingRoom({
@@ -27,6 +29,7 @@ export function WaitingRoom({
   onCancel,
   onCheckStatus,
   onForceCleanup,
+  showDebug = true,
 }: WaitingRoomProps) {
   const [mounted, setMounted] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
@@ -73,21 +76,12 @@ export function WaitingRoom({
             </p>
           </div>
 
-          {/* Debug buttons */}
-          <div className="flex gap-2 justify-center">
-            <button
-              onClick={onCheckStatus}
-              className="text-xs text-gray-400 underline hover:cursor-pointer"
-            >
-              Check Status
-            </button>
-            <button
-              onClick={onForceCleanup}
-              className="text-xs text-gray-400 underline hover:cursor-pointer"
-            >
-              Force Cleanup
-            </button>
-          </div>
+          {showDebug && (
+            <DebugButtons
+              onCheckStatus={onCheckStatus}
+              onForceCleanup={onForceCleanup}
+            />
+          )}
 
           {error && (
             <div className="bg-red-900/50 border border-red-500 rounded-lg p-3">
