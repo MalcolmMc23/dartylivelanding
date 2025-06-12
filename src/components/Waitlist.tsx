@@ -2,7 +2,7 @@
 
 import StyledEmailInput from "@/components/StyledEmailInput";
 import UniversityLogoScroll from "@/components/university/UniversityLogoScroll";
-import AnimatedStars from "@/components/AnimatedStars";
+import AnimatedStars from "@/components/animations/AnimatedStars";
 import CountdownTimer from "@/app/countdown/components/CountdownTimer";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
