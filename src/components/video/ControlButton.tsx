@@ -16,10 +16,11 @@ export function ControlButton({
   onClick,
   disabled,
   active,
+  activeColor,
+  inactiveColor,
   ariaLabel,
   activeIcon,
   inactiveIcon,
-  variant = "default",
 }: ControlButtonProps) {
   return (
     <div className="relative group">
@@ -29,27 +30,16 @@ export function ControlButton({
         aria-label={ariaLabel}
         className={`
           flex items-center justify-center
-          rounded-full
           shadow-md
           transition-all
-          ${
-            variant === "chat"
-              ? "bg-gradient-to-r from-[#ad5389] to-[#3c1053] text-white border border-[#3c1053] hover:brightness-110"
-              : active
-              ? "bg-gradient-to-r from-[#ad5389] to-[#3c1053] text-white"
-              : "bg-gradient-to-r from-[#ad5389] to-[#3c1053] text-white border border-[#3c1053]"
-          }
-          ${
-            ariaLabel === "Leave call"
-              ? "bg-gradient-to-br from-red-600 via-red-500 to-red-700 shadow-lg hover:scale-110"
-              : ""
-          }
+          ${active ? activeColor : inactiveColor}
           hover:scale-105
           disabled:opacity-50
           disabled:cursor-not-allowed
           text-xl
-          w-20 h-14 md:w-24 md:h-16
+          w-24 h-14 md:w-28 md:h-16
           cursor-pointer
+          rounded-lg
         `}
       >
         {active ? activeIcon : inactiveIcon}
