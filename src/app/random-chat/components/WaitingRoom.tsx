@@ -6,20 +6,11 @@ import { LoginDialog } from "@/components/auth/LoginDialog";
 import { DebugButtons } from "./DebugButtons";
 import AnimatedStars from "@/components/animations/AnimatedStars";
 import Typewriter from "@/components/animations/Typewriter";
-
+import { WaitingRoomProps } from "../types";
 // Debug flag to bypass authentication
 const BYPASS_AUTH = process.env.NEXT_PUBLIC_BYPASS_AUTH === 'true';
 
-interface WaitingRoomProps {
-  chatState: ChatState;
-  error: string;
-  userId: string;
-  onStart: () => void;
-  onCancel: () => void;
-  onCheckStatus: () => void;
-  onForceCleanup: () => void;
-  showDebug?: boolean;
-}
+
 
 export function WaitingRoom({
   chatState,

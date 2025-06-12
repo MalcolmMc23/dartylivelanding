@@ -44,3 +44,14 @@ export interface VideoConferenceProps {
   onDisconnected: () => void;
   onAlone?: () => void;
 } 
+
+export interface WaitingRoomProps {
+  chatState: ChatState;
+  error: string;
+  userId: string;
+  onStart: () => void;
+  onCancel: () => void;
+  onCheckStatus: () => void;
+  onForceCleanup: () => void;
+  showDebug?: boolean;
+}
