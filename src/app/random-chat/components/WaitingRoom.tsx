@@ -1,4 +1,4 @@
-import { Video, Users, AlertCircle } from "lucide-react";
+import { Video, Users, AlertCircle, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ChatState } from "../types";
@@ -6,6 +6,8 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { LoginDialog } from "@/components/auth/LoginDialog";
 import { DebugButtons } from "./DebugButtons";
+import AnimatedStars from "@/components/animations/AnimatedStars";
+import Typewriter from "@/components/animations/Typewriter";
 
 // Debug flag to bypass authentication
 const BYPASS_AUTH = process.env.NEXT_PUBLIC_BYPASS_AUTH === 'true';
@@ -48,23 +50,21 @@ export function WaitingRoom({
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 flex items-center justify-center">
-      <Card className="p-8 bg-gray-900/80 border-gray-700 max-w-md w-full">
+    <div className="relative flex flex-col items-center justify-center min-h-screen bg-[#121212] text-white p-4 md:p-8">
+      <AnimatedStars />
+      
+      <div className="relative z-10 w-full max-w-md p-8 bg-[#1A1A1A] rounded-2xl shadow-2xl backdrop-blur-sm border border-[#2A2A2A]">
         <div className="text-center space-y-6">
           <div className="flex justify-center">
             {chatState === "WAITING" || chatState === "CONNECTING" ? (
               <Users className="h-16 w-16 text-yellow-500 animate-pulse" />
             ) : (
-              <Video className="h-16 w-16 text-blue-500" />
+              <Video className="h-16 w-16 text-[#A855F7]" />
             )}
           </div>
 
           <div>
-            <h1 className="text-3xl font-bold text-white mb-2">
-              {chatState === "IDLE" && "Random Video Chat"}
-              {chatState === "WAITING" && "Finding someone..."}
-              {chatState === "CONNECTING" && "Connecting..."}
-            </h1>
+            <Typewriter className="mb-4" />
             <p className="text-gray-300">
               {chatState === "IDLE" && "Connect with random people instantly"}
               {chatState === "WAITING" &&
@@ -93,26 +93,25 @@ export function WaitingRoom({
           )}
 
           {chatState === "IDLE" && (
-            <Button
+            <button
               onClick={handleStartChat}
-              size="lg"
-              className="w-full bg-blue-600 hover:bg-blue-700 hover:cursor-pointer text-white"
+              className="w-full bg-[#A855F7] text-white px-3.5 py-4 rounded-xl font-semibold hover:cursor-pointer hover:bg-[#9333EA] transition-all duration-200 shadow-lg shadow-[#A855F7]/20 flex items-center justify-center gap-2"
             >
-              Start Chat
-            </Button>
+              <span>Start Random Call</span>
+              <Sparkles className="h-6 w-6" />
+            </button>
           )}
 
           {(chatState === "WAITING" || chatState === "CONNECTING") && (
-            <Button
+            <button
               onClick={onCancel}
-              variant="outline"
-              className="w-full border-gray-600 text-gray-300 hover:bg-gray-800 hover:cursor-pointer"
+              className="w-full border border-[#2A2A2A] text-gray-300 px-3.5 py-4 rounded-xl font-semibold hover:cursor-pointer hover:bg-[#2A2A2A] transition-all duration-200"
             >
               Cancel
-            </Button>
+            </button>
           )}
         </div>
-      </Card>
+      </div>
 
       <LoginDialog 
         open={showLogin} 
