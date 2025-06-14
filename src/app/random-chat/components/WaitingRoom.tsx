@@ -19,7 +19,7 @@ export function WaitingRoom({
   onCancel,
   onCheckStatus,
   onForceCleanup,
-  showDebug = true,
+  showDebug = false,
 }: WaitingRoomProps) {
   const [mounted, setMounted] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
