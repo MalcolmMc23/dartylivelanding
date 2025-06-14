@@ -15,8 +15,15 @@ export default function Waitlist() {
   const [targetDate, setTargetDate] = useState<Date | null>(null);
 
   useEffect(() => {
-    // Set to June 13, 2025 at noon
-    const target = new Date(2025, 5, 13); // Month is 0-indexed, so 5 = June
+    // Set to this Wednesday at noon
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+    let daysUntilWednesday = (3 - dayOfWeek + 7) % 7;
+    if (daysUntilWednesday === 0 && now.getHours() >= 12) {
+      daysUntilWednesday = 7; // If it's already Wednesday past noon, go to next week
+    }
+    const target = new Date(now);
+    target.setDate(now.getDate() + daysUntilWednesday);
     target.setHours(12, 0, 0, 0); // Set to noon
 
     setTargetDate(target);
