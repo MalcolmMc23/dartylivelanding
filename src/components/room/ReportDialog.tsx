@@ -16,21 +16,17 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 interface ReportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  reportedUserId: number;
 }
 
-export function ReportDialog({ open, onOpenChange }: ReportDialogProps) {
+export function ReportDialog({ open, onOpenChange, reportedUserId }: ReportDialogProps) {
   const [reason, setReason] = useState<string>("");
   const [description, setDescription] = useState<string>("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
-    // TODO: Implement report submission logic
-    setTimeout(() => {
-      setIsSubmitting(false);
-      onOpenChange(false);
-    }, 1000);
+    // TODO: Implement report submission
+    onOpenChange(false);
   };
 
   return (
@@ -100,10 +96,10 @@ export function ReportDialog({ open, onOpenChange }: ReportDialogProps) {
             </Button>
             <Button
               type="submit"
-              disabled={!reason || isSubmitting}
+              disabled={!reason}
               className="bg-[#A855F7] text-white hover:bg-[#9333EA]"
             >
-              {isSubmitting ? "Submitting..." : "Submit Report"}
+              Submit Report
             </Button>
           </DialogFooter>
         </form>
