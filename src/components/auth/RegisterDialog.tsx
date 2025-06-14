@@ -47,7 +47,7 @@ export function RegisterDialog({ open, onOpenChange, onShowLogin, onSuccess }: P
 
     // Username required check
     if (!username.trim()) {
-      setError("Please enter your name.");
+      setError("Please enter your username.");
       return;
     }
 
@@ -203,11 +203,11 @@ export function RegisterDialog({ open, onOpenChange, onShowLogin, onSuccess }: P
         </DialogHeader>
         <form onSubmit={handleRegister} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="username" className="text-gray-300">Your Name</Label>
+            <Label htmlFor="username" className="text-gray-300">Your Username</Label>
             <Input
               id="username"
               type="text"
-              placeholder="Enter your name"
+              placeholder="Enter your username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
