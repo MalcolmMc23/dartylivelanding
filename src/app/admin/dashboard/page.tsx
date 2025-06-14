@@ -1,9 +1,9 @@
 import React from "react";
 
-export function AdminDashboard() {
+export default function AdminDashboard() {
     return(
         <div>
             Still being worked on...
         </div>
-    )
+    );
 }
