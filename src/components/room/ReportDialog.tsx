@@ -16,10 +16,9 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 interface ReportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  reportedUserId: number;
 }
 
-export function ReportDialog({ open, onOpenChange, reportedUserId }: ReportDialogProps) {
+export function ReportDialog({ open, onOpenChange }: ReportDialogProps) {
   const [reason, setReason] = useState<string>("");
   const [description, setDescription] = useState<string>("");
 
