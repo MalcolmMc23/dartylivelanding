@@ -5,6 +5,7 @@ import {
   MicrophoneOffIcon,
   CameraOnIcon,
   CameraOffIcon,
+  FlagIcon,
 } from "../video/LiveKitIcons";
 import { ControlButton } from "../video/ControlButton";
 import { useMediaControls } from "../hooks/useMediaControls";
@@ -37,6 +38,16 @@ export function MediaControls({ isRedirecting }: MediaControlsProps) {
         ariaLabel={isCameraEnabled ? "Turn off camera" : "Turn on camera"}
         activeIcon={<CameraOnIcon />}
         inactiveIcon={<CameraOffIcon />}
+      />
+
+      {/* Report Button */}
+      <ControlButton
+        onClick={() => {}}
+        disabled={isRedirecting}
+        active={false}
+        ariaLabel="Report user"
+        activeIcon={<FlagIcon />}
+        inactiveIcon={<FlagIcon />}
       />
     </>
   );
