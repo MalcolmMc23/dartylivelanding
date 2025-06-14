@@ -9,6 +9,8 @@ import {
 } from "../video/LiveKitIcons";
 import { ControlButton } from "../video/ControlButton";
 import { useMediaControls } from "../hooks/useMediaControls";
+import { useState } from "react";
+import { ReportDialog } from "./ReportDialog";
 
 interface MediaControlsProps {
   isRedirecting: boolean;
@@ -17,6 +19,7 @@ interface MediaControlsProps {
 export function MediaControls({ isRedirecting }: MediaControlsProps) {
   const { isCameraEnabled, isMicEnabled, toggleCamera, toggleMicrophone } =
     useMediaControls();
+  const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
 
   return (
     <>
@@ -42,12 +45,17 @@ export function MediaControls({ isRedirecting }: MediaControlsProps) {
 
       {/* Report Button */}
       <ControlButton
-        onClick={() => {}}
+        onClick={() => setIsReportDialogOpen(true)}
         disabled={isRedirecting}
         active={false}
         ariaLabel="Report user"
         activeIcon={<FlagIcon />}
         inactiveIcon={<FlagIcon />}
+      />
+
+      <ReportDialog
+        open={isReportDialogOpen}
+        onOpenChange={setIsReportDialogOpen}
       />
     </>
   );
