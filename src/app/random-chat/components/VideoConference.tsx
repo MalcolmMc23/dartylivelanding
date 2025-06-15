@@ -57,7 +57,7 @@ export function VideoConference({
   onEnd,
   token,
   sessionId,
-  userId,
+  username,
   onDisconnected,
   onAlone,
 }: VideoConferenceProps & { onAlone?: () => void }) {
@@ -66,7 +66,7 @@ export function VideoConference({
       <div className="absolute top-4 left-4 z-50 bg-black/80 text-white p-2 rounded text-xs">
         <div>State: IN_CALL</div>
         <div>Session: {sessionId}</div>
-        <div>User: {userId}</div>
+        <div>User: {username}</div>
       </div>
       <LiveKitRoom
         video={true}

@@ -9,12 +9,10 @@ import { WaitingRoomProps } from "../types";
 // Debug flag to bypass authentication
 const BYPASS_AUTH = process.env.NEXT_PUBLIC_BYPASS_AUTH === 'true';
 
-
-
 export function WaitingRoom({
   chatState,
   error,
-  userId,
+  username,
   onStart,
   onCancel,
   onCheckStatus,
@@ -59,12 +57,14 @@ export function WaitingRoom({
                 "Please wait while we find someone to chat with"}
               {chatState === "CONNECTING" && "Setting up your video connection"}
             </p>
-            <p className="text-xs text-gray-500 mt-2">
-              {mounted ? `Your ID: ${userId}` : "Loading ID..."}
-            </p>
+            {username !== "not found" && (
+              <p className="text-xs text-gray-500 mt-2">
+                {mounted ? `Your ID: ${username}` : "Loading ID..."}
+              </p>
+            )}
           </div>
 
-          {showDebug && (
+          {showDebug && onCheckStatus && onForceCleanup && (
             <DebugButtons
               onCheckStatus={onCheckStatus}
               onForceCleanup={onForceCleanup}
