@@ -70,7 +70,6 @@ export function MediaControls({ isRedirecting }: MediaControlsProps) {
       <ReportDialog
         open={isReportDialogOpen}
         onOpenChange={setIsReportDialogOpen}
-        reportedUserId={otherParticipantId || 0}
       />
     </>
   );
