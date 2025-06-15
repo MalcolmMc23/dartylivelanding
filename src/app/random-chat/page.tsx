@@ -14,7 +14,7 @@ import { useCallEffects } from "./hooks/useCallEffects";
 
 export default function RandomChatPage() {
   // Get username from API
-  const { username: apiUsername, isLoading: isLoadingUsername } = useUsername();
+  const { username: apiUsername } = useUsername();
   const [username, setUsername] = useState<string>("not found");
   
   // Update username when username is available
