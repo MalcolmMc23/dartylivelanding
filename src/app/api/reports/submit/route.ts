@@ -66,7 +66,8 @@ export async function POST(request: Request) {
     const reporterCount = parseInt(reporterCountResult.rows[0].count);
 
     // Update user statuses based on thresholds
-    if (reportedCount >= 5) {
+    // The limit is 5, just add one for the current report
+    if (reportedCount >= 4) {
       await pool.query(
         `UPDATE "user" 
          SET status = 'notified' 
@@ -75,7 +76,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (reporterCount >= 5) {
+    if (reporterCount >= 4) {
       await pool.query(
         `UPDATE "user" 
          SET status = 'timeout' 
