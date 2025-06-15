@@ -16,16 +16,30 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 interface ReportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSubmit: (reason: string, description: string) => Promise<void>;
 }
 
-export function ReportDialog({ open, onOpenChange }: ReportDialogProps) {
+export function ReportDialog({ open, onOpenChange, onSubmit }: ReportDialogProps) {
   const [reason, setReason] = useState<string>("");
   const [description, setDescription] = useState<string>("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Implement report submission
-    onOpenChange(false);
+    setError(null);
+    setIsSubmitting(true);
+
+    try {
+      console.log('Submitting report from dialog:', { reason, description });
+      await onSubmit(reason, description);
+      onOpenChange(false);
+    } catch (err) {
+      console.error('Error in report dialog:', err);
+      setError(err instanceof Error ? err.message : 'Failed to submit report');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -84,21 +98,28 @@ export function ReportDialog({ open, onOpenChange }: ReportDialogProps) {
             />
           </div>
 
+          {error && (
+            <div className="text-red-500 text-sm">
+              {error}
+            </div>
+          )}
+
           <DialogFooter>
             <Button
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
               className="bg-[#2A2A2A] text-white hover:bg-[#3A3A3A]"
+              disabled={isSubmitting}
             >
               Cancel
             </Button>
             <Button
               type="submit"
-              disabled={!reason}
+              disabled={!reason || isSubmitting}
               className="bg-[#A855F7] text-white hover:bg-[#9333EA]"
             >
-              Submit Report
+              {isSubmitting ? 'Submitting...' : 'Submit Report'}
             </Button>
           </DialogFooter>
         </form>
