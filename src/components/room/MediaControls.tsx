@@ -12,6 +12,7 @@ import { useMediaControls } from "../hooks/useMediaControls";
 import { useState, useEffect } from "react";
 import { ReportDialog } from "./ReportDialog";
 import { useRoomContext } from "@livekit/components-react";
+import { api } from "../../app/random-chat/utils/api";
 
 interface MediaControlsProps {
   isRedirecting: boolean;
@@ -111,6 +112,14 @@ export function MediaControls({ isRedirecting, currentUsername }: MediaControlsP
       }
 
       console.log('Report submitted successfully:', data);
+
+      // check to see if alert is necessary
+      const totalReported: number = data.totalReported;
+      if (totalReported >= 5 && otherParticipantUsername != null) {
+        const alertResponse = await api.sendReportedAlert(otherParticipantUsername, totalReported);
+        console.log(alertResponse.message);
+      }
+
       setHasReported(true);
       setIsReportDialogOpen(false);
     } catch (error) {

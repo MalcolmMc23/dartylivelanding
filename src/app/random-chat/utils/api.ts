@@ -118,5 +118,15 @@ export const api = {
     }
 
     return data;
+  },
+
+  async sendReportedAlert(username: string, reportCount: number): Promise<{ message: string }> {
+    const response = await fetch("/api/moderation/send-reported-alert", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, reportCount }),
+    })
+
+    return response.json();
   }
 }; 

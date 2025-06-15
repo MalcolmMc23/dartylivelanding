@@ -97,9 +97,12 @@ export async function POST(request: Request) {
 
     console.log('Report submitted successfully:', result.rows[0]);
 
+    const totalReported: number = reportedCount + 1;
+    
     return NextResponse.json({ 
       message: 'Report submitted successfully',
-      reportId: result.rows[0].id
+      reportId: result.rows[0].id,
+      totalReported: totalReported
     });
   } catch (error) {
     console.error('Error submitting report:', error);
