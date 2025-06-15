@@ -22,6 +22,7 @@ export function MediaControls({ isRedirecting, currentUsername }: MediaControlsP
   const { isCameraEnabled, isMicEnabled, toggleCamera, toggleMicrophone } =
     useMediaControls();
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
+  const [hasReported, setHasReported] = useState(false);
   const room = useRoomContext();
 
   // Get the other participant's username
@@ -73,6 +74,7 @@ export function MediaControls({ isRedirecting, currentUsername }: MediaControlsP
       }
 
       console.log('Report submitted successfully:', data);
+      setHasReported(true);
       setIsReportDialogOpen(false);
     } catch (error) {
       console.error('Error submitting report:', error);
@@ -105,9 +107,9 @@ export function MediaControls({ isRedirecting, currentUsername }: MediaControlsP
       {/* Report Button */}
       <ControlButton
         onClick={() => setIsReportDialogOpen(true)}
-        disabled={isRedirecting || !otherParticipantUsername || !currentUsername}
+        disabled={isRedirecting || !otherParticipantUsername || !currentUsername || hasReported}
         active={false}
-        ariaLabel="Report user"
+        ariaLabel={hasReported ? "Already reported this user" : "Report user"}
         activeIcon={<FlagIcon />}
         inactiveIcon={<FlagIcon />}
       />

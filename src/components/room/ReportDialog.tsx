@@ -91,7 +91,7 @@ export function ReportDialog({ open, onOpenChange, onSubmit }: ReportDialogProps
             </Label>
             <Textarea
               id="description"
-              placeholder="Please provide any additional details about your report..."
+              placeholder="Please be as detailed and specific as you can with your report..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="bg-[#2A2A2A] border border-[#3A3A3A] text-white focus:ring-[#A855F7] focus:border-[#A855F7] rounded-xl min-h-[100px]"
