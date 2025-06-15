@@ -3,7 +3,13 @@ export type ChatState = "IDLE" | "WAITING" | "CONNECTING" | "IN_CALL";
 export interface MatchData {
   sessionId: string;
   roomName: string;
-  peerId?: string;
+  peerId: string;
+}
+
+export interface MatchResponse {
+  matched: boolean;
+  data?: MatchData;
+  inQueue?: boolean;
 }
 
 export interface SkipMatchData {
@@ -40,18 +46,18 @@ export interface VideoConferenceProps {
   onEnd: () => void;
   token: string;
   sessionId: string;
-  userId: string;
+  username: string;
   onDisconnected: () => void;
   onAlone?: () => void;
-} 
+}
 
 export interface WaitingRoomProps {
   chatState: ChatState;
   error: string;
-  userId: string;
+  username: string;
   onStart: () => void;
   onCancel: () => void;
-  onCheckStatus: () => void;
-  onForceCleanup: () => void;
+  onCheckStatus?: () => void;
+  onForceCleanup?: () => void;
   showDebug?: boolean;
 }

@@ -5,6 +5,7 @@ import { ControlBarContainer } from "./video/ControlBarContainer";
 import { MediaControls } from "./room/MediaControls";
 import { ChatButton } from "./room/ChatButton";
 import { CallActionButtons } from "./room/CallActionButtons";
+import { useRoomContext } from "@livekit/components-react";
 
 interface CustomControlBarProps extends ControlBarProps {
   onChatClick: () => void;
@@ -19,12 +20,21 @@ export function CustomControlBar({
   onSkip,
   onEnd,
 }: CustomControlBarProps) {
-  // Removed useRoomActions-related logic
+  const room = useRoomContext();
+  const currentUsername = room?.localParticipant?.identity;
+
+  console.log('CustomControlBar debug:', {
+    currentUsername,
+    localParticipant: room?.localParticipant
+  });
 
   // Render control buttons with safe defaults for removed props
   const controlButtons = (
     <>
-      <MediaControls isRedirecting={false} />
+      <MediaControls 
+        isRedirecting={false} 
+        currentUsername={currentUsername}
+      />
 
       <ChatButton
         onChatClick={onChatClick}

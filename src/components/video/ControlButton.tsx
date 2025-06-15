@@ -50,6 +50,8 @@ export function ControlButton({
           ? "Skip"
           : ariaLabel === "End call"
           ? "End Call"
+          : ariaLabel === "Report user"
+          ? "Report User"
           : ariaLabel.includes("camera")
           ? "Toggle Camera"
           : ariaLabel.includes("chat")

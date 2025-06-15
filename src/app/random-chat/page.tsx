@@ -1,26 +1,32 @@
 "use client";
 
-import { useRef } from "react";
+import { useState, useEffect } from "react";
 import { VideoConference } from "./components/VideoConference";
 import { WaitingRoom } from "./components/WaitingRoom";
 import { useHeartbeat } from "./hooks/useHeartbeat";
 import { useMatching } from "./hooks/useMatching";
 import { useLiveKit } from "./hooks/useLiveKit";
+import { useUsername } from "./hooks/useUsername";
 import { MatchData } from "./types";
 import { createCallHandlers } from "./handlers/callHandlers";
 import { createDebugHandlers } from "./handlers/debugHandlers";
 import { useCallEffects } from "./hooks/useCallEffects";
 
 export default function RandomChatPage() {
-  // Generate stable user ID
-  const userIdRef = useRef<string | null>(null);
-  if (userIdRef.current === null && typeof window !== "undefined") {
-    userIdRef.current = `user_${Math.random().toString(36).substring(2, 11)}`;
-  }
-  const userId = userIdRef.current!;
+  // Get username from API
+  const { username: apiUsername } = useUsername();
+  const [username, setUsername] = useState<string>("not found");
+  
+  // Update username when username is available
+  useEffect(() => {
+    if (apiUsername) {
+      console.log('Setting username to:', apiUsername);
+      setUsername(apiUsername);
+    }
+  }, [apiUsername]);
 
   // Initialize hooks
-  const { startHeartbeat, stopHeartbeat } = useHeartbeat(userId);
+  const { startHeartbeat, stopHeartbeat } = useHeartbeat(username);
   const {
     chatState,
     setChatState,
@@ -33,26 +39,42 @@ export default function RandomChatPage() {
     startMatching,
     cancelWaiting,
     stopPolling,
-  } = useMatching(userId, handleMatch, startHeartbeat, stopHeartbeat);
+  } = useMatching(username, handleMatch, startHeartbeat, stopHeartbeat);
 
   const { token, sessionId, setSessionId, connectToRoom, disconnectFromRoom } =
-    useLiveKit(userId, setError);
+    useLiveKit(username, setError);
 
   // Handle successful match
   async function handleMatch(matchData: MatchData) {
     console.log("Handling match:", matchData);
+    if (!matchData.sessionId || !matchData.roomName) {
+      console.error("Invalid match data:", matchData);
+      setError("Failed to establish connection");
+      setChatState("IDLE");
+      return;
+    }
+    
     setChatState("CONNECTING");
     setSessionId(matchData.sessionId);
 
-    const success = await connectToRoom(matchData.roomName);
-    if (success) {
-      setChatState("IN_CALL");
+    try {
+      const success = await connectToRoom(matchData.roomName);
+      if (success) {
+        setChatState("IN_CALL");
+      } else {
+        setError("Failed to connect to video room");
+        setChatState("IDLE");
+      }
+    } catch (err) {
+      console.error("Error connecting to room:", err);
+      setError("Failed to connect to video room");
+      setChatState("IDLE");
     }
   }
 
   // Initialize handlers
   const { skipCall, endCall, handleLiveKitDisconnect } = createCallHandlers({
-    userId,
+    userId: username,
     sessionId,
     isEndingCall,
     isSkipping,
@@ -67,14 +89,14 @@ export default function RandomChatPage() {
   });
 
   const { handleCheckStatus, handleForceCleanup } = createDebugHandlers({
-    userId,
+    userId: username,
     setChatState,
     setSessionId,
   });
 
   // Use effects
   useCallEffects({
-    userId,
+    userId: username,
     chatState,
     token,
     needsRequeue,
@@ -97,7 +119,7 @@ export default function RandomChatPage() {
         onEnd={endCall}
         token={token}
         sessionId={sessionId}
-        userId={userId}
+        username={username}
         onDisconnected={() => handleLiveKitDisconnect(chatState, handleMatch)}
         onAlone={() => handleLiveKitDisconnect(chatState, handleMatch)}
       />
@@ -108,7 +130,7 @@ export default function RandomChatPage() {
     <WaitingRoom
       chatState={chatState}
       error={error}
-      userId={userId}
+      username={username}
       onStart={startMatching}
       onCancel={cancelWaiting}
       onCheckStatus={handleCheckStatus}
