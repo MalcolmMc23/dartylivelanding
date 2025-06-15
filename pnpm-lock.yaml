@@ -80,6 +80,9 @@ importers:
       next-themes:
         specifier: ^0.4.6
         version: 0.4.6(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      openai:
+        specifier: ^5.3.0
+        version: 5.3.0
       pg:
         specifier: ^8.16.0
         version: 8.16.0
@@ -2353,6 +2356,18 @@ packages:
   oidc-token-hash@5.1.0:
     resolution: {integrity: sha512-y0W+X7Ppo7oZX6eovsRkuzcSM40Bicg2JEJkDJ4irIt1wsYAP5MLSNv+QAogO8xivMffw/9OvV3um1pxXgt1uA==}
     engines: {node: ^10.13.0 || >=12.0.0}
+
+  openai@5.3.0:
+    resolution: {integrity: sha512-VIKmoF7y4oJCDOwP/oHXGzM69+x0dpGFmN9QmYO+uPbLFOmmnwO+x1GbsgUtI+6oraxomGZ566Y421oYVu191w==}
+    hasBin: true
+    peerDependencies:
+      ws: ^8.18.0
+      zod: ^3.23.8
+    peerDependenciesMeta:
+      ws:
+        optional: true
+      zod:
+        optional: true
 
   openid-client@5.7.1:
     resolution: {integrity: sha512-jDBPgSVfTnkIh71Hg9pRvtJc6wTwqjRkN88+gCFtYWrlP4Yx2Dsrow8uPi3qLr/aeymPF3o2+dS+wOpglK04ew==}
@@ -5218,6 +5233,8 @@ snapshots:
       es-object-atoms: 1.1.1
 
   oidc-token-hash@5.1.0: {}
+
+  openai@5.3.0: {}
 
   openid-client@5.7.1:
     dependencies:

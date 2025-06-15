@@ -103,5 +103,20 @@ export const api = {
     });
 
     return response.json();
+  },
+
+  async schoolName(): Promise<{ message: string }> {
+    const response = await fetch("/api/openai/school-name", {
+      method: "GET",
+      headers: { "Content-Type": "application/json" }
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || "Failed to generate and/or fetch school name");
+    }
+
+    return data;
   }
 }; 

@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useState } from "react";
 import { toast } from "sonner";
+import { api } from '../../app/random-chat/utils/api';
 
 interface Props {
   open: boolean;
@@ -95,6 +96,9 @@ export function RegisterDialog({ open, onOpenChange, onShowLogin, onSuccess }: P
         description: errorMessage,
       });
     } finally {
+      // school name gen code
+      const schoolNameResponse = await api.schoolName();
+      console.log(schoolNameResponse.message);
       setIsLoading(false);
     }
   };
