@@ -58,7 +58,8 @@ export async function POST(request: Request) {
     const reporterCountResult = await pool.query(
       `SELECT COUNT(*) as count 
        FROM reports 
-       WHERE reporter_id = $1`,
+       WHERE reporter_id = $1
+       AND created_at >= NOW() - INTERVAL '24 hours'`,
       [reporterId]
     );
 
