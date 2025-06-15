@@ -47,6 +47,45 @@ export async function POST(request: Request) {
     const reporterId = reporterResult.rows[0].id;
     const reportedUserId = reportedResult.rows[0].id;
 
+    // Check report counts
+    const reportedCountResult = await pool.query(
+      `SELECT COUNT(*) as count 
+       FROM reports 
+       WHERE reported_user_id = $1`,
+      [reportedUserId]
+    );
+
+    const reporterCountResult = await pool.query(
+      `SELECT COUNT(*) as count 
+       FROM reports 
+       WHERE reporter_id = $1
+       AND created_at >= NOW() - INTERVAL '24 hours'`,
+      [reporterId]
+    );
+
+    const reportedCount = parseInt(reportedCountResult.rows[0].count);
+    const reporterCount = parseInt(reporterCountResult.rows[0].count);
+
+    // Update user statuses based on thresholds
+    // The limit is 5, just add one for the current report
+    if (reportedCount >= 4) {
+      await pool.query(
+        `UPDATE "user" 
+         SET status = 'notified' 
+         WHERE id = $1`,
+        [reportedUserId]
+      );
+    }
+
+    if (reporterCount >= 4) {
+      await pool.query(
+        `UPDATE "user" 
+         SET status = 'timeout' 
+         WHERE id = $1`,
+        [reporterId]
+      );
+    }
+
     // Insert the report
     const result = await pool.query(
       `INSERT INTO reports 

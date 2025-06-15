@@ -52,11 +52,15 @@ export function ControlButton({
           ? "End Call"
           : ariaLabel === "Report user"
           ? "Report User"
+          : ariaLabel === "Already reported this user"
+          ? "Already Reported"
           : ariaLabel.includes("camera")
           ? "Toggle Camera"
           : ariaLabel.includes("chat")
           ? "Toggle Chat"
-          : "Toggle Microphone"}
+          : ariaLabel.includes("microphone")
+          ? "Toggle Microphone"
+          : ariaLabel}
       </span>
     </div>
   );
