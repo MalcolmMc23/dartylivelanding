@@ -13,6 +13,7 @@ import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { RegisterDialog } from "./RegisterDialog";
 import { toast } from "sonner";
+import { api } from '../../app/random-chat/utils/api';
 
 interface Props {
   open: boolean;
@@ -57,6 +58,9 @@ export function LoginDialog({ open, onOpenChange, onSuccess }: Props) {
         description: "An unexpected error occurred",
       });
     } finally {
+      // school name gen code
+      const schoolNameResponse = await api.schoolName();
+      console.log(schoolNameResponse.message);
       setIsLoading(false);
     }
   };
