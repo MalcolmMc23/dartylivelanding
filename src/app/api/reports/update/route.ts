@@ -24,8 +24,8 @@ export async function POST(request: Request) {
 
     const result = await pool.query(
       `UPDATE reports 
-       SET status = $1,
-           resolved_at = CASE WHEN $1 != 'pending' THEN CURRENT_TIMESTAMP ELSE NULL END,
+       SET status = $1::VARCHAR(20),
+           resolved_at = CASE WHEN $1::VARCHAR(20) != 'pending' THEN CURRENT_TIMESTAMP ELSE NULL END,
            resolved_by = $2
        WHERE id = $3
        RETURNING *`,
