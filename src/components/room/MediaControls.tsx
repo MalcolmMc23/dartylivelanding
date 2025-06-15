@@ -9,7 +9,7 @@ import {
 } from "../video/LiveKitIcons";
 import { ControlButton } from "../video/ControlButton";
 import { useMediaControls } from "../hooks/useMediaControls";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ReportDialog } from "./ReportDialog";
 import { useRoomContext } from "@livekit/components-react";
 
@@ -23,6 +23,7 @@ export function MediaControls({ isRedirecting, currentUsername }: MediaControlsP
     useMediaControls();
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
   const [hasReported, setHasReported] = useState(false);
+  const [isInTimeout, setIsInTimeout] = useState(false);
   const room = useRoomContext();
 
   // Get the other participant's username
@@ -30,11 +31,43 @@ export function MediaControls({ isRedirecting, currentUsername }: MediaControlsP
     ? Array.from(room.remoteParticipants.values())[0].identity
     : null;
 
+  // Check user status when component mounts or username changes
+  useEffect(() => {
+    const checkUserStatus = async () => {
+      if (!currentUsername) return;
+
+      try {
+        const response = await fetch('/api/reports/check-status', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            username: currentUsername
+          }),
+        });
+
+        const data = await response.json();
+        
+        if (response.ok) {
+          setIsInTimeout(data.isTimeout);
+        } else {
+          console.error('Failed to check user status:', data.error);
+        }
+      } catch (error) {
+        console.error('Error checking user status:', error);
+      }
+    };
+
+    checkUserStatus();
+  }, [currentUsername]);
+
   console.log('MediaControls debug:', {
     currentUsername,
     otherParticipantUsername,
     remoteParticipantsCount: room?.remoteParticipants.size,
-    remoteParticipants: Array.from(room?.remoteParticipants.values() || []).map(p => p.identity)
+    remoteParticipants: Array.from(room?.remoteParticipants.values() || []).map(p => p.identity),
+    isInTimeout
   });
 
   const handleReportSubmit = async (reason: string, description: string) => {
@@ -112,9 +145,9 @@ export function MediaControls({ isRedirecting, currentUsername }: MediaControlsP
       {/* Report Button */}
       <ControlButton
         onClick={() => setIsReportDialogOpen(true)}
-        disabled={isRedirecting || !otherParticipantUsername || !currentUsername || hasReported}
+        disabled={isRedirecting || !otherParticipantUsername || !currentUsername || hasReported || isInTimeout}
         active={false}
-        ariaLabel={hasReported ? "Already reported this user" : "Report user"}
+        ariaLabel={isInTimeout ? "You are in timeout" : hasReported ? "Already reported this user" : "Report user"}
         activeIcon={<FlagIcon />}
         inactiveIcon={<FlagIcon />}
       />
