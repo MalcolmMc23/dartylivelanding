@@ -70,6 +70,10 @@ export function MediaControls({ isRedirecting, currentUsername }: MediaControlsP
       const data = await response.json();
       
       if (!response.ok) {
+        if (response.status === 403) {
+          // Handle threshold reached errors
+          throw new Error(data.error || 'Report threshold reached');
+        }
         throw new Error(data.error || 'Failed to submit report');
       }
 
@@ -78,7 +82,8 @@ export function MediaControls({ isRedirecting, currentUsername }: MediaControlsP
       setIsReportDialogOpen(false);
     } catch (error) {
       console.error('Error submitting report:', error);
-      // You might want to show an error message to the user here
+      // Show error message to user
+      alert(error instanceof Error ? error.message : 'Failed to submit report');
     }
   };
 
